@@ -3,8 +3,12 @@ KissAssist_*.ini
 Loot.ini
 *.ini.bak
 
-# MacroQuest log/temp files
+# MacroQuest files
 *.log
+*.mac
+*.inc
 
 # Local Claude Code memory/settings
 .claude/
+CLAUDE.md
+design/
