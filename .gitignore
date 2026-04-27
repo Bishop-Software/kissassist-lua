@@ -1,0 +1,10 @@
+# Character-specific config files (user-generated, not committed)
+KissAssist_*.ini
+Loot.ini
+*.ini.bak
+
+# MacroQuest log/temp files
+*.log
+
+# Local Claude Code memory/settings
+.claude/
