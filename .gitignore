@@ -8,6 +8,9 @@ Loot.ini
 *.mac
 *.inc
 
+# Visual Studio Code settings
+.vscode/
+
 # Local Claude Code memory/settings
 .claude/
 CLAUDE.md
