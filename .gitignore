@@ -5,8 +5,6 @@ Loot.ini
 
 # MacroQuest files
 *.log
-*.mac
-*.inc
 
 # Visual Studio Code settings
 .vscode/
@@ -14,4 +12,3 @@ Loot.ini
 # Local Claude Code memory/settings
 .claude/
 CLAUDE.md
-design/
