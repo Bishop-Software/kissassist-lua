@@ -321,6 +321,7 @@ local State = {
         redguides            = true,
         searchType           = '',
         tempAmmo             = '',
+        campfireOn           = false,
         winTitleText         = 'null',
     },
 

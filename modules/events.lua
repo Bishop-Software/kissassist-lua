@@ -124,7 +124,7 @@ end
 
 local function onStanding()
     utils.debug('cast', 'CAST_STANDING')
-    if not state.movement.medding then mq.cmd('/stand') end
+    if not state.heal.medding then mq.cmd('/stand') end
     state.cast.castReturn = 'CAST_RESTART'
 end
 
@@ -150,6 +150,156 @@ local function onFdFail(_, name)
         if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
         state.cast.castReturn = 'CAST_RESTART'
     end
+end
+
+-- ─── 2.2: Combat, movement, and session events ───────────────────────────────
+
+local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
+
+local function onGotHit(_, mob)
+    utils.debug('combat', 'GotHit: ' .. tostring(mob))
+    state.combat.eventFlag    = true
+    state.timers.sitToMed     = os.clock() + 6  -- delay sit-to-med on hit; M7 uses configured value
+    state.combat.gotHitToggle = true
+    -- Full pettank/pullertank movement response in M7 (movement.lua)
+end
+
+local function onAttackCalled(_, caller, mobID)
+    utils.debug('combat', 'AttackCalled: ' .. tostring(caller) .. ' ID:' .. tostring(mobID))
+    state.combat.eventFlag = true
+    if not mobID or mobID == '' then
+        state.combat.calledTargetID = 0
+        return
+    end
+    if state.session.iAmMA then return end
+    if caller == state.session.mainAssist then
+        state.combat.calledTargetID = tonumber(mobID) or 0
+    end
+end
+
+local function onCantHit()
+    utils.debug('combat', 'CantHit')
+    if state.pull.pulling then
+        state.movement.cantHit = true
+    end
+end
+
+local function onCantSee()
+    utils.debug('move', 'CantSee')
+    if state.pull.pulling then
+        state.movement.cantSee = true
+        return
+    end
+    -- Full LOS movement response in M7 (movement.lua)
+end
+
+local function onTooClose()
+    utils.debug('move', 'TooClose')
+    if state.pull.pulling and state.pull.withAlt == 'Melee' then
+        state.movement.toClose = true
+    end
+    -- Autofire disable in M4 (combat.lua)
+end
+
+local function onTooFar()
+    utils.debug('move', 'TooFar')
+    if state.pull.pulling then
+        state.pull.tooFar = true
+    end
+    -- Stick/moveto response in M7 (movement.lua)
+end
+
+local function onMezBroke(_, mob, breaker)
+    utils.debug('mez', 'MezBroke: ' .. tostring(mob) .. ' by ' .. tostring(breaker))
+    state.combat.eventFlag = true
+    state.mez.broke        = true
+    -- Mez timer reset and target reassign in M5 (healing.lua)
+end
+
+local function onMissing()
+    utils.debug('combat', 'Missing component')
+    state.combat.eventFlag        = true
+    state.combat.missingComponent = true
+end
+
+local function onImDead()
+    utils.debug('combat', 'ImDead')
+    if state.session.iAmDead then return end
+    printf('\awI have died and the Angels wept.')
+    state.combat.eventFlag = true
+    state.session.iAmDead  = true
+    -- Bard twist stop in M8 (bard.lua); CombatReset in M4 (combat.lua)
+end
+
+local function onZoned(_, message)
+    utils.debug('combat', 'Zoned: ' .. tostring(message))
+    if message and (message:find('Drunken Monkey', 1, true) or message:find('effects', 1, true)) then
+        return
+    end
+    state.combat.eventFlag  = true
+    state.timers.justZoned  = os.clock() + 10  -- 200 ticks * 50ms
+    local zoneID            = mq.TLO.Zone.ID()
+    state.misc.dmz          = DMZ_ZONES[zoneID] == true
+    local short             = mq.TLO.Zone.ShortName() or ''
+    local suffix            = mq.TLO.Me.InInstance() and '_I' or ''
+    local name              = mq.TLO.Zone.Name() or short
+    if name:find(',', 1, true) or name:find("'", 1, true) then
+        state.session.zoneName = short .. suffix
+    else
+        state.session.zoneName = short .. suffix
+    end
+    if state.movement.campZone ~= zoneID then
+        if state.movement.returnToCamp then
+            state.movement.returnToCamp = false
+            state.movement.rememberCamp = true
+        end
+    else
+        if state.movement.rememberCamp then
+            local dx   = mq.TLO.Me.X() - state.movement.campX
+            local dy   = mq.TLO.Me.Y() - state.movement.campY
+            local dist = math.sqrt(dx * dx + dy * dy)
+            if dist <= 150 then
+                state.movement.returnToCamp = true
+                state.movement.rememberCamp = false
+            end
+        end
+        if state.session.iAmDead then state.session.iAmDead = false end
+    end
+    state.misc.lastZone = zoneID
+    -- CombatReset, WinTitle, LoadSpawnMaster in M4/M7
+end
+
+local function onJoined(_, joinee)
+    utils.debug('buffs', 'Joined: ' .. tostring(joinee))
+    state.combat.eventFlag   = true
+    state.timers.joinedParty = os.clock() + 2  -- 200 ticks * 50ms ≈ 2s heal suppression window
+    state.buffs.forceBuffs   = true
+    -- Per-member buff state reset in M6 (buffs.lua)
+end
+
+local function onLeftGroup()
+    utils.debug('buffs', 'LeftGroup')
+    state.combat.eventFlag = true
+end
+
+local function onInvised()
+    utils.debug('combat', 'Invised')
+    state.combat.eventFlag = true
+    -- Bard twist stop in M8 (bard.lua)
+end
+
+local function onCamping()
+    utils.debug('combat', 'Camping — shutting down')
+    state.combat.eventFlag = true
+    -- Bard twist stop in M8 (bard.lua)
+    state.terminate = true
+end
+
+local function onTooSteep()
+    utils.debug('move', 'TooSteep')
+    state.combat.eventFlag = true
+    state.misc.campfireOn  = false
+    printf('\ayTooSteep: CampfireOn disabled.')
 end
 
 -- Register all cast result events
@@ -225,6 +375,50 @@ function Events.register(s, u)
     register('CAST_COLLAPSE',    'Your gate is too unstable, and collapses#*#', onCollapse)
     register('CAST_FAILED',      'Your ability failed.#*#', onFailed)
     register('CAST_FDFAIL',      '#1# has fallen to the ground.#*#', onFdFail)
+
+    -- 2.2: GotHit (12 melee attack types + near-miss)
+    register('GotHit', '#1# bashes YOU for #*# points of damage.#*#',  onGotHit)
+    register('GotHit', '#1# bites YOU for #*# points of damage.#*#',   onGotHit)
+    register('GotHit', '#1# crushes YOU for #*# points of damage.#*#', onGotHit)
+    register('GotHit', '#1# gores YOU for #*# points of damage.#*#',   onGotHit)
+    register('GotHit', '#1# hits YOU for #*# points of damage.#*#',    onGotHit)
+    register('GotHit', '#1# kicks YOU for #*# points of damage.#*#',   onGotHit)
+    register('GotHit', '#1# mauls YOU for #*# points of damage.#*#',   onGotHit)
+    register('GotHit', '#1# pierces YOU for #*# points of damage.#*#', onGotHit)
+    register('GotHit', '#1# punches YOU for #*# points of damage.#*#', onGotHit)
+    register('GotHit', '#1# rampages YOU for #*# points of damage.#*#',onGotHit)
+    register('GotHit', '#1# smashes YOU for #*# points of damage.#*#', onGotHit)
+    register('GotHit', '#1# slashes YOU for #*# points of damage.#*#', onGotHit)
+    register('GotHit', '#1# tries to #*# YOU, but #*#',                onGotHit)
+
+    -- 2.2: AttackCalled (EQBC and DanNet broadcast formats)
+    register('AttackCalled', '<#1#>#*#TANKING-> #*# <- ID:#2#',       onAttackCalled)
+    register('AttackCalled', '[ #1# (#*#) ]#*#TANKING-> #*# <- ID:#2#', onAttackCalled)
+
+    -- 2.2: Movement/targeting feedback
+    register('CantHit',  "You can't hit them from here.",       onCantHit)
+    register('CantSee',  'You cannot see your target.',         onCantSee)
+    register('TooClose', 'Your target is too close to use a ranged weapon!', onTooClose)
+    register('TooFar',   'Your target is #*#, get closer!',    onTooFar)
+
+    -- 2.2: Mez
+    register('MezBroke', '#1# has been awakened by #2#.', onMezBroke)
+
+    -- 2.2: Missing component (combat context; distinct from CAST_COMPONENTS)
+    register('Missing', '#*#You are missing some required components.#*#', onMissing)
+    register('Missing', '#*#You are missing#*#',                           onMissing)
+
+    -- 2.2: Session events
+    register('ImDead',   '#*#Returning to Bind Location#*#',  onImDead)
+    register('ImDead',   'You died.',                          onImDead)
+    register('ImDead',   'You have been slain by#*#',          onImDead)
+    register('Zoned',    'LOADING, PLEASE WAIT#*#',            onZoned)
+    register('Zoned',    'You have entered#*#',                onZoned)
+    register('Joined',   '#1# has joined the group.',          onJoined)
+    register('LeftGroup','#1# has left the group.',            onLeftGroup)
+    register('Invised',  'You Vanish #*#',                     onInvised)
+    register('Camping',  '#*#seconds to prepare your camp.',   onCamping)
+    register('TooSteep', 'The ground here is too steep to camp', onTooSteep)
 end
 
 function Events.unregister()
