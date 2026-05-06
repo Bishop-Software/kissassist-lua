@@ -2,6 +2,7 @@ local mq     = require('mq')
 local State  = require('modules.state')
 local Utils  = require('modules.utils')
 local Config = require('modules.config')
+local Events = require('modules.events')
 
 local VERSION = '1.0.0'
 
@@ -36,6 +37,9 @@ end
 -- Validate required plugins; continue even if some are missing (warn only)
 Config.checkPlugins()
 
+-- Register all game text events
+Events.register(State, Utils)
+
 printf('\agKissAssist ready. \awEntering main loop.')
 
 -- Main loop — mq.delay() processes events internally in MQ2Lua
@@ -44,4 +48,5 @@ while not State.terminate do
     mq.delay(50)
 end
 
+Events.unregister()
 printf('\ayKissAssist \aw%s stopped.', VERSION)

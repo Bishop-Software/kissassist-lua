@@ -112,11 +112,54 @@ end
 ### Milestone 2 — Events & Binds
 **Goal:** All game text reactions and player commands registered.
 
-- `events.lua` — port all 113 `#Event` handlers; each sets flags in `State.*` tables
-- `binds.lua` — port all 31 `#bind` commands (toggles: `/kacampon`, `/kaburn`, etc.)
-- Register clean shutdown via `mq.unevent()` / `mq.unbind()` on exit
+**Done when:** All 113 events registered, all 31 binds respond in-game, `/lua stop` cleans up handlers.
 
-**Done when:** Toggle commands work in-game; game text events flip correct state flags.
+#### Step 2.1 — `events.lua` scaffold + cast result events
+Create `modules/events.lua`, register it in `init.lua`, and port all cast-result events (~50 patterns across 22 named events): `CAST_BEGIN`, `CAST_FIZZLE`, `CAST_INTERRUPTED`, `CAST_RESISTED`, `CAST_TAKEHOLD`, `CAST_IMMUNE`, `CAST_DISTRACTED`, `CAST_STUNNED`, `CAST_NOTARGET`, `CAST_OUTOFRANGE`, `CAST_OUTOFMANA`, `CAST_NOTREADY`, `CAST_RECOVER`, `CAST_NOMOUNT`, `CAST_OUTDOORS`, `CAST_COMPONENTS`, `CAST_STANDING`, `CAST_CANNOTSEE`, `CAST_COLLAPSE`, `CAST_FAILED`, `CAST_FDFAIL`, `CAST_RESISTEDYOU`. Each handler sets `State.cast.status` and related flags. Highest priority — required before Milestone 3 (cast engine).
+
+**Done when:** Script starts cleanly with events registered; cast result messages in-game set the correct `State.cast.status`.
+
+---
+
+#### Step 2.2 — Combat, movement, and session events
+Port remaining high-frequency gameplay events into `events.lua`:
+- `GotHit` ×12 → `State.combat.gotHitToggle`
+- `AttackCalled` ×2 → `State.combat.calledTargetID`
+- `CantHit`, `CantSee`, `TooClose`, `TooFar` → `State.movement.*`
+- `MezBroke`, `Missing` ×2 → `State.mez.broke`, `State.combat.missingComponent`
+- `ImDead` ×3, `Zoned` ×2, `Joined`, `LeftGroup`, `Invised`, `Camping`, `TooSteep` → `State.session.*`
+
+**Done when:** Getting hit, dying, and zoning flip the correct State flags.
+
+---
+
+#### Step 2.3 — Buff, pet, and comms events
+Port remaining events:
+- `GoMOn` ×3, `GoMOff` ×2 → `State.bard.gomActive`
+- `WornOff`, `GainSomething`, `AskForBuffs` ×2, `KABegCheck` → `State.buffs.*`
+- `PetSusStateAdd1`, `PetSusStateAdd2`, `PetSusStateSub`, `PetToysPlease` → `State.pet.*`
+- `YouGotTell`, `EQBCIRC`, `FSEQBC`, `GUEQBC`, `KTDismount`, `KTDoorClick` ×2, `KTHail`, `KTInvite`, `KTSay`, `KTTarget` → cross-char command dispatch (stubs until `comms.lua`)
+- `Timer`, `TaskUpdate`, `MLogOff` → `State.timers.*` / debug
+
+**Done when:** All 113 events registered with no errors on startup.
+
+---
+
+#### Step 2.4 — `binds.lua` + shutdown cleanup
+Create `modules/binds.lua` and port all 31 binds as State toggles with confirmation messages. Full behavior is added per milestone as each domain module is built. Bind groups:
+- **Debug/utility** (6): `/debug`, `/parse`, `/zoneinfo`, `/iniwrite`, `/writespells`, `/mycmd`
+- **Combat** (8): `/burn`, `/backoff`, `/switchnow`, `/switchma`, `/kisscast`, `/togglevariable`, `/changevarint`, `/kisscheck`
+- **Movement/camp** (4): `/makecamphere`, `/stayhere`, `/chaseme`, `/trackmedown`
+- **Pull** (5): `/addpull`, `/addignore`, `/addimmune`, `/SetPullArc`, `/setpullranking`
+- **Buffs/group/misc** (8): `/buffgroup`, `/kasettings`, `/tbmanager`, `/memmyspells`, `/kissedit`, `/addfriend`, `/aggroinfo`, `/campfire`
+
+Wire shutdown cleanup into `init.lua` — call `mq.unevent()` and `mq.unbind()` after the main loop exits.
+
+**Done when:** `/burn`, `/stayhere`, `/makecamphere`, `/debug` etc. toggle correct State flags in-game; `/lua stop` cleans up all handlers.
+
+---
+
+**Suggested order:** 2.1 → 2.2 → 2.3 (sequential, all build on `events.lua`). Step 2.4 can start after 2.1 — binds have no dependency on events.
 
 ---
 
