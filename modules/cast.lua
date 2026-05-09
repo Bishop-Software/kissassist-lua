@@ -172,12 +172,224 @@ local function castSpell(spellName, sentFrom)
     return castResult
 end
 
+-- ─── CastAA ───────────────────────────────────────────────────────────────────
+
+-- Mirrors CastAA (kissassist.mac:2639-2705).
+-- Banestrike race/distance/combat guard; /alt act ID; poll until AA consumed or
+-- cast window clears. Bard twist-pause stubbed → M8 (bard.lua).
+local function castAA(whatAA, sentFrom)
+    -- Banestrike: skip if target race not valid, too far, and in combat
+    if whatAA == 'Banestrike' or whatAA == '15073' then
+        local baneStr    = state.misc.baneStrikeRaces or ''
+        local targetRace = mq.TLO.Target.Race() or ''
+        local dist       = mq.TLO.Spawn(state.combat.myTargetID or 0).Distance3D() or 999
+        if baneStr ~= '' and not baneStr:find('|' .. targetRace .. '|', 1, true)
+                and dist > 70 and state.combat.combatStart then
+            return 'CAST_NO_RESULT'
+        end
+    end
+
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+        return 'CAST_CANCELLED'
+    end
+
+    -- Bard twist-pause stub → M8
+
+    local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
+    local castTime = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
+
+    if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then
+        mq.cmd('/stand')
+        local t = os.clock() + 0.5
+        while os.clock() < t and mq.TLO.Me.Sitting() do mq.delay(50) end
+    end
+
+    state.cast.castReturn = 'CAST_SUCCESS'
+    mq.cmdf('/alt act %d', aaID)
+    utils.debug('cast', 'CastAA: /alt act %d (%s)', aaID, whatAA)
+
+    -- Wait for casting window to open when the AA has a cast time
+    if castTime > 0 then
+        local tw = os.clock() + 0.5
+        while os.clock() < tw and not mq.TLO.Window('CastingWindow').Open() do
+            mq.delay(50)
+        end
+    end
+
+    local castResult = 'CAST_SUCCESS'
+    local timeout    = os.clock() + 30
+    while os.clock() < timeout do
+        mq.delay(100)
+        if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+            return 'CAST_SUCCESS'
+        end
+        local casting = (mq.TLO.Me.Casting.ID() or 0) ~= 0
+        local aaReady = mq.TLO.Me.AltAbilityReady(whatAA)()
+        -- AA consumed and cast window clear → success
+        if not aaReady and not casting then
+            castResult = 'CAST_SUCCESS'
+            break
+        end
+        -- Cast window closed but AA still ready → something else ended it
+        if not casting then
+            castResult = state.cast.castReturn
+            break
+        end
+    end
+
+    -- Bard cleanup stub → M8
+    utils.debug('cast', 'CastAA result: %s', castResult)
+    return castResult
+end
+
+-- ─── CastDisc ─────────────────────────────────────────────────────────────────
+
+-- Mirrors CastDisc (kissassist.mac:2761-2803).
+-- Skips if a self-targeted duration disc is already active. Uses /disc ID on live
+-- MQ (MacroQuest.Build != 4) or /disc name on emu.
+local function castDisc(whatDisc, sentFrom)
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+        return 'CAST_CANCELLED'
+    end
+
+    -- Only cast if: no duration, OR (self-target + no active disc), OR non-self target, OR has DurationWindow
+    local hasDuration = (mq.TLO.Spell(whatDisc).Duration() or 0) > 0
+    local targetType  = mq.TLO.Spell(whatDisc).TargetType() or ''
+    local isSelf      = targetType == 'Self'
+    local activeDisc  = (mq.TLO.Me.ActiveDisc.ID() or 0) ~= 0
+    local durWindow   = mq.TLO.Spell(whatDisc).DurationWindow() or false
+    local shouldCast  = not hasDuration
+                     or (hasDuration and isSelf and not activeDisc)
+                     or not isSelf
+                     or durWindow
+    if not shouldCast then
+        utils.debug('cast', 'CastDisc skip — active self-disc: %s', whatDisc)
+        return 'CAST_SUCCESS'
+    end
+
+    -- Determine how long to retry (mirrors .mac's WaitTimerCD timer)
+    local recast  = mq.TLO.Spell(whatDisc).RecastTime.TotalSeconds() or 0
+    local waitSec = 1.0
+    if recast > 0 then
+        waitSec = recast < 3 and recast or 3.0
+    end
+
+    local isEmu   = (mq.TLO.MacroQuest.Build() or 0) == 4
+    local timeout = os.clock() + waitSec
+
+    while mq.TLO.Me.CombatAbilityReady(whatDisc)() and os.clock() < timeout do
+        if not isEmu then
+            local ranked = mq.TLO.Me.CombatAbility(whatDisc)() or whatDisc
+            local discID = mq.TLO.Me.CombatAbility(ranked).ID() or 0
+            mq.cmdf('/disc %d', discID)
+        else
+            mq.cmdf('/disc "%s"', whatDisc)
+        end
+        utils.debug('cast', 'CastDisc: /disc %s', whatDisc)
+        mq.delay(100)
+
+        -- Emu: CombatAbilityReady always true for timeless discs — break after one attempt
+        if isEmu then
+            local recastID = mq.TLO.Spell(whatDisc).RecastTimerID() or -1
+            if recastID == -1 then break end
+        end
+
+        -- Wait for disc to fire (up to 1s)
+        if not isEmu and (mq.TLO.Spell(whatDisc).MyCastTime() or 0) > 0 then
+            local castTimeout = os.clock() + 2.0
+            while os.clock() < castTimeout do
+                mq.delay(100)
+                if (mq.TLO.Me.Casting.ID() or 0) == 0 then break end
+            end
+        end
+
+        local t = os.clock() + 1.0
+        while os.clock() < t and mq.TLO.Me.CombatAbilityReady(whatDisc)() do
+            mq.delay(50)
+        end
+    end
+
+    utils.debug('cast', 'CastDisc result: CAST_SUCCESS (%s)', whatDisc)
+    return 'CAST_SUCCESS'
+end
+
+-- ─── CastItem ─────────────────────────────────────────────────────────────────
+
+-- Mirrors CastItem (kissassist.mac:2709-2757).
+-- Prestige/subscription guard; /useitem; polls CastingWindow if item has cast time.
+-- Returns SUCCESS when item goes on cooldown or summoned item is consumed.
+local function castItem(whatItem, sentFrom)
+    -- Block prestige items for non-gold accounts
+    local sub = mq.TLO.Me.Subscription() or ''
+    if sub ~= 'gold' and mq.TLO.FindItem('=' .. whatItem).Prestige() then
+        return 'CAST_NO_RESULT'
+    end
+
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+        return 'CAST_CANCELLED'
+    end
+
+    -- Bard twist-pause stub → M8
+    local castTime = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime.TotalSeconds() or 0
+
+    if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then
+        mq.cmd('/stand')
+        local t = os.clock() + 0.5
+        while os.clock() < t and mq.TLO.Me.Sitting() do mq.delay(50) end
+    end
+
+    state.cast.castReturn = 'CAST_SUCCESS'
+    mq.cmdf('/useitem "%s"', whatItem)
+    utils.debug('cast', 'CastItem: /useitem "%s" (castTime=%.2f)', whatItem, castTime)
+
+    if castTime > 0 then
+        -- Wait for casting window
+        local tw = os.clock() + 0.5
+        while os.clock() < tw and not mq.TLO.Window('CastingWindow').Open() do
+            mq.delay(50)
+        end
+        -- Poll while casting
+        local timeout = os.clock() + 30
+        while os.clock() < timeout do
+            mq.delay(100)
+            if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+                return 'CAST_SUCCESS'
+            end
+            if (mq.TLO.Me.Casting.ID() or 0) == 0
+                    or not mq.TLO.Window('CastingWindow').Open() then
+                break
+            end
+        end
+    else
+        mq.delay(100)   -- let cast-result event fire for instant-click items
+    end
+
+    local castResult = state.cast.castReturn
+
+    -- SUCCESS if item went on cooldown OR summoned item was consumed (not IMMUNE/RESISTED)
+    local itemReady  = mq.TLO.Me.ItemReady('=' .. whatItem)()
+    local itemExists = (mq.TLO.FindItem('=' .. whatItem).ID() or 0) ~= 0
+    if not itemReady
+            or (not itemExists
+                and castResult ~= 'CAST_IMMUNE'
+                and castResult ~= 'CAST_RESISTED') then
+        castResult = 'CAST_SUCCESS'
+    end
+
+    -- Bard cleanup stub → M8
+    utils.debug('cast', 'CastItem result: %s', castResult)
+    return castResult
+end
+
 -- ─── Public API ───────────────────────────────────────────────────────────────
 
 Cast.castTarget  = castTarget
 Cast.castCommand = castCommand
 Cast.castSkill   = castSkill
 Cast.castSpell   = castSpell
+Cast.castAA      = castAA
+Cast.castDisc    = castDisc
+Cast.castItem    = castItem
 
 -- CastWhat dispatcher — Step 3.5. Stub returns SUCCESS so callers can be wired now.
 function Cast.castWhat(spellName, targetID, sentFrom) -- condNumber, castCount added in Step 3.5
