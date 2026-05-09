@@ -381,15 +381,245 @@ local function castItem(whatItem, sentFrom)
     return castResult
 end
 
+-- ─── CastMemSpell ─────────────────────────────────────────────────────────────
+
+-- Mirrors CastMemSpell (kissassist.mac:3177-3227).
+-- Low-level /memspell gemNum "spell" with cursor cleanup and already-memed guard.
+-- forceIt > 0: unmem from that slot first (used by CastReMem for LW spell restore).
+local function castMemSpell(spellToMem, gemNum, forceIt)
+    if not spellToMem or spellToMem == '' or spellToMem == 'null' or gemNum == 0 then
+        return
+    end
+
+    local currentGem = mq.TLO.Me.Gem(spellToMem)() or 0
+    -- Already in target gem and no force requested → skip
+    if currentGem == gemNum and (not forceIt or forceIt == 0) then return end
+
+    -- No-rent item on cursor → autoinventory
+    if (mq.TLO.Cursor.ID() or 0) ~= 0 and mq.TLO.Cursor.NoRent() then
+        mq.cmd('/autoinventory')
+        mq.delay(1000)
+    end
+
+    -- ForceIt: spell is in a different slot — unmem it from forceIt slot first
+    if forceIt and forceIt > 0 then
+        if currentGem > 0 and gemNum ~= forceIt then
+            mq.cmdf('/notify CastSpellWnd CSPW_Spell%d rightmouseup', forceIt - 1)
+            local t = os.clock() + 2.0
+            while os.clock() < t and (mq.TLO.Me.Gem(gemNum).ID() or 0) ~= 0 do
+                mq.delay(100)
+            end
+        end
+    end
+
+    if not mq.TLO.Me.Book(spellToMem)() then
+        printf('\aw Could Not find the spell %s in your spell book.', spellToMem)
+        return
+    end
+
+    if (mq.TLO.Cursor.ID() or 0) ~= 0 then
+        printf('\aw Cannot Mem a spell with Items on Cursor. Please drop item to Inventory.')
+        return
+    end
+
+    -- Clear target gem slot if occupied
+    if (mq.TLO.Me.Gem(gemNum).ID() or 0) ~= 0 then
+        mq.cmdf('/notify CastSpellWnd CSPW_Spell%d rightmouseup', gemNum - 1)
+        local t = os.clock() + 2.0
+        while os.clock() < t and (mq.TLO.Me.Gem(gemNum).ID() or 0) ~= 0 do
+            mq.delay(100)
+        end
+    end
+
+    -- Mem the spell if slot name doesn't already match
+    if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellToMem then
+        -- Bard twist-pause stub → M8
+        while mq.TLO.Me.Moving() do mq.delay(100) end
+
+        printf('\aw Memming %s in slot %d', spellToMem, gemNum)
+        local stickActive = mq.TLO.Stick.Active()
+        if stickActive then mq.cmd('/stick pause') end
+        mq.cmdf('/memspell %d "%s"', gemNum, spellToMem)
+        local timeout = os.clock() + 15.0
+        while os.clock() < timeout do
+            mq.delay(100)
+            if (mq.TLO.Me.Gem(gemNum).Name() or '') == spellToMem then break end
+        end
+        if stickActive then mq.cmd('/stick unpause') end
+    end
+
+    if mq.TLO.Window('SpellBookWnd').Open() then
+        mq.cmd('/windowstate spellbookwnd close')
+    end
+    utils.debug('cast', 'CastMemSpell %s gem=%d', spellToMem, gemNum)
+end
+
+-- ─── CastMem ──────────────────────────────────────────────────────────────────
+
+-- Mirrors CastMem (kissassist.mac:3082-3132).
+-- Routes to MiscGem (short recast) or MiscGemLW (>30s recast) slot.
+-- Polls up to 35s for the spell to become ready. Returns true on success.
+local BUFF_SENTFROM = {
+    buffs=true, ['buffs-nomem']=true, buffonce=true, checkaura=true,
+    ['summonstuff-nomem']=true, dopetstuff=true, pet=true, ['pet-nomem']=true,
+}
+
+local function castMem(whatMemSpell, sentFrom)
+    -- Bards use twist system instead; non-bards: bail if casting or moving
+    if not state.session.iAmABard then
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Me.Moving() then
+            return false
+        end
+    end
+
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+        state.cast.castResult = 'CAST_CANCELLED'
+        return false
+    end
+
+    -- Block tanks and healers from memming mid-combat with aggro
+    local hasCombatAggro = state.combat.aggroTargetID ~= ''
+                        and state.session.heals
+                        and sentFrom ~= 'Heal'
+                        and not mq.TLO.Me.Mount.ID()
+    if (state.combat.attacking and state.session.iAmMA) or hasCombatAggro then
+        printf('\aw Cannot mem a spell during combat or while you have aggro. %s', whatMemSpell)
+        return false
+    end
+
+    -- No-rent cursor cleanup
+    if (mq.TLO.Cursor.ID() or 0) ~= 0 and mq.TLO.Cursor.NoRent() then
+        mq.cmd('/autoinventory')
+        mq.delay(1000)
+    end
+
+    local miscGemRemem = state.cast.miscGemRemem or 0
+    local miscGemLW    = state.cast.miscGemLW or 0
+    local recast       = mq.TLO.Spell(whatMemSpell).RecastTime.TotalSeconds() or 0
+
+    -- Long-recast path (>30s): use dedicated LW slot
+    if miscGemRemem ~= 0 and miscGemLW ~= 0 and recast > 30 then
+        if state.cast.reMemWaitLong == 'null' then
+            state.cast.reMemWaitLong = whatMemSpell
+            state.misc.dontMoveMe   = true
+            castMemSpell(whatMemSpell, miscGemLW, 0)
+            state.misc.dontMoveMe   = false
+        else
+            printf('\aw Still Waiting on Long Wait Spell %s', state.cast.reMemWaitLong)
+        end
+        return false
+    end
+
+    -- Short path: mana check
+    if (mq.TLO.Spell(whatMemSpell).Mana() or 0) > (mq.TLO.Me.CurrentMana() or 0) then
+        return false
+    end
+
+    state.cast.reMemWaitShort = whatMemSpell
+    state.misc.dontMoveMe     = true
+    castMemSpell(whatMemSpell, state.cast.miscGem or 0, 0)
+    state.misc.dontMoveMe     = false
+
+    -- Poll up to 35s for spell to become ready in the gem
+    if mq.TLO.Me.Gem(whatMemSpell)() then
+        local timeout = os.clock() + 35.0
+        while os.clock() < timeout and not mq.TLO.Me.SpellReady(whatMemSpell)() do
+            mq.delay(500)
+            -- Cancel if aggro closes in while memming during buff context
+            if BUFF_SENTFROM[sentFrom] and state.combat.aggroTargetID ~= '' then
+                local dist = mq.TLO.Spawn(tonumber(state.combat.aggroTargetID) or 0).Distance() or 999
+                if dist < 200 then
+                    state.cast.castResult = 'CAST_CANCELLED'
+                    return false
+                end
+            end
+        end
+    end
+
+    if not mq.TLO.Me.Gem(whatMemSpell)() then return false end
+
+    utils.debug('cast', 'CastMem success: %s', whatMemSpell)
+    return true
+end
+
+-- ─── CastReMem ────────────────────────────────────────────────────────────────
+
+-- Mirrors CastReMem (kissassist.mac:3136-3173).
+-- Sets the remem flag when a misc-gem spell is cast successfully. When
+-- forceReMem is true and out of combat, restores the displaced spell.
+local function castReMem(whatMemSpell, forceReMem, sentFrom)
+    -- Flag which slot needs restoring
+    if state.cast.castReturn == 'CAST_SUCCESS' then
+        if whatMemSpell == state.cast.reMemWaitShort then
+            state.cast.reMemCast   = true
+        elseif whatMemSpell == state.cast.reMemWaitLong then
+            state.cast.reMemCastLW = true
+        end
+    end
+
+    if not forceReMem then return end
+
+    if sentFrom == 'buffs' and state.combat.aggroTargetID ~= '' then
+        local dist = mq.TLO.Spawn(tonumber(state.combat.aggroTargetID) or 0).Distance() or 999
+        if dist < 200 then return end
+    end
+
+    local miscGemRemem = state.cast.miscGemRemem or 0
+    local rezSick      = (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) ~= 0
+
+    -- Restore short-recast MiscGem slot
+    if miscGemRemem == 1 or miscGemRemem == 2 then
+        local spell = state.cast.reMemMiscSpell
+        if not mq.TLO.Me.Gem(spell)()
+                and state.cast.reMemCast
+                and not state.combat.combatStart
+                and not rezSick
+                and not sentFrom:find('-nomem', 1, true) then
+            if (mq.TLO.Cursor.ID() or 0) ~= 0 and mq.TLO.Cursor.NoRent() then
+                mq.cmd('/autoinventory') ; mq.delay(1000)
+            end
+            state.misc.dontMoveMe     = true
+            castMemSpell(spell, state.cast.miscGem or 0, 0)
+            state.misc.dontMoveMe     = false
+            state.cast.reMemCast      = false
+            state.cast.reMemWaitShort = 'null'
+        end
+    end
+
+    -- Restore long-wait MiscGemLW slot
+    local miscGemLW = state.cast.miscGemLW or 0
+    if (miscGemRemem == 1 or miscGemRemem == 3)
+            and miscGemLW ~= 0
+            and state.cast.reMemWaitLong ~= 'null' then
+        if state.cast.reMemCastLW and not rezSick then
+            local spell = state.cast.reMemMiscSpellLW
+            if (mq.TLO.Cursor.ID() or 0) ~= 0 and mq.TLO.Cursor.NoRent() then
+                mq.cmd('/autoinventory') ; mq.delay(1000)
+            end
+            local currentSlot      = mq.TLO.Me.Gem(spell)() or 0
+            state.misc.dontMoveMe  = true
+            castMemSpell(spell, miscGemLW, currentSlot)
+            state.misc.dontMoveMe  = false
+            state.cast.reMemCastLW   = false
+            state.cast.reMemWaitLong = 'null'
+        end
+    end
+
+    utils.debug('cast', 'CastReMem done: %s', whatMemSpell)
+end
+
 -- ─── Public API ───────────────────────────────────────────────────────────────
 
-Cast.castTarget  = castTarget
-Cast.castCommand = castCommand
-Cast.castSkill   = castSkill
-Cast.castSpell   = castSpell
-Cast.castAA      = castAA
-Cast.castDisc    = castDisc
-Cast.castItem    = castItem
+Cast.castTarget   = castTarget
+Cast.castCommand  = castCommand
+Cast.castSkill    = castSkill
+Cast.castSpell    = castSpell
+Cast.castAA       = castAA
+Cast.castDisc     = castDisc
+Cast.castItem     = castItem
+Cast.castMemSpell = castMemSpell
+Cast.castMem      = castMem
+Cast.castReMem    = castReMem
 
 -- CastWhat dispatcher — Step 3.5. Stub returns SUCCESS so callers can be wired now.
 function Cast.castWhat(spellName, targetID, sentFrom) -- condNumber, castCount added in Step 3.5
