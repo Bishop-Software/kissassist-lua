@@ -146,7 +146,8 @@ local function castSpell(spellName, sentFrom)
                        or castResult == 'CAST_INTERRUPTED'
                        or castResult == 'CAST_RESISTED'
         if tryNum < maxTries and retryable then
-            local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
+            ---@diagnostic disable-next-line: undefined-field
+        local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
             if recast <= 2 then
                 while (mq.TLO.Me.GemTimer(spellName)() or 0) > 0
                         and not mq.TLO.Me.SpellReady(spellName)() do
@@ -180,7 +181,7 @@ end
 local function castAA(whatAA, sentFrom)
     -- Banestrike: skip if target race not valid, too far, and in combat
     if whatAA == 'Banestrike' or whatAA == '15073' then
-        local baneStr    = state.misc.baneStrikeRaces or ''
+        local baneStr    = state.misc.baneStrikeRaces or ''  -- TODO M4: add baneStrikeRaces to state.misc, wire from INI
         local targetRace = mq.TLO.Target.Race() or ''
         local dist       = mq.TLO.Spawn(state.combat.myTargetID or 0).Distance3D() or 999
         if baneStr ~= '' and not baneStr:find('|' .. targetRace .. '|', 1, true)
@@ -268,12 +269,14 @@ local function castDisc(whatDisc, sentFrom)
     end
 
     -- Determine how long to retry (mirrors .mac's WaitTimerCD timer)
+    ---@diagnostic disable-next-line: undefined-field
     local recast  = mq.TLO.Spell(whatDisc).RecastTime.TotalSeconds() or 0
     local waitSec = 1.0
     if recast > 0 then
         waitSec = recast < 3 and recast or 3.0
     end
 
+    ---@diagnostic disable-next-line: undefined-field
     local isEmu   = (mq.TLO.MacroQuest.Build() or 0) == 4
     local timeout = os.clock() + waitSec
 
@@ -290,6 +293,7 @@ local function castDisc(whatDisc, sentFrom)
 
         -- Emu: CombatAbilityReady always true for timeless discs — break after one attempt
         if isEmu then
+            ---@diagnostic disable-next-line: undefined-field
             local recastID = mq.TLO.Spell(whatDisc).RecastTimerID() or -1
             if recastID == -1 then break end
         end
@@ -321,6 +325,7 @@ end
 local function castItem(whatItem, sentFrom)
     -- Block prestige items for non-gold accounts
     local sub = mq.TLO.Me.Subscription() or ''
+    ---@diagnostic disable-next-line: undefined-field
     if sub ~= 'gold' and mq.TLO.FindItem('=' .. whatItem).Prestige() then
         return 'CAST_NO_RESULT'
     end
@@ -479,7 +484,7 @@ local function castMem(whatMemSpell, sentFrom)
 
     -- Block tanks and healers from memming mid-combat with aggro
     local hasCombatAggro = state.combat.aggroTargetID ~= ''
-                        and state.session.heals
+                        and state.session.heals  -- TODO M5: wire state.heal.healsOn here
                         and sentFrom ~= 'Heal'
                         and not mq.TLO.Me.Mount.ID()
     if (state.combat.attacking and state.session.iAmMA) or hasCombatAggro then
@@ -495,15 +500,16 @@ local function castMem(whatMemSpell, sentFrom)
 
     local miscGemRemem = state.cast.miscGemRemem or 0
     local miscGemLW    = state.cast.miscGemLW or 0
+    ---@diagnostic disable-next-line: undefined-field
     local recast       = mq.TLO.Spell(whatMemSpell).RecastTime.TotalSeconds() or 0
 
     -- Long-recast path (>30s): use dedicated LW slot
     if miscGemRemem ~= 0 and miscGemLW ~= 0 and recast > 30 then
         if state.cast.reMemWaitLong == 'null' then
             state.cast.reMemWaitLong = whatMemSpell
-            state.misc.dontMoveMe   = true
+            state.movement.dontMoveMe = true
             castMemSpell(whatMemSpell, miscGemLW, 0)
-            state.misc.dontMoveMe   = false
+            state.movement.dontMoveMe = false
         else
             printf('\aw Still Waiting on Long Wait Spell %s', state.cast.reMemWaitLong)
         end
@@ -516,9 +522,9 @@ local function castMem(whatMemSpell, sentFrom)
     end
 
     state.cast.reMemWaitShort = whatMemSpell
-    state.misc.dontMoveMe     = true
+    state.movement.dontMoveMe = true
     castMemSpell(whatMemSpell, state.cast.miscGem or 0, 0)
-    state.misc.dontMoveMe     = false
+    state.movement.dontMoveMe = false
 
     -- Poll up to 35s for spell to become ready in the gem
     if mq.TLO.Me.Gem(whatMemSpell)() then
@@ -578,9 +584,9 @@ local function castReMem(whatMemSpell, forceReMem, sentFrom)
             if (mq.TLO.Cursor.ID() or 0) ~= 0 and mq.TLO.Cursor.NoRent() then
                 mq.cmd('/autoinventory') ; mq.delay(1000)
             end
-            state.misc.dontMoveMe     = true
+            state.movement.dontMoveMe = true
             castMemSpell(spell, state.cast.miscGem or 0, 0)
-            state.misc.dontMoveMe     = false
+            state.movement.dontMoveMe = false
             state.cast.reMemCast      = false
             state.cast.reMemWaitShort = 'null'
         end
@@ -597,9 +603,9 @@ local function castReMem(whatMemSpell, forceReMem, sentFrom)
                 mq.cmd('/autoinventory') ; mq.delay(1000)
             end
             local currentSlot      = mq.TLO.Me.Gem(spell)() or 0
-            state.misc.dontMoveMe  = true
+            state.movement.dontMoveMe = true
             castMemSpell(spell, miscGemLW, currentSlot)
-            state.misc.dontMoveMe  = false
+            state.movement.dontMoveMe = false
             state.cast.reMemCastLW   = false
             state.cast.reMemWaitLong = 'null'
         end
@@ -734,7 +740,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom)
 
     elseif rtc == 3 and mq.TLO.Me.CombatAbilityReady(castWhat)() then
         local endCost = mq.TLO.Spell(castWhat).EnduranceCost() or 0
-        if endCost < (mq.TLO.Me.Endurance() or 0) then
+        if endCost < (mq.TLO.Me.CurrentEndurance() or 0) then
             castResult = castDisc(castWhat, sentFrom)
         end
 
