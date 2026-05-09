@@ -114,34 +114,48 @@ end
 
 **Done when:** All 113 events registered, all 31 binds respond in-game, `/lua stop` cleans up handlers.
 
-#### Step 2.1 — `events.lua` scaffold + cast result events
-Create `modules/events.lua`, register it in `init.lua`, and port all cast-result events (~50 patterns across 22 named events): `CAST_BEGIN`, `CAST_FIZZLE`, `CAST_INTERRUPTED`, `CAST_RESISTED`, `CAST_TAKEHOLD`, `CAST_IMMUNE`, `CAST_DISTRACTED`, `CAST_STUNNED`, `CAST_NOTARGET`, `CAST_OUTOFRANGE`, `CAST_OUTOFMANA`, `CAST_NOTREADY`, `CAST_RECOVER`, `CAST_NOMOUNT`, `CAST_OUTDOORS`, `CAST_COMPONENTS`, `CAST_STANDING`, `CAST_CANNOTSEE`, `CAST_COLLAPSE`, `CAST_FAILED`, `CAST_FDFAIL`, `CAST_RESISTEDYOU`. Each handler sets `State.cast.status` and related flags. Highest priority — required before Milestone 3 (cast engine).
+#### Step 2.1 — `events.lua` scaffold + cast result events ✅
+Create `modules/events.lua`, register it in `init.lua`, and port all cast-result events (~50 patterns across 22 named events): `CAST_BEGIN`, `CAST_FIZZLE`, `CAST_INTERRUPTED`, `CAST_RESISTED`, `CAST_TAKEHOLD`, `CAST_IMMUNE`, `CAST_DISTRACTED`, `CAST_STUNNED`, `CAST_NOTARGET`, `CAST_OUTOFRANGE`, `CAST_OUTOFMANA`, `CAST_NOTREADY`, `CAST_RECOVER`, `CAST_NOMOUNT`, `CAST_OUTDOORS`, `CAST_COMPONENTS`, `CAST_STANDING`, `CAST_CANNOTSEE`, `CAST_COLLAPSE`, `CAST_FAILED`, `CAST_FDFAIL`, `CAST_RESISTEDYOU`. Each handler sets `State.cast.castReturn`. `Events.register(state, utils)` / `Events.unregister()` wired into `init.lua`.
 
-**Done when:** Script starts cleanly with events registered; cast result messages in-game set the correct `State.cast.status`.
+Notes: `CAST_OUTDOORS` maps to `CAST_OUTOFMANA` (preserves .mac quirk). `CAST_STUNNED` does not block in the handler — cast engine polls. `CAST_STANDING` uses `State.heal.medding` (not a TLO). `CAST_FDFAIL` guards `Me.Name` match before acting.
+
+**Done when:** Script starts cleanly with events registered; cast result messages in-game set the correct `State.cast.castReturn`. ✅
 
 ---
 
-#### Step 2.2 — Combat, movement, and session events
+#### Step 2.2 — Combat, movement, and session events ✅
 Port remaining high-frequency gameplay events into `events.lua`:
-- `GotHit` ×12 → `State.combat.gotHitToggle`
-- `AttackCalled` ×2 → `State.combat.calledTargetID`
-- `CantHit`, `CantSee`, `TooClose`, `TooFar` → `State.movement.*`
-- `MezBroke`, `Missing` ×2 → `State.mez.broke`, `State.combat.missingComponent`
-- `ImDead` ×3, `Zoned` ×2, `Joined`, `LeftGroup`, `Invised`, `Camping`, `TooSteep` → `State.session.*`
+- `GotHit` ×13 (12 attack types + near-miss) → `State.combat.gotHitToggle`, `State.timers.sitToMed`
+- `AttackCalled` ×2 → `State.combat.calledTargetID` (guarded: not IAmMA, caller == mainAssist)
+- `CantHit`, `CantSee`, `TooClose`, `TooFar` → `State.movement.*` / `State.pull.tooFar` (stubs; full movement in M7)
+- `MezBroke` → `State.mez.broke` (stub; mez timer reset in M5)
+- `Missing` ×2 → `State.combat.missingComponent`
+- `ImDead` ×3 → `State.session.iAmDead` (duplicate-guarded)
+- `Zoned` ×2 → `State.timers.justZoned`, DMZ, zone name, camp/return logic
+- `Joined` → `State.timers.joinedParty`, `State.buffs.forceBuffs`
+- `LeftGroup`, `Invised` → `State.combat.eventFlag`
+- `Camping` → `State.terminate = true`
+- `TooSteep` → `State.misc.campfireOn = false`
 
-**Done when:** Getting hit, dying, and zoning flip the correct State flags.
+Also: added `campfireOn = false` to `State.misc` in `state.lua` (was missing).
+
+**Done when:** Getting hit, dying, and zoning flip the correct State flags. ✅
 
 ---
 
-#### Step 2.3 — Buff, pet, and comms events
+#### Step 2.3 — Buff, pet, and comms events ✅
 Port remaining events:
-- `GoMOn` ×3, `GoMOff` ×2 → `State.bard.gomActive`
-- `WornOff`, `GainSomething`, `AskForBuffs` ×2, `KABegCheck` → `State.buffs.*`
+- `GoMOn` ×3, `GoMOff` ×2 → `State.bard.gomActive` (class filter BRD/BER/MNK/ROG/WAR; cast loop in M8)
+- `WornOff`, `GainSomething`, `AskForBuffs` ×2, `KABegCheck` → `State.buffs.*` (full buff queuing in M6)
 - `PetSusStateAdd1`, `PetSusStateAdd2`, `PetSusStateSub`, `PetToysPlease` → `State.pet.*`
-- `YouGotTell`, `EQBCIRC`, `FSEQBC`, `GUEQBC`, `KTDismount`, `KTDoorClick` ×2, `KTHail`, `KTInvite`, `KTSay`, `KTTarget` → cross-char command dispatch (stubs until `comms.lua`)
-- `Timer`, `TaskUpdate`, `MLogOff` → `State.timers.*` / debug
+- `YouGotTell` → echo tell (with pet/NPC filter inline)
+- `EQBCIRC`, `FSEQBC`, `GUEQBC` → stubs (EQBC deprecated; DanNet relay in M9)
+- `KTDismount` → `state.misc.mountOn = false` + `/dismount` (inline; blocking KT helpers stubbed for M7)
+- `KTDoorClick` ×2, `KTHail`, `KTInvite`, `KTSay`, `KTTarget` → stubs for M7
+- `#Event Timer Timer1` → omitted (Lua uses `os.clock()` polling; no equivalent event)
+- `TaskUpdate`, `MLogOff` → eventFlag + minimal inline action
 
-**Done when:** All 113 events registered with no errors on startup.
+**Done when:** All 113 events registered with no errors on startup. ✅
 
 ---
 

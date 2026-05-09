@@ -302,6 +302,189 @@ local function onTooSteep()
     printf('\ayTooSteep: CampfireOn disabled.')
 end
 
+-- ─── 2.3: Buff, pet, comms, and utility events ───────────────────────────────
+
+local function onGoMOn()
+    utils.debug('bard', 'GoMOn')
+    state.combat.eventFlag = true
+    local cls = mq.TLO.Me.Class.ShortName()
+    if cls=='BRD' or cls=='BER' or cls=='MNK' or cls=='ROG' or cls=='WAR' or state.bard.gomByPass then
+        state.bard.gomByPass = false
+        return
+    end
+    if not state.combat.combatStart or state.timers.gomTimer > os.clock() then return end
+    state.bard.gomActive = true
+    -- Full GoM cast loop in M8 (bard.lua)
+end
+
+local function onGoMOff()
+    utils.debug('bard', 'GoMOff')
+    state.combat.eventFlag = true
+    state.bard.gomActive   = false
+end
+
+local function onWornOff(_, spell, target)
+    utils.debug('buffs', 'WornOff: ' .. tostring(spell) .. ' on ' .. tostring(target))
+    state.combat.eventFlag = true
+    if not spell or not target then return end
+    if target == mq.TLO.Me.Name() then return end
+    if state.combat.aggroTargetID ~= '' then return end
+    if state.session.iAmABard then return end
+    if spell:find('promised') then return end
+    state.buffs.forceBuffs = true
+    state.timers.readBuffs  = 0
+    -- Per-member buff slot reset and ReadBuffsTimer clear in M6 (buffs.lua)
+end
+
+local function onGainSomething(_, text)
+    utils.debug('general', 'GainSomething: ' .. tostring(text))
+    state.combat.eventFlag = true
+    -- Broadcast + pull range recalc for level-up in M6/M9
+end
+
+local function onAskForBuffs(_, caller)
+    utils.debug('buffs', 'AskForBuffs: ' .. tostring(caller))
+    state.combat.eventFlag = true
+    if not caller or caller == '' then return end
+    local spawnID = mq.TLO.Spawn(caller).ID()
+    if not spawnID or spawnID == 0 or spawnID == mq.TLO.Me.ID() then return end
+    if mq.TLO.Group.Member(caller).Index() then return end
+    if mq.TLO.Spawn('id ' .. spawnID).Type() ~= 'PC' then return end
+    state.buffs.kaBegActive = true
+    -- Raid/fellowship/guild/friends validation + buff queuing in M6 (buffs.lua)
+end
+
+local function onKABegCheck(_, who, what, _)
+    utils.debug('buffs', 'KABegCheck: ' .. tostring(who) .. ' ' .. tostring(what))
+    state.combat.eventFlag = true
+    if not who or who == mq.TLO.Me.CleanName() then return end
+    if not what or (what ~= 'BEGFORITEMS' and what ~= 'BEGFORBUFFS') then return end
+    local spawnID = mq.TLO.Spawn('PC ' .. who).ID()
+    if not spawnID or spawnID == 0 or spawnID == mq.TLO.Me.ID() then return end
+    if mq.TLO.Spawn('id ' .. spawnID).Type() ~= 'PC' then return end
+    state.buffs.kaBegActive = true
+    -- Buff list building + raid/fellowship/guild/friends check in M6 (buffs.lua)
+end
+
+local function onPetSusStateAdd1()
+    utils.debug('pet', 'PetSusStateAdd1')
+    state.combat.eventFlag = true
+    state.pet.activeState  = false
+    state.pet.suspendState = true
+    state.pet.totCount     = 1
+end
+
+local function onPetSusStateAdd2()
+    utils.debug('pet', 'PetSusStateAdd2')
+    state.combat.eventFlag = true
+    state.pet.activeState  = true
+    state.pet.suspendState = true
+    state.pet.totCount     = 2
+end
+
+local function onPetSusStateSub()
+    utils.debug('pet', 'PetSusStateSub')
+    state.combat.eventFlag = true
+    state.pet.activeState  = true
+    state.pet.suspendState = false
+    state.pet.totCount     = 1
+end
+
+local function onPetToysPlease(_, petName)
+    utils.debug('pet', 'PetToysPlease: ' .. tostring(petName))
+    state.combat.eventFlag = true
+    if not petName or petName == '' or petName:find('null') then return end
+    local isGroup = petName:upper() == 'GROUP'
+    if not isGroup and (not mq.TLO.Spawn('pet ' .. petName).ID() or mq.TLO.Spawn('pet ' .. petName).ID() == 0) then return end
+    state.buffs.kaPetBegActive = true
+    if state.buffs.kaBegForPetList == '' then
+        state.buffs.kaBegForPetList = petName
+    else
+        state.buffs.kaBegForPetList = state.buffs.kaBegForPetList .. '|' .. petName
+    end
+    -- Actual toy-giving loop in M6 (buffs.lua)
+end
+
+local function onYouGotTell(_, fwho, swhat)
+    utils.debug('general', 'YouGotTell: ' .. tostring(fwho))
+    state.combat.eventFlag = true
+    if not fwho then return end
+    local myName = mq.TLO.Me.CleanName()
+    local petID  = mq.TLO.Me.Pet.ID()
+    if petID and petID > 0 and mq.TLO.Spawn(fwho).ID() == petID then return end
+    if fwho:find(myName, 1, true) and fwho:find('s pet', 1, true) then return end
+    if (not petID or petID == 0) and swhat
+            and swhat:find(', master.', 1, true)
+            and swhat:find('I am unable to wake an', 1, true) then return end
+    local stype = mq.TLO.Spawn(fwho).Type()
+    if stype == 'NPC' or stype == 'PET' then return end
+    printf('====> %s Sent you a Tell: %s <====', fwho, tostring(swhat))
+end
+
+-- EQBC cross-char relay stubs (EQBC deprecated in Lua port; DanNet handled in M9)
+local function onEQBCIRC()
+    utils.debug('comms', 'EQBCIRC (stub — EQBC deprecated)')
+    state.combat.eventFlag = true
+end
+
+local function onGUEQBC()
+    utils.debug('comms', 'GUEQBC (stub — EQBC deprecated)')
+    state.combat.eventFlag = true
+end
+
+local function onFSEQBC()
+    utils.debug('comms', 'FSEQBC (stub — EQBC deprecated)')
+    state.combat.eventFlag = true
+end
+
+local function onKTDismount()
+    utils.debug('general', 'KTDismount')
+    state.combat.eventFlag = true
+    state.misc.mountOn = false
+    if mq.TLO.Me.Mount.ID() then mq.cmd('/dismount') end
+end
+
+-- KT task helpers — blocking multi-step interactions; full impl in M7 (movement.lua)
+local function onKTTarget(_, npcName)
+    utils.debug('general', 'KTTarget: ' .. tostring(npcName))
+    state.combat.eventFlag = true
+end
+
+local function onKTHail(_, mobID)
+    utils.debug('general', 'KTHail: ' .. tostring(mobID))
+    state.combat.eventFlag = true
+end
+
+local function onKTSay(_, sayWhat, mobID)
+    utils.debug('general', 'KTSay: ' .. tostring(sayWhat) .. ' -> ' .. tostring(mobID))
+    state.combat.eventFlag = true
+end
+
+local function onKTDoorClick(_, doorID)
+    utils.debug('general', 'KTDoorClick: ' .. tostring(doorID))
+    state.combat.eventFlag = true
+end
+
+local function onKTInvite()
+    utils.debug('general', 'KTInvite')
+    state.combat.eventFlag = true
+end
+
+local function onTaskUpdate(_, name)
+    utils.debug('general', 'TaskUpdate: ' .. tostring(name))
+    state.combat.eventFlag = true
+    -- Broadcast in M9 (comms.lua)
+end
+
+local function onMLogOff()
+    utils.debug('general', 'MLogOff')
+    state.combat.eventFlag = true
+    if state.debug.logging then
+        mq.cmd('/mlog off')
+        state.debug.logging = false
+    end
+end
+
 -- Register all cast result events
 function Events.register(s, u)
     state = s
@@ -419,6 +602,48 @@ function Events.register(s, u)
     register('Invised',  'You Vanish #*#',                     onInvised)
     register('Camping',  '#*#seconds to prepare your camp.',   onCamping)
     register('TooSteep', 'The ground here is too steep to camp', onTooSteep)
+
+    -- 2.3: GoM (Gift of Mana) — flags state.bard.gomActive; cast loop in M8
+    register('GoMOn',  '#*#granted#*#gift of#*#mana#*#',            onGoMOn)
+    register('GoMOn',  'You feel strengthened by a gift of magic.', onGoMOn)
+    register('GoMOn',  'You feel strengthened by magic.',           onGoMOn)
+    register('GoMOff', 'The gift of magic fades.',                  onGoMOff)
+    register('GoMOff', 'Your#*#gift of#*#mana fades.',              onGoMOff)
+
+    -- 2.3: Buff events
+    register('WornOff',       'Your #1# spell has worn off of #2#.',  onWornOff)
+    register('GainSomething', '#*#You have gained|#1#|',              onGainSomething)
+    register('AskForBuffs',   '#1# tells you,#*#Buffs Please!#*#',   onAskForBuffs)
+    register('AskForBuffs',   '#1# says,#*#Buffs Please!#*#',        onAskForBuffs)
+    register('KABegCheck',    '#*#KABeg for #1# #2# #3#',            onKABegCheck)
+
+    -- 2.3: Pet suspend/resume state tracking
+    register('PetSusStateAdd1', "#*# tells you, 'By your command, master.#*#", onPetSusStateAdd1)
+    register('PetSusStateAdd2', '#*#You cannot have more than one pet at a time.#*#', onPetSusStateAdd2)
+    register('PetSusStateSub',  "#*# tells you, 'I live again...'#*#",          onPetSusStateSub)
+    register('PetToysPlease',   '#*#PetToysPlease #1#',                          onPetToysPlease)
+
+    -- 2.3: Tell capture
+    register('YouGotTell', '#1# tells you, #2#', onYouGotTell)
+
+    -- 2.3: EQBC cross-char relay stubs (EQBC deprecated; DanNet in M9)
+    register('EQBCIRC', '<#1#> #2#',                     onEQBCIRC)
+    register('FSEQBC',  '#1# tells the fellowship, #2#', onFSEQBC)
+    register('GUEQBC',  '#1# tells the guild, #2#',      onGUEQBC)
+
+    -- 2.3: KT task helpers
+    register('KTDismount',  '[MQ2] KTDismount#*#',   onKTDismount)
+    register('KTTarget',    '[MQ2] KTTarget #1#',    onKTTarget)
+    register('KTHail',      '[MQ2] KTHail #1#',      onKTHail)
+    register('KTSay',       '[MQ2] KTSay #1# #2#',   onKTSay)
+    register('KTDoorClick', '[MQ2] KTDoorClick #1#', onKTDoorClick)
+    register('KTDoorClick', '[MQ2] KTDoorClick#*#',  onKTDoorClick)
+    register('KTInvite',    '[MQ2] KTInvite #1#',    onKTInvite)
+
+    -- 2.3: Timers / debug
+    -- Note: #Event Timer Timer1 has no Lua equivalent — timer expiry uses os.clock() polling
+    register('TaskUpdate', 'Your task |#1#| has been updated#*#', onTaskUpdate)
+    register('MLogOff',    '#*#KissAssist Debug Off Marker!',     onMLogOff)
 end
 
 function Events.unregister()
