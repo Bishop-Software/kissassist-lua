@@ -1,4 +1,4 @@
-# KissAssist Lua — In-Game Test Plan (Milestones 1–3)
+# KissAssist Lua — In-Game Test Plan (Milestones 1–4)
 
 All tests are manual and in-game. No automated test framework exists.
 Tests are ordered from cheapest (startup/config) to most interactive (casting).
@@ -393,37 +393,100 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Integration Smoke Test
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.2)
+
+---
+
+### 4.1 Combat.init — module load and state wiring (Step 4.1)
+
+**Setup:** Valid pickle config exists with `[DPS]`, `[Melee]`, `[Burn]`, `[General]` sections populated.
+Start with `/lua run kissassist-lua assist TankName debug`.
+
+| # | Action | Expected |
+|---|--------|----------|
+| 4.1.1 | Start script, watch chat | Debug line: `Combat.init: dpsOn=... meleeOn=... assistAt=... meleeDistance=... dps#=... burn#=... campRadius=...` |
+| 4.1.2 | Verify `dpsOn` from INI | `[DPS] DPSOn=1` → `dpsOn = true`; `DPSOn=0` → `false` |
+| 4.1.3 | Verify `meleeOn` from INI | `[Melee] MeleeOn=1` → `meleeOn = true` |
+| 4.1.4 | Verify `assistAt` from INI | `[Melee] AssistAt=85` → `assistAt = 85`; absent key → falls back to CLI arg (default 95) |
+| 4.1.5 | Verify `meleeDistance` | `[Melee] MeleeDistance=25` → `meleeDistance = 25` |
+| 4.1.6 | Verify `campRadius` | `[General] CampRadius=40` → `state.movement.campRadius = 40` |
+| 4.1.7 | Verify DPS array populated | `dps#` in debug line matches number of non-empty `DPS1..DPSN` entries in INI |
+| 4.1.8 | Verify Burn array populated | `burn#` matches number of non-empty `Burn1..BurnN` entries |
+| 4.1.9 | Start with empty/missing DPS section | `dps# = 0`; no crash |
+| 4.1.10 | `burnOnNamed` | `[Burn] BurnAllNamed=1` → `state.combat.burnOnNamed = true` |
+
+---
+
+### 4.2 Combat.mobRadar — mob detection (Step 4.2)
+
+**Setup:** Script running. Add a temporary test bind for invocation (or wire Step 4.4 first and observe in combat).
+
+**Add test bind temporarily (remove after testing):**
+```lua
+-- In binds.lua onDebug or a scratch bind:
+mq.bind('/katestmobRadar', function()
+    local Combat = require('modules.combat')
+    local State  = require('modules.state')
+    Combat.mobRadar('los', State.combat.meleeDistance)
+    printf('mobCount=%d aggro=%s', State.combat.mobCount, State.combat.aggroTargetID)
+end)
+```
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.2.1 | No mobs in range | Open area with no NPCs | `mobCount = 0`; `aggroTargetID = ''` |
+| 4.2.2 | Aggressive NPC in XTarget | Stand near an aggressive NPC that has auto-aggroed (slot shows "Auto Hater") | `mobCount ≥ 1`; `aggroTargetID = <NPC spawn ID>` |
+| 4.2.3 | NPC corpse only | Kill a mob; only corpse remains on XTarget | `mobCount = 0` (corpse filtered out) |
+| 4.2.4 | NPC beyond `meleeDistance` | Target a hater-type NPC outside configured distance | Not counted; `mobCount = 0` |
+| 4.2.5 | NPC within distance | Same NPC, move within `meleeDistance` | `mobCount = 1` |
+| 4.2.6 | Multiple haters | Multiple NPCs all on XTarget "Auto Hater" slots within range | `mobCount` equals the count of in-range living haters |
+| 4.2.7 | `aggroTargetID` is closest | Two haters at different distances | `aggroTargetID` resolves to the closer one's ID |
+| 4.2.8 | DMZ zone guard | Start in a DMZ zone (e.g. Plane of Knowledge, ID 344) outside an instance | `mobRadar` returns without scanning; `mobCount` unchanged from prior value |
+| 4.2.9 | LOSBeforeCombat off (default) | NPC behind a wall, `LOSBeforeCombat=0` | NPC counted regardless of LOS |
+| 4.2.10 | LOSBeforeCombat on | `[General] LOSBeforeCombat=1`; NPC behind a wall | NPC NOT counted; `mobCount = 0` for that NPC |
+| 4.2.11 | XTSlot fallback — count=0 | `xTSlot` set to a slot holding a living non-auto-hater NPC; no haters elsewhere | `mobCount = 1`; `aggroTargetID` set to that NPC's ID |
+| 4.2.12 | Debug output | Run with `debug` flag | Prints `mobRadar(los,N): mobCount=X aggro=Y` |
+
+---
+
+## Section 5 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 4.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 4.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 4.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 4.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 4.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 4.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 5.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 5.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 5.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 5.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 5.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 5.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
 
 ---
 
-## Known Deferred / Out of Scope for M1–M3
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.2)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
-| CombatReset (called from /backoff) | M4 |
-| `/switchnow` actual target switch | M4 |
-| Full `/kaburn` rotation | M4 |
+| `Combat.mobRadar` — `'pull'` mode | M4 Step 4.4 (pull.lua wires it) |
+| `namedWatchList` population | M4 (needs KissAssist_Info.ini loader) |
+| `autoBurnTimer` INI key | M4 Step 4.7 (Burn section) |
+| CombatReset (called from /backoff) | M4 Step 4.4 |
+| `/switchnow` actual target switch | M4 Step 4.3 |
+| Full `/kaburn` rotation | M4 Step 4.7 |
+| Assist + CombatTargetCheck | M4 Step 4.3 |
+| CheckForCombat main loop wire | M4 Step 4.4 |
+| DPS rotation (CombatCast) | M4 Step 4.6 |
+| DPS/Buffs stacking checks in castWhat | M4 Step 4.6 / M6 |
+| `state.session.heals` wire (castMem guard) | M5 |
 | Healing/cures triggered by events | M5 |
 | Mez timer reset (MezBroke) | M5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
-| DPS/Buffs stacking checks in castWhat | M4 / M6 |
 | Condition evaluation (condNumber) | M10 |
-| Stop-moving before cast (M7) | M7 |
+| Stop-moving before cast | M7 |
 | Bard: twist pause/resume in all cast functions | M8 |
 | Cross-char comms (EQBC/DanNet stubs) | M9 |
 | KT task events (KTTarget, KTHail, etc.) | M7 |
@@ -431,4 +494,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-08. Reflects Milestones 1–3 implementation as of commit 2e4f881.*
+*Last updated: 2026-05-09. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.2 complete.*

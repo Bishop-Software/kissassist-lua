@@ -301,7 +301,7 @@ Additional logic:
 
 ---
 
-### Milestone 4 — Combat Core
+### Milestone 4 — Combat Core 🔄 IN PROGRESS
 **Goal:** Script fights when controlling a single character.
 
 - `combat.lua` — `CheckForCombat`, `Combat`, `CombatTargetCheck`, `CombatTargetCheckRaid`
@@ -311,7 +311,7 @@ Additional logic:
 
 ---
 
-#### Step 4.1 — `combat.lua` scaffold + array loading + state wiring
+#### Step 4.1 — `combat.lua` scaffold + array loading + state wiring ✅
 
 Create `modules/combat.lua` with `Combat.init(state, utils, cast)`. Wire into `init.lua`.
 
@@ -320,11 +320,11 @@ Create `modules/combat.lua` with `Combat.init(state, utils, cast)`. Wire into `i
 - Load named-mob watch list (`NamedWatch` / `NamedCheck`) from INI
 - Add any missing state fields to `state.lua`
 
-**Done when:** module loads cleanly; DPS/Disc/Burn arrays populated from INI.
+**Done when:** module loads cleanly; DPS/Disc/Burn arrays populated from INI. ✅
 
 ---
 
-#### Step 4.2 — MobRadar (mob detection)
+#### Step 4.2 — MobRadar (mob detection) ✅
 
 Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC haters within `MeleeDistance`.
 
@@ -332,7 +332,7 @@ Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC hat
 - Set `state.combat.mobCount` and `state.combat.aggroTargetID` (closest hater ID)
 - Handle LOS-only mode (`LOSBeforeCombat`) and DMZ guard
 
-**Done when:** `mobCount` correctly reflects nearby hostile NPCs.
+**Done when:** `mobCount` correctly reflects nearby hostile NPCs. ✅
 
 ---
 
