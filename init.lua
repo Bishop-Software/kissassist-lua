@@ -4,6 +4,7 @@ local Utils  = require('modules.utils')
 local Config = require('modules.config')
 local Events = require('modules.events')
 local Binds  = require('modules.binds')
+local Cast   = require('modules.cast')
 
 local VERSION = '1.0.0'
 
@@ -41,6 +42,7 @@ Config.checkPlugins()
 -- Register all game text events and in-game command binds
 Events.register(State, Utils)
 Binds.register(State, Utils)
+Cast.init(State, Utils)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
