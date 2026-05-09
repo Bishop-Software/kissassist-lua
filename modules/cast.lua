@@ -621,11 +621,187 @@ Cast.castMemSpell = castMemSpell
 Cast.castMem      = castMem
 Cast.castReMem    = castReMem
 
--- CastWhat dispatcher — Step 3.5. Stub returns SUCCESS so callers can be wired now.
-function Cast.castWhat(spellName, targetID, sentFrom) -- condNumber, castCount added in Step 3.5
-    utils.debug('cast', 'CastWhat [stub]: %s target=%s from=%s',
-        tostring(spellName), tostring(targetID), tostring(sentFrom))
-    return 'CAST_SUCCESS'
+-- CastWhat dispatcher — mirrors CastWhat (kissassist.mac:2467-2614).
+-- Determines what type of ability castWhat is, checks readiness, acquires target,
+-- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
+-- StopMoving, and bard twist-restart are stubbed → M4/M5/M6/M7/M8.
+function Cast.castWhat(castWhat, whatID, sentFrom)
+    -- Non-bard: bail immediately if already casting with the window open
+    if not state.session.iAmABard then
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                and mq.TLO.Window('CastingWindow').Open() then
+            return 'CAST_CASTING'
+        end
+    end
+
+    state.cast.castReturn = 'CAST_NO_RESULT'
+    state.cast.castResult = 'CAST_NO_RESULT'
+    local memReturn     = 'null'
+    local strTargetType = mq.TLO.Spell(castWhat).TargetType() or 'null'
+
+    -- Existence check — must be recognisable as one of: command, AA, disc, item, skill, spell
+    local isCommand = castWhat:find('command:', 1, true)
+    local hasAA     = (mq.TLO.Me.AltAbility(castWhat).ID() or 0) ~= 0
+    local hasDisc   = mq.TLO.Me.CombatAbility(castWhat)() ~= nil
+    local hasItem   = (mq.TLO.FindItem('=' .. castWhat).ID() or 0) ~= 0
+    local hasSkill  = (mq.TLO.Me.Skill(castWhat)() or 0) > 0
+    local inBook    = (mq.TLO.Me.Book(castWhat)() or 0) ~= 0
+
+    if not (isCommand or hasAA or hasDisc or hasItem or hasSkill or inBook) then
+        utils.debug('cast', 'CastWhat: %s not found', castWhat)
+        return 'CAST_NOT_FOUND'
+    end
+
+    -- ReadyToCast: position of first ready check (mirrors .mac Select[TRUE,...])
+    local isBard = state.session.iAmABard
+    local rtc    = 0
+    if mq.TLO.Me.ItemReady('=' .. castWhat)() then
+        rtc = 1
+    elseif mq.TLO.Me.AltAbilityReady(castWhat)() then
+        rtc = 2
+    elseif mq.TLO.Me.CombatAbilityReady(castWhat)() then
+        rtc = 3
+    elseif mq.TLO.Me.AbilityReady(castWhat)() and hasSkill then
+        rtc = 4
+    elseif isBard then
+        if mq.TLO.Me.Gem(castWhat)() and (mq.TLO.Me.GemTimer(castWhat)() or 0) == 0 then
+            rtc = 5
+        end
+    elseif mq.TLO.Me.SpellReady(castWhat)() then
+        rtc = 5
+    end
+    if rtc == 0 and isCommand then rtc = 6 end
+
+    -- Stuck-gem / not-memed override
+    if (rtc == 0 or (mq.TLO.Me.Casting.ID() or 0) ~= 0) and inBook then
+        if not isBard
+                and (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                and not mq.TLO.Window('CastingWindow').Open() then
+            -- Casting but window closed → gem may be stuck
+            -- CheckStuckGems stub → M6
+            rtc = mq.TLO.Me.Gem(castWhat)() and 5 or 7
+        elseif not hasItem and not mq.TLO.Me.Gem(castWhat)() and not hasAA then
+            rtc = 7     -- in book but not memed → needs CastMem
+        end
+    end
+
+    if rtc == 0 then
+        utils.debug('cast', 'CastWhat: %s CAST_RECOVER', castWhat)
+        return 'CAST_RECOVER'
+    end
+
+    -- Item spells use the clicky spell's TargetType
+    if strTargetType == 'null' and rtc == 1 then
+        strTargetType = mq.TLO.FindItem('=' .. castWhat).Spell.TargetType() or 'null'
+    end
+
+    -- Condition check stub → M5 (conditions system)
+    -- condNumber > 0 would evaluate Cond[condNumber] here and return CAST_COND_FAILED
+
+    -- Target acquisition for non-self spells
+    if strTargetType ~= 'Self' then
+        local tID = mq.TLO.Target.ID() or 0
+        if tID == 0 or (tID ~= whatID and (mq.TLO.Spawn(whatID).ID() or 0) ~= 0) then
+            castTarget(whatID)
+        end
+    end
+
+    -- DPS stacking check stub → M4
+    -- Buff stacking check stub → M6
+
+    -- Pull short-circuit pre-cast
+    if sentFrom:find('pull', 1, true) and state.pull.aggroTargetID ~= '' then
+        return 'CAST_SUCCESS'
+    end
+
+    -- Stop moving before spells with cast time (non-bard) — full impl stub → M7
+    if (mq.TLO.Spell(castWhat).CastTime() or 0) > 0
+            and mq.TLO.Me.Moving()
+            and not isBard then
+        mq.cmd('/squelch /stand')
+        mq.delay(250)
+    end
+
+    utils.debug('cast', 'CastWhat: %s rtc=%d from=%s', castWhat, rtc, sentFrom)
+
+    local castResult = 'CAST_NO_RESULT'
+
+    if rtc == 1 and mq.TLO.Me.ItemReady('=' .. castWhat)() and hasItem then
+        castResult = castItem(castWhat, sentFrom)
+
+    elseif rtc == 2 and mq.TLO.Me.AltAbilityReady(castWhat)() and not hasItem then
+        castResult = castAA(castWhat, sentFrom)
+
+    elseif rtc == 3 and mq.TLO.Me.CombatAbilityReady(castWhat)() then
+        local endCost = mq.TLO.Spell(castWhat).EnduranceCost() or 0
+        if endCost < (mq.TLO.Me.Endurance() or 0) then
+            castResult = castDisc(castWhat, sentFrom)
+        end
+
+    elseif rtc == 4 and mq.TLO.Me.AbilityReady(castWhat)() then
+        castResult = castSkill(castWhat, sentFrom)
+
+    elseif rtc == 5 then
+        local spellMana = mq.TLO.Spell(castWhat).Mana() or 0
+        if spellMana < (mq.TLO.Me.CurrentMana() or 0) then
+            local canCast = isBard
+                and (mq.TLO.Me.Gem(castWhat)() and (mq.TLO.Me.GemTimer(castWhat)() or 0) == 0)
+                or  (mq.TLO.Me.SpellReady(castWhat)() and inBook)
+            if canCast then
+                castResult = castSpell(castWhat, sentFrom)
+            end
+            memReturn = castResult
+        else
+            castResult = 'CAST_NEEDMANA'
+            memReturn  = 'CAST_NO_RESULT'
+        end
+
+    elseif rtc == 6 and isCommand then
+        castResult = castCommand(castWhat)
+
+    elseif rtc == 7 then
+        if not sentFrom:find('combat', 1, true) then
+            local spellMana = mq.TLO.Spell(castWhat).Mana() or 0
+            if spellMana < (mq.TLO.Me.CurrentMana() or 0) then
+                local memOk = castMem(castWhat, sentFrom)
+                memReturn = memOk and '1' or 'notready'
+                if memOk and (mq.TLO.Me.Gem(castWhat)() or 0) ~= 0 then
+                    castResult = castSpell(castWhat, sentFrom)
+                end
+            else
+                castResult = 'CAST_NEEDMANA'
+                memReturn  = 'notready'
+            end
+        else
+            castResult = 'CAST_NO_RESULT'
+            memReturn  = 'notready'
+        end
+    end
+
+    state.cast.castResult = castResult
+
+    -- Pull short-circuit post-cast
+    if sentFrom:find('pull', 1, true) and state.pull.aggroTargetID ~= '' then
+        return 'CAST_SUCCESS'
+    end
+
+    -- CastReMem: restore displaced spell out of combat after misc-gem cast
+    if (state.cast.miscGemRemem or 0) ~= 0 then
+        if rtc == 7 and memReturn ~= 'notready' then
+            castReMem(castWhat, false, sentFrom)
+        elseif rtc == 5 and memReturn ~= 'CAST_NO_RESULT' then
+            if castWhat == state.cast.reMemWaitLong
+                    or castWhat == state.cast.reMemWaitShort then
+                castReMem(castWhat, false, sentFrom)
+            end
+        end
+    end
+
+    -- Bard twist-restart stub → M8
+    -- SitToMedTimer reset stub → M7
+
+    utils.debug('cast', 'CastWhat leave: %s → %s', castWhat, castResult)
+    return castResult
 end
 
 return Cast
