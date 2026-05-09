@@ -4,10 +4,16 @@ local Events = {}
 
 -- Unique names for all registered events, for cleanup
 local REGISTERED = {}
+local _nameCount  = {}
 
+-- MQ2Lua requires unique event names. For events with multiple patterns we
+-- append _2, _3 … so each registration gets its own unique name.
 local function register(name, pattern, fn)
-    mq.event(name, pattern, fn)
-    REGISTERED[name] = true
+    local count = (_nameCount[name] or 0) + 1
+    _nameCount[name] = count
+    local uniqueName = count == 1 and name or (name .. '_' .. count)
+    mq.event(uniqueName, pattern, fn)
+    REGISTERED[uniqueName] = true
 end
 
 -- Cast event handlers set State.cast.castReturn so the cast engine (cast.lua, M3)
@@ -485,165 +491,133 @@ local function onMLogOff()
     end
 end
 
--- Register all cast result events
+-- Event definition table — kept at module level so Events.register() stays under
+-- Lua's 60-upvalue-per-function limit. Each entry: { name, pattern, handler }.
+local EVENT_DEFS = {
+    -- 2.1: Cast results
+    { 'CAST_BEGIN',        'You begin casting #1#',                                                           onCastBegin   },
+    { 'CAST_BEGIN',        'You begin singing #1#',                                                            onCastBegin   },
+    { 'CAST_BEGIN',        'Your #1# begins to glow.',                                                        onCastBegin   },
+    { 'CAST_FIZZLE',       'Your spell fizzles#*#',                                                           onFizzle      },
+    { 'CAST_FIZZLE',       'Your #*#spell fizzles#*#',                                                        onFizzle      },
+    { 'CAST_FIZZLE',       'You miss a note, bringing your song to a close#*#',                               onFizzle      },
+    { 'CAST_INTERRUPTED',  'Your spell is interrupted#*#',                                                    onInterrupted },
+    { 'CAST_INTERRUPTED',  'Your casting has been interrupted#*#',                                            onInterrupted },
+    { 'CAST_INTERRUPTED',  'Your #*# spell is interrupted.',                                                  onInterrupted },
+    { 'CAST_RESISTED',     'Your target resisted the #1# spell#*#',                                           onResisted    },
+    { 'CAST_RESISTED',     '#*# resisted your #1#!',                                                          onResisted    },
+    { 'CAST_RESISTEDYOU',  'You resist the #1# spell#*#',                                                     onResistedYou },
+    { 'CAST_RESISTEDYOU',  'You resist #*#',                                                                  onResistedYou },
+    { 'CAST_TAKEHOLD',     'Your spell did not take hold#*#',                                                 onTakehold    },
+    { 'CAST_TAKEHOLD',     'Your #*# spell did not take hold. (Blocked by#*#',                                onTakehold    },
+    { 'CAST_TAKEHOLD',     'Your spell would not have taken hold#*#',                                         onTakehold    },
+    { 'CAST_TAKEHOLD',     'Your spell is too powerfull for your intended target#*#',                         onTakehold    },
+    { 'CAST_TAKEHOLD',     'This pet may not be made invisible#*#',                                           onTakehold    },
+    { 'CAST_IMMUNE',       'Your target has no mana to affect#*#',                                            onImmune      },
+    { 'CAST_IMMUNE',       'Your target is immune to changes in its attack speed#*#',                         onImmune      },
+    { 'CAST_IMMUNE',       'Your target is immune to changes in its run speed#*#',                            onImmune      },
+    { 'CAST_IMMUNE',       'Your target is immune to snare spells#*#',                                        onImmune      },
+    { 'CAST_IMMUNE',       'Your target is immune to the stun portion of this effect#*#',                     onImmune      },
+    { 'CAST_IMMUNE',       'Your target cannot be mesmerized#*#',                                             onImmune      },
+    { 'CAST_IMMUNE',       'Your target looks unaffected#*#',                                                 onImmune      },
+    { 'CAST_DISTRACTED',   'You need to play a#*#instrument for this song#*#',                                onDistracted  },
+    { 'CAST_DISTRACTED',   'You are too distracted to cast a spell now#*#',                                   onDistracted  },
+    { 'CAST_DISTRACTED',   "You can't cast spells while invulnerable#*#",                                     onDistracted  },
+    { 'CAST_DISTRACTED',   'You *CANNOT* cast spells, you have been silenced#*#',                             onDistracted  },
+    { 'CAST_STUNNED',      "You can't cast spells while stunned#*#",                                          onStunned     },
+    { 'CAST_STUNNED',      'You are stunned#*#',                                                              onStunned     },
+    { 'CAST_NOTARGET',     'You must first select a target for this spell#*#',                                onNoTarget    },
+    { 'CAST_NOTARGET',     'This spell only works on#*#',                                                     onNoTarget    },
+    { 'CAST_NOTARGET',     'You must first target a group member#*#',                                         onNoTarget    },
+    { 'CAST_OUTOFRANGE',   'Your target is out of range, get closer#*#',                                      onOutOfRange  },
+    { 'CAST_OUTOFMANA',    'Insufficient Mana to cast this spell#*#',                                         onOutOfMana   },
+    { 'CAST_NOTREADY',     'Spell recast time not yet met#*#',                                                onNotReady    },
+    { 'CAST_RECOVER',      "You haven't recovered yet#*#",                                                    onRecover     },
+    { 'CAST_RECOVER',      'Spell recovery time not yet met#*#',                                              onRecover     },
+    { 'CAST_NOMOUNT',      'You can only summon a mount on dry land#*#',                                      onNoMount     },
+    { 'CAST_NOMOUNT',      'You need to be in a more open area to summon a mount#*#',                         onNoMount     },
+    { 'CAST_NOMOUNT',      'You can not summon a mount here#*#',                                              onNoMount     },
+    { 'CAST_NOMOUNT',      'You must have both the Horse Models and your current Luclin Character Model enabled to summon a mount#*#', onNoMount },
+    { 'CAST_NOMOUNT',      'You can not summon a mount in this form#*#',                                      onNoMount     },
+    { 'CAST_OUTDOORS',     'This spell does not work here#*#',                                                onOutdoors    },
+    { 'CAST_OUTDOORS',     'You can only cast this spell in the outdoors#*#',                                 onOutdoors    },
+    { 'CAST_COMPONENTS',   'You are missing some required components#*#',                                     onComponents  },
+    { 'CAST_COMPONENTS',   'Your ability to use this item has been disabled because you do not have at least a gold membership#*#', onComponents },
+    { 'CAST_STANDING',     'You must be standing to cast a spell#*#',                                        onStanding    },
+    { 'CAST_CANNOTSEE',    'You cannot see your target#*#',                                                   onCannotSee   },
+    { 'CAST_COLLAPSE',     'Your gate is too unstable, and collapses#*#',                                     onCollapse    },
+    { 'CAST_FAILED',       'Your ability failed.#*#',                                                         onFailed      },
+    { 'CAST_FDFAIL',       '#1# has fallen to the ground.#*#',                                                onFdFail      },
+    -- 2.2: Combat / movement / session
+    { 'GotHit',        '#1# bashes YOU for #*# points of damage.#*#',   onGotHit      },
+    { 'GotHit',        '#1# bites YOU for #*# points of damage.#*#',    onGotHit      },
+    { 'GotHit',        '#1# crushes YOU for #*# points of damage.#*#',  onGotHit      },
+    { 'GotHit',        '#1# gores YOU for #*# points of damage.#*#',    onGotHit      },
+    { 'GotHit',        '#1# hits YOU for #*# points of damage.#*#',     onGotHit      },
+    { 'GotHit',        '#1# kicks YOU for #*# points of damage.#*#',    onGotHit      },
+    { 'GotHit',        '#1# mauls YOU for #*# points of damage.#*#',    onGotHit      },
+    { 'GotHit',        '#1# pierces YOU for #*# points of damage.#*#',  onGotHit      },
+    { 'GotHit',        '#1# punches YOU for #*# points of damage.#*#',  onGotHit      },
+    { 'GotHit',        '#1# rampages YOU for #*# points of damage.#*#', onGotHit      },
+    { 'GotHit',        '#1# smashes YOU for #*# points of damage.#*#',  onGotHit      },
+    { 'GotHit',        '#1# slashes YOU for #*# points of damage.#*#',  onGotHit      },
+    { 'GotHit',        '#1# tries to #*# YOU, but #*#',                 onGotHit      },
+    { 'AttackCalled',  '<#1#>#*#TANKING-> #*# <- ID:#2#',               onAttackCalled },
+    { 'AttackCalled',  '[ #1# (#*#) ]#*#TANKING-> #*# <- ID:#2#',      onAttackCalled },
+    { 'CantHit',       "You can't hit them from here.",                  onCantHit     },
+    { 'CantSee',       'You cannot see your target.',                    onCantSee     },
+    { 'TooClose',      'Your target is too close to use a ranged weapon!', onTooClose  },
+    { 'TooFar',        'Your target is #*#, get closer!',               onTooFar      },
+    { 'MezBroke',      '#1# has been awakened by #2#.',                 onMezBroke    },
+    { 'Missing',       '#*#You are missing some required components.#*#', onMissing   },
+    { 'Missing',       '#*#You are missing#*#',                          onMissing    },
+    { 'ImDead',        '#*#Returning to Bind Location#*#',               onImDead     },
+    { 'ImDead',        'You died.',                                       onImDead     },
+    { 'ImDead',        'You have been slain by#*#',                       onImDead     },
+    { 'Zoned',         'LOADING, PLEASE WAIT#*#',                         onZoned      },
+    { 'Zoned',         'You have entered#*#',                             onZoned      },
+    { 'Joined',        '#1# has joined the group.',                       onJoined     },
+    { 'LeftGroup',     '#1# has left the group.',                         onLeftGroup  },
+    { 'Invised',       'You Vanish #*#',                                  onInvised    },
+    { 'Camping',       '#*#seconds to prepare your camp.',                onCamping    },
+    { 'TooSteep',      'The ground here is too steep to camp',            onTooSteep   },
+    -- 2.3: Buffs / pet / comms / utility
+    { 'GoMOn',           '#*#granted#*#gift of#*#mana#*#',                     onGoMOn          },
+    { 'GoMOn',           'You feel strengthened by a gift of magic.',           onGoMOn          },
+    { 'GoMOn',           'You feel strengthened by magic.',                     onGoMOn          },
+    { 'GoMOff',          'The gift of magic fades.',                            onGoMOff         },
+    { 'GoMOff',          'Your#*#gift of#*#mana fades.',                        onGoMOff         },
+    { 'WornOff',         'Your #1# spell has worn off of #2#.',                 onWornOff        },
+    { 'GainSomething',   '#*#You have gained|#1#|',                             onGainSomething  },
+    { 'AskForBuffs',     '#1# tells you,#*#Buffs Please!#*#',                   onAskForBuffs    },
+    { 'AskForBuffs',     '#1# says,#*#Buffs Please!#*#',                        onAskForBuffs    },
+    { 'KABegCheck',      '#*#KABeg for #1# #2# #3#',                            onKABegCheck     },
+    { 'PetSusStateAdd1', "#*# tells you, 'By your command, master.#*#",         onPetSusStateAdd1 },
+    { 'PetSusStateAdd2', '#*#You cannot have more than one pet at a time.#*#',  onPetSusStateAdd2 },
+    { 'PetSusStateSub',  "#*# tells you, 'I live again...'#*#",                 onPetSusStateSub },
+    { 'PetToysPlease',   '#*#PetToysPlease #1#',                                onPetToysPlease  },
+    { 'YouGotTell',      '#1# tells you, #2#',                                  onYouGotTell     },
+    { 'EQBCIRC',         '<#1#> #2#',                                            onEQBCIRC        },
+    { 'FSEQBC',          '#1# tells the fellowship, #2#',                        onFSEQBC         },
+    { 'GUEQBC',          '#1# tells the guild, #2#',                             onGUEQBC         },
+    { 'KTDismount',      '[MQ2] KTDismount#*#',                                  onKTDismount     },
+    { 'KTTarget',        '[MQ2] KTTarget #1#',                                   onKTTarget       },
+    { 'KTHail',          '[MQ2] KTHail #1#',                                     onKTHail         },
+    { 'KTSay',           '[MQ2] KTSay #1# #2#',                                  onKTSay          },
+    { 'KTDoorClick',     '[MQ2] KTDoorClick #1#',                                onKTDoorClick    },
+    { 'KTDoorClick',     '[MQ2] KTDoorClick#*#',                                 onKTDoorClick    },
+    { 'KTInvite',        '[MQ2] KTInvite #1#',                                   onKTInvite       },
+    { 'TaskUpdate',      'Your task |#1#| has been updated#*#',                  onTaskUpdate     },
+    { 'MLogOff',         '#*#KissAssist Debug Off Marker!',                      onMLogOff        },
+}
+
 function Events.register(s, u)
     state = s
     utils = u
-
-    -- CAST_BEGIN (3 patterns)
-    register('CAST_BEGIN', 'You begin casting #1#', onCastBegin)
-    register('CAST_BEGIN', 'You begin singing #1#', onCastBegin)
-    register('CAST_BEGIN', 'Your #1# begins to glow.', onCastBegin)
-
-    -- CAST_FIZZLE (3 patterns)
-    register('CAST_FIZZLE', 'Your spell fizzles#*#', onFizzle)
-    register('CAST_FIZZLE', 'Your #*#spell fizzles#*#', onFizzle)
-    register('CAST_FIZZLE', 'You miss a note, bringing your song to a close#*#', onFizzle)
-
-    -- CAST_INTERRUPTED (3 patterns)
-    register('CAST_INTERRUPTED', 'Your spell is interrupted#*#', onInterrupted)
-    register('CAST_INTERRUPTED', 'Your casting has been interrupted#*#', onInterrupted)
-    register('CAST_INTERRUPTED', 'Your #*# spell is interrupted.', onInterrupted)
-
-    -- CAST_RESISTED (2 patterns)
-    register('CAST_RESISTED', 'Your target resisted the #1# spell#*#', onResisted)
-    register('CAST_RESISTED', '#*# resisted your #1#!', onResisted)
-
-    -- CAST_RESISTEDYOU (2 patterns)
-    register('CAST_RESISTEDYOU', 'You resist the #1# spell#*#', onResistedYou)
-    register('CAST_RESISTEDYOU', 'You resist #*#', onResistedYou)
-
-    -- CAST_TAKEHOLD (4 patterns)
-    register('CAST_TAKEHOLD', 'Your spell did not take hold#*#', onTakehold)
-    register('CAST_TAKEHOLD', 'Your #*# spell did not take hold. (Blocked by#*#', onTakehold)
-    register('CAST_TAKEHOLD', 'Your spell would not have taken hold#*#', onTakehold)
-    register('CAST_TAKEHOLD', 'Your spell is too powerfull for your intended target#*#', onTakehold)
-    register('CAST_TAKEHOLD', 'This pet may not be made invisible#*#', onTakehold)
-
-    -- CAST_IMMUNE (7 patterns)
-    register('CAST_IMMUNE', 'Your target has no mana to affect#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target is immune to changes in its attack speed#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target is immune to changes in its run speed#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target is immune to snare spells#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target is immune to the stun portion of this effect#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target cannot be mesmerized#*#', onImmune)
-    register('CAST_IMMUNE', 'Your target looks unaffected#*#', onImmune)
-
-    -- Single-pattern events
-    register('CAST_DISTRACTED',  'You need to play a#*#instrument for this song#*#', onDistracted)
-    register('CAST_DISTRACTED',  'You are too distracted to cast a spell now#*#', onDistracted)
-    register('CAST_DISTRACTED',  "You can't cast spells while invulnerable#*#", onDistracted)
-    register('CAST_DISTRACTED',  'You *CANNOT* cast spells, you have been silenced#*#', onDistracted)
-    register('CAST_STUNNED',     "You can't cast spells while stunned#*#", onStunned)
-    register('CAST_STUNNED',     'You are stunned#*#', onStunned)
-    register('CAST_NOTARGET',    'You must first select a target for this spell#*#', onNoTarget)
-    register('CAST_NOTARGET',    'This spell only works on#*#', onNoTarget)
-    register('CAST_NOTARGET',    'You must first target a group member#*#', onNoTarget)
-    register('CAST_OUTOFRANGE',  'Your target is out of range, get closer#*#', onOutOfRange)
-    register('CAST_OUTOFMANA',   'Insufficient Mana to cast this spell#*#', onOutOfMana)
-    register('CAST_NOTREADY',    'Spell recast time not yet met#*#', onNotReady)
-    register('CAST_RECOVER',     "You haven't recovered yet#*#", onRecover)
-    register('CAST_RECOVER',     'Spell recovery time not yet met#*#', onRecover)
-    register('CAST_NOMOUNT',     'You can only summon a mount on dry land#*#', onNoMount)
-    register('CAST_NOMOUNT',     'You need to be in a more open area to summon a mount#*#', onNoMount)
-    register('CAST_NOMOUNT',     'You can not summon a mount here#*#', onNoMount)
-    register('CAST_NOMOUNT',     'You must have both the Horse Models and your current Luclin Character Model enabled to summon a mount#*#', onNoMount)
-    register('CAST_NOMOUNT',     'You can not summon a mount in this form#*#', onNoMount)
-    register('CAST_OUTDOORS',    'This spell does not work here#*#', onOutdoors)
-    register('CAST_OUTDOORS',    'You can only cast this spell in the outdoors#*#', onOutdoors)
-    register('CAST_COMPONENTS',  'You are missing some required components#*#', onComponents)
-    register('CAST_COMPONENTS',  'Your ability to use this item has been disabled because you do not have at least a gold membership#*#', onComponents)
-    register('CAST_STANDING',    'You must be standing to cast a spell#*#', onStanding)
-    register('CAST_CANNOTSEE',   'You cannot see your target#*#', onCannotSee)
-    register('CAST_COLLAPSE',    'Your gate is too unstable, and collapses#*#', onCollapse)
-    register('CAST_FAILED',      'Your ability failed.#*#', onFailed)
-    register('CAST_FDFAIL',      '#1# has fallen to the ground.#*#', onFdFail)
-
-    -- 2.2: GotHit (12 melee attack types + near-miss)
-    register('GotHit', '#1# bashes YOU for #*# points of damage.#*#',  onGotHit)
-    register('GotHit', '#1# bites YOU for #*# points of damage.#*#',   onGotHit)
-    register('GotHit', '#1# crushes YOU for #*# points of damage.#*#', onGotHit)
-    register('GotHit', '#1# gores YOU for #*# points of damage.#*#',   onGotHit)
-    register('GotHit', '#1# hits YOU for #*# points of damage.#*#',    onGotHit)
-    register('GotHit', '#1# kicks YOU for #*# points of damage.#*#',   onGotHit)
-    register('GotHit', '#1# mauls YOU for #*# points of damage.#*#',   onGotHit)
-    register('GotHit', '#1# pierces YOU for #*# points of damage.#*#', onGotHit)
-    register('GotHit', '#1# punches YOU for #*# points of damage.#*#', onGotHit)
-    register('GotHit', '#1# rampages YOU for #*# points of damage.#*#',onGotHit)
-    register('GotHit', '#1# smashes YOU for #*# points of damage.#*#', onGotHit)
-    register('GotHit', '#1# slashes YOU for #*# points of damage.#*#', onGotHit)
-    register('GotHit', '#1# tries to #*# YOU, but #*#',                onGotHit)
-
-    -- 2.2: AttackCalled (EQBC and DanNet broadcast formats)
-    register('AttackCalled', '<#1#>#*#TANKING-> #*# <- ID:#2#',       onAttackCalled)
-    register('AttackCalled', '[ #1# (#*#) ]#*#TANKING-> #*# <- ID:#2#', onAttackCalled)
-
-    -- 2.2: Movement/targeting feedback
-    register('CantHit',  "You can't hit them from here.",       onCantHit)
-    register('CantSee',  'You cannot see your target.',         onCantSee)
-    register('TooClose', 'Your target is too close to use a ranged weapon!', onTooClose)
-    register('TooFar',   'Your target is #*#, get closer!',    onTooFar)
-
-    -- 2.2: Mez
-    register('MezBroke', '#1# has been awakened by #2#.', onMezBroke)
-
-    -- 2.2: Missing component (combat context; distinct from CAST_COMPONENTS)
-    register('Missing', '#*#You are missing some required components.#*#', onMissing)
-    register('Missing', '#*#You are missing#*#',                           onMissing)
-
-    -- 2.2: Session events
-    register('ImDead',   '#*#Returning to Bind Location#*#',  onImDead)
-    register('ImDead',   'You died.',                          onImDead)
-    register('ImDead',   'You have been slain by#*#',          onImDead)
-    register('Zoned',    'LOADING, PLEASE WAIT#*#',            onZoned)
-    register('Zoned',    'You have entered#*#',                onZoned)
-    register('Joined',   '#1# has joined the group.',          onJoined)
-    register('LeftGroup','#1# has left the group.',            onLeftGroup)
-    register('Invised',  'You Vanish #*#',                     onInvised)
-    register('Camping',  '#*#seconds to prepare your camp.',   onCamping)
-    register('TooSteep', 'The ground here is too steep to camp', onTooSteep)
-
-    -- 2.3: GoM (Gift of Mana) — flags state.bard.gomActive; cast loop in M8
-    register('GoMOn',  '#*#granted#*#gift of#*#mana#*#',            onGoMOn)
-    register('GoMOn',  'You feel strengthened by a gift of magic.', onGoMOn)
-    register('GoMOn',  'You feel strengthened by magic.',           onGoMOn)
-    register('GoMOff', 'The gift of magic fades.',                  onGoMOff)
-    register('GoMOff', 'Your#*#gift of#*#mana fades.',              onGoMOff)
-
-    -- 2.3: Buff events
-    register('WornOff',       'Your #1# spell has worn off of #2#.',  onWornOff)
-    register('GainSomething', '#*#You have gained|#1#|',              onGainSomething)
-    register('AskForBuffs',   '#1# tells you,#*#Buffs Please!#*#',   onAskForBuffs)
-    register('AskForBuffs',   '#1# says,#*#Buffs Please!#*#',        onAskForBuffs)
-    register('KABegCheck',    '#*#KABeg for #1# #2# #3#',            onKABegCheck)
-
-    -- 2.3: Pet suspend/resume state tracking
-    register('PetSusStateAdd1', "#*# tells you, 'By your command, master.#*#", onPetSusStateAdd1)
-    register('PetSusStateAdd2', '#*#You cannot have more than one pet at a time.#*#', onPetSusStateAdd2)
-    register('PetSusStateSub',  "#*# tells you, 'I live again...'#*#",          onPetSusStateSub)
-    register('PetToysPlease',   '#*#PetToysPlease #1#',                          onPetToysPlease)
-
-    -- 2.3: Tell capture
-    register('YouGotTell', '#1# tells you, #2#', onYouGotTell)
-
-    -- 2.3: EQBC cross-char relay stubs (EQBC deprecated; DanNet in M9)
-    register('EQBCIRC', '<#1#> #2#',                     onEQBCIRC)
-    register('FSEQBC',  '#1# tells the fellowship, #2#', onFSEQBC)
-    register('GUEQBC',  '#1# tells the guild, #2#',      onGUEQBC)
-
-    -- 2.3: KT task helpers
-    register('KTDismount',  '[MQ2] KTDismount#*#',   onKTDismount)
-    register('KTTarget',    '[MQ2] KTTarget #1#',    onKTTarget)
-    register('KTHail',      '[MQ2] KTHail #1#',      onKTHail)
-    register('KTSay',       '[MQ2] KTSay #1# #2#',   onKTSay)
-    register('KTDoorClick', '[MQ2] KTDoorClick #1#', onKTDoorClick)
-    register('KTDoorClick', '[MQ2] KTDoorClick#*#',  onKTDoorClick)
-    register('KTInvite',    '[MQ2] KTInvite #1#',    onKTInvite)
-
-    -- 2.3: Timers / debug
-    -- Note: #Event Timer Timer1 has no Lua equivalent — timer expiry uses os.clock() polling
-    register('TaskUpdate', 'Your task |#1#| has been updated#*#', onTaskUpdate)
-    register('MLogOff',    '#*#KissAssist Debug Off Marker!',     onMLogOff)
+    _nameCount = {}
+    for _, def in ipairs(EVENT_DEFS) do
+        register(def[1], def[2], def[3])
+    end
 end
 
 function Events.unregister()
