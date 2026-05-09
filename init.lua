@@ -5,6 +5,7 @@ local Config = require('modules.config')
 local Events = require('modules.events')
 local Binds  = require('modules.binds')
 local Cast   = require('modules.cast')
+local Combat = require('modules.combat')
 
 local VERSION = '1.0.0'
 
@@ -56,6 +57,7 @@ Config.checkPlugins()
 Events.register(State, Utils)
 Binds.register(State, Utils)
 Cast.init(State, Utils)
+Combat.init(State, Utils, Cast)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
