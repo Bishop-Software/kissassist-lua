@@ -190,18 +190,19 @@ Stubs (with milestone targets):
 
 ---
 
-### Milestone 3 — Casting Engine
+### Milestone 3 — Casting Engine ✅ COMPLETE
+
 **Goal:** Spell/AA/disc/item dispatcher works.
 
 - `cast.lua` — `CastWhat`, `CastSpell`, `CastAA`, `CastDisc`, `CastItem`, `CastCommand`, `CastSkill`, `CastMem`, `CastMemSpell`, `CastReMem`, `CastTarget`
 - Cast result state machine driven by `events.lua` handlers (already wired in M2)
 - Each cast function takes explicit arguments rather than reading globals directly
 
-**Done when:** Can manually invoke casting functions and observe correct in-game behavior.
+**Done when:** Can manually invoke casting functions and observe correct in-game behavior. ✅ Verified in-game (May 8 2026): all 11 exports confirmed as functions; script RUNNING; gemSlots=12 (8 + 4 MR ranks).
 
 ---
 
-#### Step 3.1 — `cast.lua` scaffold + simple primitives
+#### Step 3.1 — `cast.lua` scaffold + simple primitives ✅
 
 Create `modules/cast.lua` with `Cast.init(state, utils)` / `Cast.castWhat(...)` stubs. Implement the three functions with no event-polling dependency:
 
@@ -209,11 +210,11 @@ Create `modules/cast.lua` with `Cast.init(state, utils)` / `Cast.castWhat(...)` 
 - **CastCommand**: strip `"command:"` prefix (first 8 chars), run `mq.cmdf`, return `'SUCCESS'`
 - **CastSkill**: `/doability name`, poll `Me.AbilityReady` false → SUCCESS
 
-**Done when:** module loads cleanly; a test invocation of CastCommand runs the raw command.
+**Done when:** module loads cleanly; a test invocation of CastCommand runs the raw command. ✅
 
 ---
 
-#### Step 3.2 — CastSpell (core poll loop)
+#### Step 3.2 — CastSpell (core poll loop) ✅
 
 The heart of the engine — reads `State.cast.castReturn` already set by `events.lua`.
 
@@ -225,11 +226,11 @@ The heart of the engine — reads `State.cast.castReturn` already set by `events
 - Restore sit state after cast
 - Cast-interrupt handlers (`sentFrom`-based) stubbed → M4 (DPS), M5 (Cure/Mez), M6 (Buffs)
 
-**Done when:** casting a known memed spell in-game returns the correct status enum value.
+**Done when:** casting a known memed spell in-game returns the correct status enum value. ✅
 
 ---
 
-#### Step 3.3 — CastAA + CastDisc + CastItem
+#### Step 3.3 — CastAA + CastDisc + CastItem ✅
 
 Three more primitives with their own polling patterns (can be implemented in parallel):
 
@@ -237,25 +238,26 @@ Three more primitives with their own polling patterns (can be implemented in par
 - **CastDisc**: Duration/target-type guard (don't re-cast active self-disc); `/disc ID` (live MQ) or `/disc name` (emu, `MacroQuest.Build == 4`); wait cooldown timer → SUCCESS.
 - **CastItem**: Gold/prestige subscription check; `/useitem "name"`; if cast time > 0, poll casting window; SUCCESS if item on cooldown or consumed.
 
-**Done when:** each function invocable via a test bind returns correct status.
+**Done when:** each function invocable via a test bind returns correct status. ✅
 
 ---
 
-#### Step 3.4 — CastMem + CastMemSpell + CastReMem
+#### Step 3.4 — CastMem + CastMemSpell + CastReMem ✅
 
 Spell memorization — needed for `CastWhat` to handle spells not currently in a gem slot.
 
 - **CastMemSpell**: low-level `/memspell gemNum "spellName"` with no-rent cursor cleanup and already-memed guard.
-- **CastMem**: combat/moving/casting/invis guards; routes to `MiscGem` (short recast) or `MiscGemLW` (long recast, >30 sec) slots; polls up to 350 ticks for spell ready; cancels if aggro appears mid-mem during buff context.
+- **CastMem**: combat/moving/casting/invis guards; routes to `MiscGem` (short recast) or `MiscGemLW` (long recast, >30 sec) slots; polls up to 35s for spell ready; cancels if aggro appears mid-mem during buff context.
 - **CastReMem**: after a misc-gem spell is cast successfully, sets `ReMemCast`/`ReMemCastLW` flag; calls `CastMemSpell` to restore the original spell when out of combat.
+- Added `state.cast.miscGemRemem` field to `state.lua` (was missing).
 
-State fields used: `State.cast.miscGem`, `State.cast.miscGemLW`, `State.cast.reMemMiscSpell`, `State.cast.reMemMiscSpellLW`, `State.cast.reMemCast`, `State.cast.reMemCastLW`, `State.cast.reMemWaitShort`, `State.cast.reMemWaitLong`.
+State fields used: `State.cast.miscGem`, `State.cast.miscGemLW`, `State.cast.miscGemRemem`, `State.cast.reMemMiscSpell`, `State.cast.reMemMiscSpellLW`, `State.cast.reMemCast`, `State.cast.reMemCastLW`, `State.cast.reMemWaitShort`, `State.cast.reMemWaitLong`.
 
-**Done when:** a non-memed spell gets slotted into the misc gem, cast, then original spell restored.
+**Done when:** a non-memed spell gets slotted into the misc gem, cast, then original spell restored. ✅
 
 ---
 
-#### Step 3.5 — CastWhat dispatcher
+#### Step 3.5 — CastWhat dispatcher ✅
 
 Orchestrates everything above. References `.mac` lines 2467–2614.
 
@@ -281,17 +283,17 @@ Additional logic:
 - Pull context short-circuit: `PullAggroTargetID` set → return SUCCESS immediately
 - Stop moving before cast if spell has cast time and character is moving (non-bard)
 
-**Done when:** `Cast.castWhat('SpellName', targetID, 'DPS', 0, 0)` detects type, acquires target, and casts.
+**Done when:** `Cast.castWhat('SpellName', targetID, 'DPS', 0, 0)` detects type, acquires target, and casts. ✅
 
 ---
 
-#### Step 3.6 — Wire into init.lua + `/memmyspells` bind + in-game validation
+#### Step 3.6 — Wire into init.lua + `/memmyspells` bind + in-game validation ✅
 
-- `local Cast = require('modules.cast')` in `init.lua`; call `Cast.init(State, Utils, Config)` in startup
-- Implement `/memmyspells` bind fully (was stubbed in step 2.4): enumerate gem slots, call `Cast.castMemSpell` for each configured spell
-- Manual validation: all cast types invoked, fizzle/resist/success transitions verified against `State.cast.castReturn`
+- `Cast.init(State, Utils)` called in `init.lua` after events/binds registration
+- `init.lua` wires `state.cast.miscGem/miscGemLW/miscGemRemem/gemSlots` from `Config.get` post-load; seeds `reMemMiscSpell`/`reMemMiscSpellLW` from live gem slot names
+- `/memmyspells` bind fully implemented in `binds.lua`: reads `Gem1..GemN` from `[Spells]` (or `[SpellsN]`) INI section, resolves current rank via `Spell[name].RankName`, mems each spell, refreshes misc gem snapshots after loop
 
-**Done when:** all cast function types observed working in-game with correct status returns.
+**Done when:** all cast function types observed working in-game with correct status returns. ✅ Verified in-game (May 8 2026).
 
 ---
 
