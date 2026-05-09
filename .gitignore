@@ -12,3 +12,5 @@ Loot.ini
 # Local Claude Code memory/settings
 .claude/
 CLAUDE.md
+# CocoIndex Code (ccc)
+/.cocoindex_code/

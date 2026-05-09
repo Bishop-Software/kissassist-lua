@@ -159,17 +159,30 @@ Port remaining events:
 
 ---
 
-#### Step 2.4 — `binds.lua` + shutdown cleanup
-Create `modules/binds.lua` and port all 31 binds as State toggles with confirmation messages. Full behavior is added per milestone as each domain module is built. Bind groups:
-- **Debug/utility** (6): `/debug`, `/parse`, `/zoneinfo`, `/iniwrite`, `/writespells`, `/mycmd`
-- **Combat** (8): `/burn`, `/backoff`, `/switchnow`, `/switchma`, `/kisscast`, `/togglevariable`, `/changevarint`, `/kisscheck`
-- **Movement/camp** (4): `/makecamphere`, `/stayhere`, `/chaseme`, `/trackmedown`
-- **Pull** (5): `/addpull`, `/addignore`, `/addimmune`, `/SetPullArc`, `/setpullranking`
-- **Buffs/group/misc** (8): `/buffgroup`, `/kasettings`, `/tbmanager`, `/memmyspells`, `/kissedit`, `/addfriend`, `/aggroinfo`, `/campfire`
+#### Step 2.4 — `binds.lua` + shutdown cleanup ✅
+Created `modules/binds.lua` with all 31 binds. `Binds.register/unregister` wired into `init.lua`.
 
-Wire shutdown cleanup into `init.lua` — call `mq.unevent()` and `mq.unbind()` after the main loop exits.
+Fully implemented inline:
+- `/debug` — toggles `state.debug.*` flags by category (all/buffs/combat/cast/chainp/heals/mez/move/pet/pull/rk); log/logc arg controls `/mlog on|off`
+- `/burn` — sets `state.combat.burnOn/burnActive/burnCalled/burnID`; rotation in M4
+- `/backoff` — toggles `state.dps.paused` + clears `combatStart`; CombatReset in M4
+- `/makecamphere` — sets campX/Y/Z/Zone + `returnToCamp=true`; broadcast in M9
+- `/aggroinfo` — printf XTarget + group MA info from state/TLOs
+- `/zoneinfo` — printf pull list state
+- `/addfriend` — calls `/posse add/save/load` directly
 
-**Done when:** `/burn`, `/stayhere`, `/makecamphere`, `/debug` etc. toggle correct State flags in-game; `/lua stop` cleans up all handlers.
+Stubs (with milestone targets):
+- `/switchnow`, `/switchma`, `/kisscast` → M4 (combat.lua)
+- `/stayhere`, `/chaseme` → M9 (comms.lua)
+- `/trackmedown`, `/addpull`, `/addignore`, `/SetPullArc`, `/setpullranking` → M7 (pull/movement)
+- `/buffgroup`, `/campfire`, `/tbmanager` → M6 (buffs.lua)
+- `/addimmune` → M5 (healing.lua)
+- `/writespells`, `/iniwrite`, `/kisscheck`, `/changevarint` → M10 (config.lua)
+- `/memmyspells` → M3 (cast.lua)
+- `/kasettings` → M11 (ImGui)
+- `/togglevariable`, `/parse`, `/mycmd` → respective domain modules
+
+**Done when:** `/burn`, `/stayhere`, `/makecamphere`, `/debug` etc. toggle correct State flags in-game; `/lua stop` cleans up all handlers. ✅
 
 ---
 
