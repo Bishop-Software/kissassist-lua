@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.2)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.3)
 
 ---
 
@@ -449,6 +449,70 @@ end)
 
 ---
 
+### 4.3 Combat.assist / Combat.getCombatTarget / Combat.combatTargetCheck (Step 4.3)
+
+**Setup:** Script running with a real group. One character set as MA (`assist TankName`). Have at least one aggressive NPC in range.
+
+**Shared test bind (remove after testing):**
+```lua
+mq.bind('/katestassist', function()
+    local Combat = require('modules.combat')
+    local State  = require('modules.state')
+    Combat.assist('test')
+    printf('myTargetID=%d myTargetName=%s', State.combat.myTargetID, State.combat.myTargetName)
+end)
+```
+
+#### 4.3.1 — Combat.assist (non-MA path)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.1.1 | Normal assist — group MA set | MA has an NPC targeted; group `MainAssist` assigned in-game | `myTargetID` = MA's target ID; `myTargetName` set |
+| 4.3.1.2 | GroupAssistTarget shortcut | `Group.MainAssist.ID == maSpawn.ID` | Uses `Me.GroupAssistTarget.ID` directly (no `/assist` command) |
+| 4.3.1.3 | Fallback `/assist` when no group MA | No group `MainAssist` assigned | Sends `/assist TankName`; waits for `AssistComplete` |
+| 4.3.1.4 | MA out of range | MA farther than 200 units | Skips assist; `myTargetID` unchanged |
+| 4.3.1.5 | Offtank — MA dead/far | Role = `offtank`; MA gone | Returns immediately; no target set |
+| 4.3.1.6 | Aggro fallback when MA gone | `aggroTargetID` set; MA absent | Targets `aggroTargetID` if within `meleeDistance` |
+| 4.3.1.7 | DPS paused guard | `state.dps.paused = true` | Returns immediately; no target change |
+| 4.3.1.8 | Hovering guard | Character is dead/hovering | Returns immediately |
+| 4.3.1.9 | Invalid target (bad type) | MA targets a corpse or aura | `validateTarget` returns false; `myTargetID = 0` |
+| 4.3.1.10 | Valid target → state set | MA targets a live NPC | `myTargetID`, `myTargetName`, `lastTargetID` all updated |
+| 4.3.1.11 | Debug output | Run with `debug` flag | Prints `assist: myTarget=<name> id=<n>` |
+
+#### 4.3.2 — Combat.getCombatTarget (MA path)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.2.1 | Single hater on XTarget | One NPC on auto-hater slot | Targets that NPC directly via `aggroTargetID` |
+| 4.3.2.2 | Named mob priority | Multiple haters including a named NPC | Named NPC targeted first |
+| 4.3.2.3 | Alert-4 (mez-immune) priority | Alert 4 has a non-corpse hater; no named | Alert-4 NPC targeted before others |
+| 4.3.2.4 | Multi-mob closest selection | 3+ haters, no named/alert-4 | Closest hater targeted |
+| 4.3.2.5 | Most-hurt upgrade | Most-hurt NPC in camp range | `mostHurtID` used if within `meleeDistance` of camp |
+| 4.3.2.6 | ReturnToCamp distance gate | Most-hurt NPC outside camp radius | Falls back to closest; out-of-range mob not targeted |
+| 4.3.2.7 | Stale `aggroTargetID2` cleared | `aggroTargetID2` points to a corpse | Cleared to `'0'` before processing |
+| 4.3.2.8 | Non-MA character | Role = `assist`, not MA | Returns immediately; no target selection |
+| 4.3.2.9 | MezMobFlag blurred scan | `aggroID = 0`, `mobCount > 0`, `mez.mobFlag = true` | Scans for nearby unalerted NPC; targets if in camp range |
+| 4.3.2.10 | Mezzed mob detected | Blurred scan finds a mezzed NPC | Sets `aggroTargetID2`, `myTargetID`; returns early |
+| 4.3.2.11 | `validateTarget` rejection | Best-selected NPC fails validation | `myTargetID = 0`; no target locked |
+| 4.3.2.12 | Debug output | Run with `debug` flag | Prints `getCombatTarget: myTarget=<name> id=<n>` |
+
+#### 4.3.3 — Combat.combatTargetCheck
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.3.1 | Dead target cleared | `myTargetID` points to a corpse | `myTargetID = 0`; `lastTargetID` updated; returns |
+| 4.3.3.2 | Non-MA syncs to group assist | Group MA set; MA switches targets | `myTargetID` updated to new `GroupAssistTarget.ID` |
+| 4.3.3.3 | MA re-locks own target | MA's game target drifts; `targetSwitchingOn = false` | `/target id myTargetID` re-issued |
+| 4.3.3.4 | MA accepts new target (switching on) | `targetSwitchingOn = true`; MA manually targets new NPC | `myTargetID` updated; tank-announce echoed |
+| 4.3.3.5 | MA ignores PC target (switching on) | MA accidentally targets a PC | `myTargetID` unchanged; PC skipped |
+| 4.3.3.6 | CalledTargetID accepted (no group MA) | No group MA; event sets `calledTargetID = N` | `myTargetID = N`; `calledTargetID = 0` |
+| 4.3.3.7 | DPS paused — SetTarget 0 | `dps.paused = true`, `setTarget = 0` | Returns immediately |
+| 4.3.3.8 | DPS paused — SetTarget 2 bypass | `dps.paused = true`, `setTarget = 2` | Proceeds normally |
+| 4.3.3.9 | XTarAutoSet re-targets | `xTarAutoSet = true`; `myTargetID` changed; not MA | `/target id N` issued; `/xtarget set` called |
+| 4.3.3.10 | Debug output | Run with `debug` flag | Prints `combatTargetCheck: myTarget=... id=... lastID=...` |
+
+---
+
 ## Section 5 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -464,7 +528,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.2)
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.3)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -474,9 +538,10 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `namedWatchList` population | M4 (needs KissAssist_Info.ini loader) |
 | `autoBurnTimer` INI key | M4 Step 4.7 (Burn section) |
 | CombatReset (called from /backoff) | M4 Step 4.4 |
-| `/switchnow` actual target switch | M4 Step 4.3 |
+| `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
+| BroadCast tank-announce (`/echo` stub in combatTargetCheck) | M9 (cross-char comms) |
+| `CombatTargetCheckRaid` | M4 Step 4.4 (raid context) |
 | Full `/kaburn` rotation | M4 Step 4.7 |
-| Assist + CombatTargetCheck | M4 Step 4.3 |
 | CheckForCombat main loop wire | M4 Step 4.4 |
 | DPS rotation (CombatCast) | M4 Step 4.6 |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 / M6 |

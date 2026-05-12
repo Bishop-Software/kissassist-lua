@@ -83,6 +83,7 @@ local State = {
         meleeOn            = false,
         namedCheck         = false,
         namedWatchList     = {},
+        targetSwitchingOn  = false,
         raidAssistEntry    = 1,
         raidTargetID       = '0',
         validTarget        = false,
@@ -236,6 +237,7 @@ local State = {
         mobCount   = 0,
         mobDone    = false,
         mobFlag    = false,
+        mezOn      = false,
     },
 
     bard = {

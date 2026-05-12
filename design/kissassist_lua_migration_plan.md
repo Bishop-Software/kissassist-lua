@@ -336,11 +336,13 @@ Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC hat
 
 ---
 
-#### Step 4.3 — Assist + CombatTargetCheck + GetCombatTarget
+#### Step 4.3 — Assist + CombatTargetCheck + GetCombatTarget ✅
 
-- **`Assist`** (kissassist.mac:748): use `Me.GroupAssistTarget.ID` when MA is the group's assigned main assist; otherwise find MA's target by name. Sets `state.combat.myTargetID`. Handles IAmMA self-target mode and `/switchma` escalation when MA is dead.
-- **`CombatTargetCheck`** (kissassist.mac:1337): validate `myTargetID` not a corpse; sync to MA's target if it changed; handle `TargetSwitchingOn` mode for MA. Group variant; `CombatTargetCheckRaid` for raid context (stub initially).
-- **`GetCombatTarget`** (kissassist.mac:818): MA-only path — picks best target from XTarget hater list when no explicit target is set.
+- **`Combat.assist(_fromWhere)`** (kissassist.mac:748): non-MA path. Uses `Me.GroupAssistTarget.ID` when group MA is assigned and matches `MainAssist`; falls back to `/assist MainAssist`. Validates target via `validateTarget()` and locks `state.combat.myTargetID`.
+- **`Combat.getCombatTarget()`** (kissassist.mac:818): MA/offtank path. Selects best XTarget auto-hater: named > alert-4 > closest with hurt/level tie-breaks. Mem-blurred mob fallback when `mez.mobFlag` set.
+- **`Combat.combatTargetCheck(setTarget)`** (kissassist.mac:1337): mid-combat sync. When group MA is active: non-MA syncs to `GroupAssistTarget`; MA locks or accepts new target based on `targetSwitchingOn`. Without group MA: drains `CalledTargetID` from event handlers. Re-targets the game client if `myTargetID` changed.
+- **`validateTarget(spawnID)`** (kissassist.mac:948): local helper shared by Assist and GetCombatTarget. Checks bad types, ignore-by-ID list, camp distance (tank roles), eye-of, PC-owned pet, charmed, and PC/Zek rules. Pull-specific checks deferred to Step 5.x.
+- **New state fields**: `mez.mezOn`, `combat.targetSwitchingOn`.
 
 **Done when:** `myTargetID` is set correctly when MA has a live NPC targeted.
 
