@@ -147,7 +147,7 @@ local function castSpell(spellName, sentFrom)
                        or castResult == 'CAST_RESISTED'
         if tryNum < maxTries and retryable then
             ---@diagnostic disable-next-line: undefined-field
-        local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
+            local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
             if recast <= 2 then
                 while (mq.TLO.Me.GemTimer(spellName)() or 0) > 0
                         and not mq.TLO.Me.SpellReady(spellName)() do
@@ -335,6 +335,7 @@ local function castItem(whatItem, sentFrom)
     end
 
     -- Bard twist-pause stub → M8
+    ---@diagnostic disable-next-line: undefined-field
     local castTime = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime.TotalSeconds() or 0
 
     if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then
@@ -883,6 +884,7 @@ local function mashButtons(_tarID)
                 and not mq.TLO.Me.CombatAbilityTimer(name)()
                 and mq.TLO.Me.CombatAbilityReady(name)()
                 and (mq.TLO.Spell(name).EnduranceCost() or 0) < (mq.TLO.Me.CurrentEndurance() or 0) then
+            ---@diagnostic disable-next-line: undefined-field
             local isEmu = (mq.TLO.MacroQuest.Build() or 0) == 4
             if not isEmu then
                 local ranked = mq.TLO.Me.CombatAbility(name)() or name
@@ -931,8 +933,6 @@ function Cast.combatCast()
     if (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() ~= myID then
         if myID == 0 then return end
     end
-    local dpsStartID = myID
-
     for i = dpsStart, #dpsArr do
         -- Drain all pending events before each entry (mirrors inner EventFlag while loop)
         repeat
@@ -1012,7 +1012,8 @@ function Cast.combatCast()
         else
             local gIdx = tType:match('^group(%d)$')
             if gIdx then
-                castTargetID = mq.TLO.Group.Member(tonumber(gIdx)).ID() or 0
+                local member = mq.TLO.Group.Member(tonumber(gIdx) or 0)
+                castTargetID = member and (member.ID() or 0) or 0
             end
         end
 
