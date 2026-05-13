@@ -279,6 +279,30 @@ function Combat.init(state, utils, cast)
         end
     end
 
+    -- Debuff-all: compute debuffCount from DPS array (slots with hp threshold >= 101 are debuff-all entries)
+    _state.combat.debuffAllOn = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
+    local debuffCount = 0
+    for _, dpsEntry in ipairs(_state.combat.dpsArray) do
+        local thresh = tonumber(dpsEntry:match('^[^|]*|([^|]*)') or '') or 0
+        if thresh >= 101 then
+            debuffCount = debuffCount + 1
+        else
+            break  -- debuff slots are always first in the array
+        end
+    end
+    _state.mez.debuffCount = debuffCount
+
+    -- Aggro management array — from [Aggro] section, entries Aggro1..AggroN
+    _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
+    local aggroArr = Config.get('Aggro', 'Aggro', nil)
+    if type(aggroArr) == 'table' then
+        for _, v in ipairs(aggroArr) do
+            if v and v ~= '' then
+                _state.combat.aggroArray[#_state.combat.aggroArray + 1] = v
+            end
+        end
+    end
+
     -- Pet combat config
     _state.pet.assistAt = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
     _state.pet.combatOn = Config.get('Pet', 'PetCombatOn', '1') == '1'
@@ -287,16 +311,16 @@ function Combat.init(state, utils, cast)
     -- TODO: load NamedWatch entries from KissAssist_Info.ini when that file is added to Config.
     -- _state.combat.namedWatchList stays empty until that config path is wired.
 
-    utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d campRadius=%d petAssistAt=%d petCombatOn=%s',
+    utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d debuffCount=%d aggroOn=%s campRadius=%d',
         tostring(_state.combat.dpsOn),
         tostring(_state.combat.meleeOn),
         _state.combat.assistAt,
         _state.combat.meleeDistance,
         #_state.combat.dpsArray,
         #_state.combat.burnArray,
-        _state.movement.campRadius,
-        _state.pet.assistAt,
-        tostring(_state.pet.combatOn))
+        _state.mez.debuffCount,
+        tostring(_state.combat.aggroOn),
+        _state.movement.campRadius)
 end
 
 -- Mirrors MobRadar (kissassist.mac:7143).
@@ -960,8 +984,12 @@ function Combat.fight(fromWhere)
 
             -- Deferred: SwitchMA offtank (M9), MercsDoWhat (M6)
             -- Deferred: stick/distance maintenance (M7)
-            -- Deferred: MezCheck, AECheck, AggroCheck, CheckCures/CheckHealth (M4.x/M5)
-            -- Deferred: DoBardStuff (bard module)
+            -- Deferred: MezCheck, AECheck, CheckCures/CheckHealth (M5)
+            -- Deferred: DoBardStuff (M8)
+            -- AggroCheck (mac:1165)
+            if _state.combat.aggroOn and _cast and _cast.castWhat then
+                Combat.aggroCheck()
+            end
 
             -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
             if not _state.combat.namedCheck and _state.combat.burnOnNamed then
@@ -1006,6 +1034,15 @@ function Combat.fight(fromWhere)
                        and (_state.timers.aggroOff or 0) == 0
                        and mq.TLO.Me.Invis() then
                         mq.cmd('/makemevisible')
+                    end
+                    -- DoDebuffStuff: apply debuff-all DPS slots to target + nearby haters (mac:1179)
+                    if (_state.combat.debuffAllOn or 0) > 0 and _cast.doDebuffStuff then
+                        _cast.doDebuffStuff(_state.combat.myTargetID)
+                        myID = _state.combat.myTargetID
+                        if myID == 0 then
+                            Combat.combatReset(0, fromWhere .. '_afterDebuff')
+                            break
+                        end
                     end
                     -- CombatCast (mac:1191) — cast module provides this in Step M4.6+
                     if _cast.combatCast then
@@ -1127,7 +1164,12 @@ function Combat.fight(fromWhere)
                 combatPet()
             end
         end
-        -- Deferred: Bard twist (mac:1327), DebuffStuff (mac:1328)
+        -- Deferred: Bard twist (mac:1327, M8)
+        -- DebuffAllOn==2: debuff adds even when not at melee range (mac:1328)
+        if (_state.combat.debuffAllOn or 0) == 2 and _state.combat.myTargetID ~= 0
+           and (_state.combat.aggroTargetID or '') ~= '' and _cast.doDebuffStuff then
+            _cast.doDebuffStuff(_state.combat.myTargetID)
+        end
         -- BeforeAttack condCheck=2: fire only |cond entries (mac:1330)
         if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
             beforeAttack(myID, 2)
@@ -1149,6 +1191,115 @@ function Combat.feignAggroCheck()
     else
         mq.doevents()
     end
+end
+
+-- Mirrors Sub AggroCheck (kissassist.mac:2373).
+-- Iterates aggroArray casting aggro-management abilities based on pctAggro thresholds.
+-- Entry format: spellName|pct|glt|target  where glt is < (gain) >> << (secondary) >> > (lose).
+function Combat.aggroCheck()
+    local myID = _state.combat.myTargetID
+    if myID == 0 then return end
+    local sp = mq.TLO.Spawn('id ' .. myID)
+    if not sp or (sp.Type() or ''):lower() == 'corpse' or (sp.ID() or 0) == 0 then return end
+
+    -- MA with target-switching: sync target first (mac:2383)
+    if _state.session.iAmMA and _state.combat.targetSwitchingOn
+       and (mq.TLO.Target.ID() or 0) ~= 0
+       and (mq.TLO.Target.ID() or 0) ~= myID
+       and _state.combat.combatStart then
+        Combat.combatTargetCheck(1)
+    end
+    if _state.combat.myTargetID == 0 then return end
+
+    for _, entry in ipairs(_state.combat.aggroArray) do
+        if not entry or entry == 'null' or entry == '' then break end
+
+        -- Parse: spellName|pct|glt|target
+        local parts = {}
+        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spellName  = parts[1] or ''
+        local pct        = tonumber(parts[2] or '') or 0
+        local glt        = parts[3] or ''
+        local targetType = parts[4] or ''
+
+        if spellName == '' or spellName == 'null' then goto next_aggro end
+        -- cond-tagged target type: skip (ConOn deferred M10)
+        if targetType:lower():sub(1, 4) == 'cond' then targetType = '' end
+
+        -- Skip active self-disc (mac:2410)
+        if (mq.TLO.Me.CombatAbility(spellName).ID() or 0) ~= 0 then
+            local asSp = mq.TLO.Spell(spellName)
+            if asSp and (asSp.Duration() or 0) > 0
+               and ((asSp.TargetType() or ''):lower() == 'self')
+               and (mq.TLO.Me.ActiveDisc.ID() or 0) ~= 0 then
+                goto next_aggro
+            end
+        end
+
+        -- Ability ready check (mac:2395)
+        if not mq.TLO.Me.SpellReady(spellName)()
+           and not mq.TLO.Me.AltAbilityReady(spellName)()
+           and not mq.TLO.Me.AbilityReady(spellName)()
+           and not mq.TLO.Me.CombatAbilityReady(spellName)() then
+            goto next_aggro
+        end
+
+        -- Aggro threshold check (mac:2397-2409)
+        local myPct  = mq.TLO.Me.PctAggro() or 0
+        local secPct = mq.TLO.Target.SecondaryPctAggro() or 0
+        if glt == '<' then
+            -- Gain aggro: cast when my aggro is below pct
+            if pct <= myPct then goto next_aggro end
+        elseif glt == '<<' then
+            -- Secondary aggro: cast when secondary holder is above (pct-100)%
+            local adjPct = pct - 100
+            if secPct == 0 or secPct < adjPct then goto next_aggro end
+        elseif glt == '>' then
+            -- Lose aggro: cast when my aggro is above pct
+            if pct > myPct then goto next_aggro end
+        else
+            goto next_aggro
+        end
+
+        -- Resolve cast target (mac:2412-2420)
+        local aggroTID = myID
+        local tl = targetType:lower()
+        if tl == 'me' then
+            aggroTID = mq.TLO.Me.ID() or 0
+        elseif tl == 'ma' then
+            aggroTID = mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0
+        elseif tl == 'pet' then
+            aggroTID = mq.TLO.Me.Pet.ID() or 0
+        elseif tl == 'inc' then
+            -- INC: target mob only when in melee range; skip if close (mac:2421)
+            if (mq.TLO.Spawn('id ' .. myID).Distance() or 0) < _state.combat.meleeDistance then
+                goto next_aggro
+            end
+        end
+        if aggroTID == 0 then goto next_aggro end
+
+        -- Cast (mac:2423)
+        local result = _cast.castWhat(spellName, aggroTID, 'Aggro', 0, 0)
+        if result == 'CAST_SUCCESS' then
+            printf('Casting >> %s << to control AGGRO(%s) on %s',
+                spellName, glt,
+                mq.TLO.Spawn('id ' .. aggroTID).CleanName() or '')
+            -- Start aggroOff timer on lose-aggro cast if feigning/invis (mac:2427-2429)
+            if glt == '>' and (_state.timers.aggroOff or 0) == 0 then
+                if mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() then
+                    _state.timers.aggroOff = os.clock() + 20
+                end
+            end
+            break  -- one aggro ability per call (mac:2431)
+        end
+        -- Break-early if threshold already satisfied after failed cast (mac:2433-2435)
+        if glt == '>' and pct > myPct then break end
+        if glt == '<<' and secPct < (pct - 100) then break end
+        if glt == '<' and pct < myPct then break end
+
+        ::next_aggro::
+    end
+    _utils.debug('combat', 'aggroCheck: leave')
 end
 
 -- Mirrors Sub CombatReset (kissassist.mac:2144).

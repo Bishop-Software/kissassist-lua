@@ -92,6 +92,12 @@ local State = {
         xTSlot             = 0,
         xTSlot2            = 0,
         xTarAutoSet        = true,
+        -- Step 4.8
+        aggroArray         = {},
+        aggroOn            = false,
+        debuffAllOn        = 0,
+        dboList            = {},   -- per-debuff-slot: string of "|id|id..." already-debuffed mobs
+        dboTimer           = {},   -- per-debuff-slot: os.clock() expiry for re-debuff
     },
 
     cast = {

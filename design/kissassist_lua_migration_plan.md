@@ -422,13 +422,17 @@ Mirrors `Burn` (kissassist.mac:11770).
 
 ---
 
-#### Step 4.8 — WriteDebuffs + AggroCheck + in-game validation
+#### ✅ Step 4.8 — DoDebuffStuff + AggroCheck + in-game validation
 
-- **`WriteDebuffs`** (kissassist.mac:12569): iterate Debuff array, call `Cast.castWhat` for each when target lacks the debuff
-- **`AggroCheck`** (kissassist.mac:2373): tank roles — taunt if losing aggro; check `Me.CombatAbility[Taunt]`; broadcast aggro state
-- End-to-end validation: detect mob → assist MA → melee → DPS rotation → burn → debuffs → reset after kill
+- **`Cast.doDebuffStuff(firstMobID)`** (kissassist.mac:7613): guards (debuffAllOn, debuffCount, DPSPaused, DMZ, bard+MA bailout); cleans stale mob IDs from per-slot dboLists; calls `debuffCast(firstMobID, true)` for primary target; iterates XTarget auto-haters in range (LOS check, PC/PC-pet skip, distance guard), drops melee for off-target cast, calls `debuffCast(xtID, fwait)` for each; restores target + melee after loop.
+- **`debuffCast(targetID, fwait)`** (kissassist.mac:7714): local helper in cast.lua. Iterates DPS slots 1..debuffCount; per slot: checks dboTimer/dboList to skip recently-debuffed mobs; verifies cast range vs effective spell range; checks spell/AA/disc readiness (fwait=true waits up to 2s for primary mob); calls `Cast.castWhat`; on SUCCESS updates dboList[i] and sets dboTimer[i] from spell duration.
+- **`Combat.aggroCheck()`** (kissassist.mac:2373): guards (myTargetID, corpse check, MA target-sync); iterates `state.combat.aggroArray`; per entry: parses `spellName|pct|glt|target`; skips active self-disc; checks ability readiness; applies threshold (`<` gain / `<<` secondary / `>` lose); resolves target (null/Mob/INC → myTargetID, Me/MA/Pet); calls `_cast.castWhat(..., 'Aggro', ...)`; on SUCCESS echoes and breaks; sets aggroOff timer on lose-aggro cast if feigning/invis.
+- **`Combat.init` additions**: `debuffAllOn` from `[DPS] DebuffAllOn`; `debuffCount` computed from DPS array (entries with hp threshold ≥ 101 are debuff-all slots); `aggroOn` from `[Aggro] AggroOn`; `aggroArray` loaded from `Aggro1..AggroN`.
+- **State fields added**: `combat.aggroArray`, `combat.aggroOn`, `combat.debuffAllOn`, `combat.dboList`, `combat.dboTimer`.
+- **Wired into `Combat.fight()`**: `aggroCheck` called each inner loop iteration when `aggroOn`; `doDebuffStuff` called before `combatCast` when `debuffAllOn > 0`; `doDebuffStuff` called in out-of-HP-range block when `debuffAllOn == 2`.
+- **Note**: `Sub WriteDebuffs` at mac:12569 writes self-debuff status to `KissAssist_Buffs.ini` for healers — that belongs to the cures system (M5). Step 4.8's debuff-casting is `DoDebuffStuff` + `DebuffCast`.
 
-**Done when:** script fights end-to-end: detect → assist → melee → DPS → burn → reset.
+**Done when:** script fights end-to-end: detect → assist → melee → DPS → debuffs → burn → reset.
 
 ---
 

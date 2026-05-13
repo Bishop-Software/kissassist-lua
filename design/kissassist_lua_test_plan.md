@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.7)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.8)
 
 ---
 
@@ -804,9 +804,74 @@ Run after all individual tests pass to verify modules interact correctly.
 | 4.7.23 | `/kaburn` sets burnID | Call `onBurn()` bind handler with no arg while in combat | `state.combat.burnID = myTargetID`; fight loop dispatches `doBurn()` next tick |
 | 4.7.24 | burnActive cleared on combatReset | Kill mob; `combatReset` called | `burnActive=false` reset for next fight |
 
+### 4.8 DoDebuffStuff + AggroCheck (Step 4.8)
+
+**Setup:** Script running in combat. Character has `[DPS]` entries with hp threshold ≥ 101 (debuff slots), `[Aggro]` section populated.
+
+#### 4.8.1 — Combat.aggroCheck
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.1.1 | No myTargetID — returns early | `myTargetID=0` | Returns immediately; no castWhat call |
+| 4.8.1.2 | Target is corpse — returns early | Target type is `corpse` | Returns immediately |
+| 4.8.1.3 | `<` gain-aggro — fires when below threshold | Entry `Taunt\|110\|<\|Mob`; `Me.PctAggro=80` | `castWhat('Taunt', myTargetID, 'Aggro')` called |
+| 4.8.1.4 | `<` gain-aggro — skips when above threshold | Same entry; `Me.PctAggro=115` | Skipped; no cast |
+| 4.8.1.5 | `>` lose-aggro — fires when above threshold | Entry `Jolt\|80\|>\|Mob`; `Me.PctAggro=95` | `castWhat('Jolt', myTargetID, 'Aggro')` called |
+| 4.8.1.6 | `>` lose-aggro — skips when below threshold | Same entry; `Me.PctAggro=60` | Skipped |
+| 4.8.1.7 | `<<` secondary — fires when secondary holder above threshold | Entry `Spell\|120\|<<\|Mob`; `SecondaryPctAggro=25` | Fires (adjPct=20, secPct=25 ≥ 20) |
+| 4.8.1.8 | `Me` target resolves to self | Entry with `\|Me` | `castTargetID = Me.ID()` |
+| 4.8.1.9 | `MA` target resolves to mainAssist | Entry with `\|MA` | `castTargetID = Spawn['=MainAssist'].ID()` |
+| 4.8.1.10 | `Pet` target resolves to pet | Entry with `\|Pet` | `castTargetID = Me.Pet.ID()` |
+| 4.8.1.11 | Cast SUCCESS → echoes and breaks | castWhat returns `CAST_SUCCESS` | Prints `Casting >> SpellName << to control AGGRO(<) on MobName`; loop stops |
+| 4.8.1.12 | `aggroOn=false` — skipped entirely | `aggroOn=false` in `state.combat` | aggroCheck block never entered in fight() |
+| 4.8.1.13 | aggroOff timer set on FD lose-aggro cast | `glt='>'`; `Me.Feigning()=true`; cast succeeds | `timers.aggroOff` set to `now + 20` |
+
+#### 4.8.2 — Cast.doDebuffStuff guards
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.2.1 | `debuffAllOn=0` — skip | `state.combat.debuffAllOn=0` | Returns immediately |
+| 4.8.2.2 | `debuffCount=0` — skip | `state.mez.debuffCount=0` | Returns immediately |
+| 4.8.2.3 | DPSPaused — skip | `state.dps.paused=true` | Returns immediately |
+| 4.8.2.4 | RespawnWnd open — skip | RespawnWnd open | Returns immediately |
+| 4.8.2.5 | Bard+MA+activeTarget — skip | `iAmABard=true`, `iAmMA=true`, `myTargetID≠0`, `aggroTargetID≠''` | Returns immediately |
+
+#### 4.8.3 — debuffCast behavior
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.3.1 | Debuff already on mob (dboList hit) | `dboTimer[1]` not expired; mob ID in `dboList[1]` | Slot skipped; no cast |
+| 4.8.3.2 | Timer expired → re-debuffs | `dboTimer[1]` expired | Proceeds to cast check |
+| 4.8.3.3 | Mob out of spell range — skip | Mob distance > spell range | Slot skipped |
+| 4.8.3.4 | Spell not ready, fwait=false — skip | Spell on cooldown; `fwait=false` | Skipped immediately |
+| 4.8.3.5 | Spell not ready, fwait=true — waits | Spell on short cooldown (< 2s); `fwait=true` | Waits up to 2s for ready, then casts |
+| 4.8.3.6 | SUCCESS updates dboList + dboTimer | Cast succeeds | Mob ID appended to `dboList[i]`; `dboTimer[i]` set to `now + duration` |
+| 4.8.3.7 | SUCCESS echoes | Cast succeeds | Prints `** Debuff SpellName on MobName` |
+
+#### 4.8.4 — DoDebuffStuff multi-mob behavior
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.4.1 | Primary mob debuffed | `firstMobID` is valid NPC | `debuffCast(firstMobID, true)` called |
+| 4.8.4.2 | XTarget add debuffed | Extra auto-hater in XTarget, in range, LOS | `debuffCast(xtID, false)` called |
+| 4.8.4.3 | XTarget same as firstMobID — skip | `xt.ID() == firstMobID` | Skipped (already handled as primary) |
+| 4.8.4.4 | XTarget out of range — skip | Mob distance ≥ `meleeDistance` | Skipped |
+| 4.8.4.5 | XTarget no LOS — skip | `xsp.LineOfSight()=false` | Skipped |
+| 4.8.4.6 | PC target — skip | XTarget is player character | Skipped |
+| 4.8.4.7 | Stale dboList cleaned | Dead mob ID in `dboList[1]` | ID removed from list on next DoDebuffStuff call |
+| 4.8.4.8 | Target restored after multi-mob | Debuffed secondary mob (target drifted) | Target restored to `myTargetID` after loop |
+
+#### 4.8.5 — debuffCount computation in Combat.init
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.5.1 | DPS entries with thresh ≥ 101 counted | `dpsArray[1]` has thresh 110; `dpsArray[2]` has thresh 50 | `state.mez.debuffCount=1` |
+| 4.8.5.2 | No debuff entries | All DPS entries have thresh ≤ 100 | `state.mez.debuffCount=0`; `combatCast` starts at index 1 |
+| 4.8.5.3 | All debuff entries | All DPS entries have thresh ≥ 101 | `debuffCount = #dpsArray`; `combatCast` DPS loop empty |
+
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.7)
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.8)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -827,8 +892,9 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
 | fight: CastMana / mana-sit logic | M5 |
 | fight: MercsDoWhat | M6 (merc module) |
-| fight: MezCheck / AECheck / AggroCheck in inner loop | M4.x / later |
-| fight: WriteDebuffs / DebuffStuff | M4 Step 4.8 |
+| fight: MezCheck / AECheck | M5 (mez module) |
+| fight: AggroCheck in inner loop | ✅ Step 4.8 |
+| fight: WriteDebuffs / DebuffStuff | ✅ Step 4.8 (`doDebuffStuff`) |
 | fight: DoBardStuff | M8 (bard module) |
 | fight: ChainPullNextMob puller path | M5 Step 5.x |
 | fight: AutoFireOn branches | M7 or later |
@@ -841,18 +907,18 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | combatReset: bard twist restart | M8 (bard module) |
 | combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
 | combatReset: PetHold re-enable | M6 (pet module) |
-| doBurn: condNo / abortFlag per-entry | M4 Step 4.8 |
-| combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M4 Step 4.8 |
-| combatCast: DPSSkip lower HP bound | M4 Step 4.8 |
-| combatCast: DPSOn==2 wait-for-cooldown mode | M4 Step 4.8 |
-| combatCast: DAMod duration modifiers | M4 Step 4.8 |
-| combatCast: Feign-death sequence (FDTimer) | M4 Step 4.8 |
-| combatCast: DPSInterval for untiered spells | M4 Step 4.8 |
+| doBurn: condNo / abortFlag per-entry | M10 (conditions module) |
+| combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M5 stretch |
+| combatCast: DPSSkip lower HP bound | M5 stretch |
+| combatCast: DPSOn==2 wait-for-cooldown mode | M5 stretch |
+| combatCast: DAMod duration modifiers | M5 stretch |
+| combatCast: Feign-death sequence (FDTimer) | M5 stretch |
+| combatCast: DPSInterval for untiered spells | M5 stretch |
 | combatCast: WeaveArray / CastWeave during cooldown | M8 (bard module) |
-| combatCast: WriteDebuffs at entry | M4 Step 4.8 |
-| combatCast: TargetSwitchingOn+IAmMA mid-rotation retarget | M4 Step 4.8 |
+| combatCast: WriteDebuffs at entry | ✅ Step 4.8 (`doDebuffStuff` before combatCast) |
+| combatCast: TargetSwitchingOn+IAmMA mid-rotation retarget | M5 stretch |
 | mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
-| mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M4 Step 4.8 |
+| mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M5 stretch |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
 | `state.session.heals` wire (castMem guard) | M5 |
 | Healing/cures triggered by events | M5 |
@@ -868,4 +934,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.7 complete.*
+*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.8 complete. Milestone 4 is now complete.*
