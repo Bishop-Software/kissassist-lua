@@ -9,6 +9,134 @@ local function dist2D(y1, x1, y2, x2)
     return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
 end
 
+-- Mirrors Sub BeforeAttack (kissassist.mac:2022).
+-- Fires pre-combat abilities from beforeArray before first melee swing.
+-- condCheck: 1=all entries, 2=only entries that have |cond flag set.
+local function beforeAttack(_tarID, condCheck)
+    local beforeArr = _state.arrays.beforeArray
+    for i = 1, #beforeArr do
+        local entry = beforeArr[i]
+        if not entry or entry == 'null' then return end
+        if (mq.TLO.Target.ID() or 0) == 0 then return end
+
+        local name = entry:match('^([^|]+)') or entry
+        if not name or name == '' or name == 'null' then return end
+
+        -- condCheck==2: skip entries without |cond (conditional-only pass)
+        if not entry:find('|cond', 1, true) and condCheck == 2 then
+            goto next_before
+        end
+        -- ConOn condition evaluation (deferred — conditions module)
+
+        -- Item
+        local item = mq.TLO.FindItem('=' .. name)
+        if item and (item.ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
+            mq.cmd('/useitem "' .. name .. '"')
+            mq.cmd('/echo ## Before Attack >> ' .. name .. ' <<')
+        -- AA
+        elseif (mq.TLO.Me.AltAbility(name).ID() or 0) ~= 0
+               and mq.TLO.Me.AltAbilityReady(name)()
+               and (mq.TLO.Me.AltAbility(name).Type() or 0) ~= 5
+               and name:lower() ~= 'twincast' then
+            mq.cmd('/alt act ' .. (mq.TLO.Me.AltAbility(name).ID() or 0))
+            mq.cmd('/echo ## Before Attack >> ' .. name .. ' <<')
+        -- Discipline (CombatAbility)
+        elseif mq.TLO.Me.CombatAbilityReady(name)()
+               and (mq.TLO.Spell(name) ~= nil)
+               and ((mq.TLO.Spell(name).EnduranceCost() or 0) < (mq.TLO.Me.CurrentEndurance() or 0)) then
+            mq.cmd('/disc "' .. name .. '"')
+            mq.cmd('/echo ## Before Attack >> ' .. name .. ' <<')
+        -- Activated skill/ability
+        elseif (mq.TLO.Me.Skill(name)() or 0) > 0 and mq.TLO.Me.AbilityReady(name)() then
+            mq.cmd('/doability "' .. name .. '"')
+            mq.cmd('/echo ## Before Attack >> ' .. name .. ' <<')
+        -- command: prefix (deferred — CastCommand)
+        end
+
+        mq.delay(150)
+        ::next_before::
+    end
+end
+
+-- Mirrors Sub CombatPet (kissassist.mac:2056).
+-- Sends pet to attack the current myTargetID mob if in range and below PetAssistAt%.
+local function combatPet()
+    if (mq.TLO.Me.Pet.ID() or 0) == 0 then return end
+    if mq.TLO.Pet.Combat() then return end
+    if _state.dps.paused then return end
+    if not _state.pet.combatOn then return end
+
+    Combat.combatTargetCheck(1)
+    local myID = _state.combat.myTargetID
+    if myID == 0 then return end
+
+    local sp       = mq.TLO.Spawn('id ' .. myID)
+    local dist3D   = sp and sp.Distance3D() or 999
+    local role     = _state.session.role
+
+    -- Pulling: summon pet if too far away (mac:2066-2075, Summon Companion AA)
+    if _state.pull.pulling then
+        if (mq.TLO.Me.AltAbility('Summon Companion').ID() or 0) ~= 0
+           and mq.TLO.Me.AltAbilityReady('Summon Companion')()
+           and (mq.TLO.Me.Pet.Distance() or 0) > 79 then
+            mq.cmd('/echo Pet! Get over here!')
+            -- CastAA deferred — cast module not yet wired
+        end
+    end
+
+    -- Wait for target buffs if target just changed (mac:2076-2078, minor)
+    -- BreakMez for pettank roles (deferred M6)
+    if mq.TLO.Target.Mezzed.ID() then return end
+
+    -- Send pet to attack or follow based on role and distance (mac:2082-2116)
+    local petAttackRange = _state.pet.attackRange
+    local campY = _state.movement.campY
+    local campX = _state.movement.campX
+    local meY   = mq.TLO.Me.Y() or 0
+    local meX   = mq.TLO.Me.X() or 0
+
+    if role == 'pettank' or role == 'pullerpettank' then
+        if _state.movement.returnToCamp then
+            local petY = mq.TLO.Me.Pet.Y() or 0
+            local petX = mq.TLO.Me.Pet.X() or 0
+            local petCampDist = dist2D(campY, campX, petY, petX)
+            local meCampDist  = dist2D(campY, campX, meY, meX)
+            local petStance   = mq.TLO.Me.Pet.Stance() or ''
+            if petStance ~= 'FOLLOW' then
+                if petCampDist > _state.movement.campRadius
+                   or meCampDist > _state.movement.campRadius then
+                    mq.cmd('/pet follow')
+                elseif meCampDist <= _state.movement.campRadius and dist3D > petAttackRange then
+                    mq.cmd('/pet follow')
+                end
+            end
+            if dist2D(campY, campX, meY, meX) <= _state.movement.campRadius
+               and dist3D < petAttackRange then
+                mq.cmd('/pet attack')
+                mq.delay(250)
+                mq.cmd('/pet swarm')
+            end
+        else
+            if dist3D < petAttackRange then
+                mq.cmd('/pet attack')
+                mq.delay(250)
+                mq.cmd('/pet swarm')
+            elseif (mq.TLO.Me.Pet.Stance() or '') ~= 'FOLLOW' then
+                mq.cmd('/pet follow')
+            end
+        end
+    else
+        if dist3D < petAttackRange then
+            mq.cmd('/pet attack')
+            mq.delay(250)
+            mq.cmd('/pet swarm')
+        elseif (mq.TLO.Me.Pet.Stance() or '') ~= 'FOLLOW' then
+            mq.cmd('/pet follow')
+        end
+    end
+    _state.timers.petAttack = os.clock() + 3
+end
+
 -- Mirrors Sub ValidateTarget (kissassist.mac:948).
 -- Validates current Target (or spawnID) as a legal attack target.
 -- Returns true if valid. Sets state.combat.validTarget as a side-effect.
@@ -151,18 +279,24 @@ function Combat.init(state, utils, cast)
         end
     end
 
+    -- Pet combat config
+    _state.pet.assistAt = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
+    _state.pet.combatOn = Config.get('Pet', 'PetCombatOn', '1') == '1'
+
     -- Named-mob watch list — sourced from KissAssist_Info.ini (zone-specific shared file).
     -- TODO: load NamedWatch entries from KissAssist_Info.ini when that file is added to Config.
     -- _state.combat.namedWatchList stays empty until that config path is wired.
 
-    utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d campRadius=%d',
+    utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d campRadius=%d petAssistAt=%d petCombatOn=%s',
         tostring(_state.combat.dpsOn),
         tostring(_state.combat.meleeOn),
         _state.combat.assistAt,
         _state.combat.meleeDistance,
         #_state.combat.dpsArray,
         #_state.combat.burnArray,
-        _state.movement.campRadius)
+        _state.movement.campRadius,
+        _state.pet.assistAt,
+        tostring(_state.pet.combatOn))
 end
 
 -- Mirrors MobRadar (kissassist.mac:7143).
@@ -674,6 +808,316 @@ function Combat.combatTargetCheck(setTarget)
         _state.combat.myTargetName, _state.combat.myTargetID, _state.combat.lastTargetID)
 end
 
+-- Mirrors Sub Combat (kissassist.mac:1036).
+-- Executes the melee/spell combat loop for the current myTargetID until the mob dies.
+-- Called from checkForCombat once a target has been acquired.
+function Combat.fight(fromWhere)
+    mq.doevents()
+
+    local myID = _state.combat.myTargetID
+    if myID == 0 or (mq.TLO.Target.ID() or 0) == 0 then return end
+    if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
+
+    -- LOS check; hunter roles bypass it (mac:1042-1043)
+    local role     = _state.session.role
+    local isHunter = role == 'hunter' or role == 'hunterpettank'
+    if not mq.TLO.Target.LineOfSight() and not isHunter then return end
+
+    if _state.dps.paused then return end
+
+    -- Mezzed target: non-MA won't attack below assistAt% to avoid breaking mez (mac:1047-1053)
+    if mq.TLO.Target.Mezzed.ID() then
+        if (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) ~= 0
+           and not _state.session.iAmMA then
+            local pct = mq.TLO.Spawn('id ' .. myID).PctHPs() or 100
+            if pct <= _state.combat.assistAt then
+                mq.delay(500)
+                return
+            end
+        end
+    end
+
+    -- Puller: don't engage while actively pulling and outside camp radius (mac:1039)
+    local isPuller = role == 'puller' or role == 'pullertank' or role == 'pullerpettank'
+    if isPuller and _state.pull.pulling then
+        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
+                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        if campDist >= _state.movement.campRadius then return end
+    end
+
+    -- CombatRadius: MaxRangeTo+5 if it exceeds MeleeDistance (mac:1056)
+    local sp = mq.TLO.Spawn('id ' .. myID)
+    local maxRange     = sp and sp.MaxRangeTo() or 0
+    local combatRadius = _state.combat.meleeDistance
+    if maxRange > combatRadius then combatRadius = maxRange + 5 end
+
+    -- Deferred: CheckCures/CheckHealth (M5), DoWeChase (M7), MezCheck (M4.x), DPS meter (M9)
+
+    -- Initial pet engagement check (mac:1078)
+    sp = mq.TLO.Spawn('id ' .. myID)
+    if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+       and (sp and sp.Distance3D() or 999) < _state.pet.attackRange then
+        combatPet()
+    end
+
+    -- Determine range condition (mob in melee range or MA+target both in camp) (mac:1080)
+    sp = mq.TLO.Spawn('id ' .. myID)
+    local mobPct  = sp and sp.PctHPs() or 100
+    local mobDist = sp and sp.Distance()  or 999
+    local spType  = sp and sp.Type()      or ''
+
+    local maSpawn  = mq.TLO.Spawn('=' .. _state.session.mainAssist)
+    local maY, maX = (maSpawn and maSpawn.Y() or 0), (maSpawn and maSpawn.X() or 0)
+    local tgtY = sp and sp.Y() or 0
+    local tgtX = sp and sp.X() or 0
+    local campToMA = dist2D(_state.movement.campY, _state.movement.campX, maY, maX)
+    local maToTgt  = dist2D(maY, maX, tgtY, tgtX)
+    local cr       = _state.movement.campRadius
+    local inRange  = mobDist < combatRadius
+                  or (campToMA <= cr and maToTgt <= cr)
+
+    -- ─── Main engage block: not corpse, HP ≤ assistAt, in range ───────────────
+    if spType:lower() ~= 'corpse' and mobPct <= _state.combat.assistAt and inRange then
+
+        -- CombatStart: announce first attack (mac:1081-1093)
+        if not _state.combat.combatStart then
+            _utils.debug('combat', 'fight: CombatStart set, Attacking=%s', tostring(_state.combat.attacking))
+            _state.session.mercAssisting = false
+            _state.combat.combatStart    = true
+            local tgtName = mq.TLO.Spawn('id ' .. myID).CleanName() or '?'
+            mq.cmd('/echo  ATTACKING -> ' .. tgtName .. ' <-')
+            -- DoBardStuff (deferred bard module)
+            -- BroadCast (deferred M9); echo locally for now
+            if role == 'tank' or role == 'pullertank' or role == 'hunter' then
+                mq.cmd('/echo [KA] TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
+            elseif role == 'pettank' or role == 'pullerpettank' or role == 'hunterpettank' then
+                local petName = mq.TLO.Me.Pet.CleanName() or 'Pet'
+                mq.cmd('/echo [KA] ' .. petName .. ' is TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
+            end
+            -- Hunter LOS position (deferred M7)
+        end
+
+        -- Look level when not underwater (mac:1095)
+        if not mq.TLO.Me.FeetWet() then mq.cmd('/look 0') end
+
+        -- Initiate attack (mac:1097-1127); AutoFireOn treated as always off (deferred)
+        if not _state.combat.attacking then
+            if _state.combat.meleeOn then
+                _state.combat.attacking = true
+                if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
+                -- Taunt for tank/hunter on first engage (mac:1105)
+                local isTankLike = role == 'tank' or role == 'pullertank' or role == 'hunter'
+                if isTankLike and (mq.TLO.Me.Skill('Taunt')() or 0) > 0
+                   and mq.TLO.Me.AbilityReady('Taunt')() then
+                    mq.cmd('/doability Taunt')
+                end
+                -- BeforeAttack abilities before first swing (mac:1107)
+                if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
+                    beforeAttack(myID, 1)
+                end
+                -- Pet (mac:1108-1110)
+                if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
+                    sp = mq.TLO.Spawn('id ' .. myID)
+                    if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+                       and not mq.TLO.Pet.Combat() then
+                        combatPet()
+                    end
+                end
+                -- CheckStick (deferred M7), ZAxisCheck (deferred M7)
+            else
+                -- MeleeOn off: pet-only combat (mac:1119-1127)
+                -- stick off (deferred M7)
+                if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
+                    sp = mq.TLO.Spawn('id ' .. myID)
+                    if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+                       and not mq.TLO.Pet.Combat() then
+                        combatPet()
+                        _state.combat.attacking = true
+                    end
+                end
+            end
+        end
+
+        -- Enable mez-mob scan for tank roles (mac:1131)
+        if role == 'tank' or role == 'pullertank'
+           or role == 'pettank' or role == 'pullerpettank' then
+            _state.mez.mobFlag = true
+        end
+
+        -- ─── Inner combat while loop (mac:1132-1315) ─────────────────────────
+        while true do
+            -- Drain all pending events before each iteration (mac:1135-1138)
+            repeat
+                _state.combat.eventFlag = false
+                mq.doevents()
+            until not _state.combat.eventFlag
+
+            -- Burn if flagged (mac:1139-1141)
+            if _state.combat.burnOn and _state.combat.burnID ~= 0 then
+                if _cast.doBurn then _cast.doBurn(_state.combat.burnID) end
+                _state.combat.burnID = 0
+            end
+
+            -- Deferred: SwitchMA offtank (M9), MercsDoWhat (M6)
+            -- Deferred: stick/distance maintenance (M7)
+            -- Deferred: MezCheck, AECheck, AggroCheck, CheckCures/CheckHealth (M4.x/M5)
+            -- Deferred: DoBardStuff (bard module)
+
+            -- NamedWatch: flag named mob for burn if in range (mac:1177)
+            if not _state.combat.namedCheck and _state.combat.burnOnNamed then
+                sp = mq.TLO.Spawn('id ' .. myID)
+                if (sp and sp.Distance() or 999) <= _state.combat.meleeDistance then
+                    _state.combat.namedCheck = true  -- NamedWatch logic deferred
+                end
+            end
+
+            -- Non-chainpull DPS path (mac:1178-1200)
+            if not (isPuller and _state.pull.chainPull) then
+                sp = mq.TLO.Spawn('id ' .. myID)
+                local curType = (sp and sp.Type() or ''):lower()
+                -- Dead/paused: exit combat (mac:1185-1187)
+                if curType == 'corpse' or (sp and sp.ID() or 0) == 0 or _state.dps.paused then
+                    Combat.combatReset(0, fromWhere .. '_inner')
+                    break
+                end
+
+                if _state.combat.dpsOn then
+                    -- Make visible if pure caster with no aggro timer (mac:1190)
+                    if not _state.combat.meleeOn
+                       and (_state.timers.aggroOff or 0) == 0
+                       and mq.TLO.Me.Invis() then
+                        mq.cmd('/makemevisible')
+                    end
+                    -- CombatCast (mac:1191) — cast module provides this in Step M4.6+
+                    if _cast.combatCast then
+                        local ccResult = _cast.combatCast()
+                        myID = _state.combat.myTargetID
+                        if myID == 0 then
+                            Combat.combatReset(0, fromWhere .. '_afterCast')
+                            break
+                        end
+                        -- tcnc = this cast no combat: restart loop iteration (mac:1196)
+                        if ccResult == 'tcnc' then goto continue_fight end
+                    end
+                else
+                    -- MashButtons (deferred)
+                end
+            end
+
+            -- Deferred: CastMana (M5), WriteDebuffs, second heal/cure check (M5)
+
+            -- Sync target state (mac:1216)
+            Combat.combatTargetCheck(1)
+            myID = _state.combat.myTargetID
+
+            -- Re-engage if target alive and in range (mac:1217-1253)
+            sp = mq.TLO.Spawn('id ' .. (myID ~= 0 and myID or 0))
+            if myID ~= 0 and (sp and sp.Type() or ''):lower() ~= 'corpse'
+               and not _state.dps.paused then
+                -- Melee re-attack (mac:1218-1240); AutoFireOn always off here (deferred)
+                if _state.combat.attacking and _state.combat.meleeOn then
+                    local tgtPct  = sp and sp.PctHPs() or 100
+                    local tgtDist = sp and sp.Distance() or 999
+                    if tgtPct <= _state.combat.assistAt and tgtDist < combatRadius then
+                        -- Re-target if we drifted (mac:1222-1224)
+                        if not _state.combat.targetSwitchingOn
+                           and (mq.TLO.Target.ID() or 0) ~= myID then
+                            mq.cmd('/squelch /target id ' .. myID)
+                            mq.delay(500, function()
+                                return (mq.TLO.Target.ID() or 0) == myID
+                            end)
+                        end
+                        -- CheckStick (deferred M7)
+                    end
+                    -- Keep attack on while standing (mac:1237)
+                    if (mq.TLO.Target.ID() or 0) ~= 0 then
+                        local meState = (mq.TLO.Me.State() or ''):lower()
+                        if meState == 'stand' or meState == 'mount' then
+                            mq.cmd('/squelch /attack on')
+                        end
+                    end
+                end
+                -- Pet engagement each iteration (mac:1249-1253)
+                if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
+                    sp = mq.TLO.Spawn('id ' .. myID)
+                    if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+                       and not mq.TLO.Pet.Combat() then
+                        combatPet()
+                    end
+                end
+                -- ChainPull puller path (deferred M5)
+
+            else
+                -- Target dead or gone (mac:1278-1309)
+                if _state.dps.paused or not _state.combat.targetSwitchingOn then
+                    Combat.combatReset(0, fromWhere .. '_targetGone')
+                    break
+                end
+                -- TargetSwitching: MA acquires next target (mac:1283-1308)
+                if _state.session.iAmMA then
+                    local curTgt = mq.TLO.Target.ID() or 0
+                    if curTgt ~= 0 and curTgt ~= myID then
+                        _state.combat.lastTargetID = myID
+                        _state.combat.myTargetID   = 0
+                        Combat.combatTargetCheck(1)
+                        myID = _state.combat.myTargetID
+                        if myID == 0 then
+                            _state.combat.myTargetID = _state.combat.lastTargetID
+                            Combat.combatReset(0, fromWhere .. '_noNextTarget')
+                            break
+                        end
+                        goto continue_fight
+                    else
+                        Combat.combatReset(0, fromWhere .. '_maNoTarget')
+                        break
+                    end
+                else
+                    Combat.combatReset(0, fromWhere .. '_noTarget')
+                    break
+                end
+            end
+
+            -- FeignAggroCheck: exit loop if still feigning after this iteration (mac:1310-1314)
+            if mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() then
+                Combat.feignAggroCheck()
+                mq.delay(250)
+                if mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() then break end
+            end
+
+            ::continue_fight::
+        end
+
+    -- ─── Out-of-HP-range block: mob in camp but above assistAt% (mac:1316-1331) ──
+    elseif inRange then
+        -- Burn check
+        if _state.combat.burnOn and _state.combat.burnID ~= 0 then
+            if _cast.doBurn then _cast.doBurn(_state.combat.burnID) end
+            _state.combat.burnID = 0
+        end
+        -- Sync target
+        if _state.combat.dpsOn or _state.combat.meleeOn or _state.pet.activeState then
+            Combat.combatTargetCheck(1)
+            myID = _state.combat.myTargetID
+        end
+        -- Pet / mez (mac:1322-1329)
+        if _state.pet.activeState and _state.pet.combatOn and myID ~= 0 then
+            -- MezCheck (deferred M4.x)
+            sp = mq.TLO.Spawn('id ' .. myID)
+            if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+               and not mq.TLO.Pet.Combat() then
+                combatPet()
+            end
+        end
+        -- Deferred: Bard twist (mac:1327), DebuffStuff (mac:1328)
+        -- BeforeAttack condCheck=2: fire only |cond entries (mac:1330)
+        if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
+            beforeAttack(myID, 2)
+        end
+    end
+
+    _utils.debug('combat', 'fight: done from=%s', tostring(fromWhere))
+end
+
 -- Mirrors Sub FeignAggroCheck (kissassist.mac:14524).
 -- If still feigning/invis after combat, waits out the aggroOff timer before standing.
 function Combat.feignAggroCheck()
@@ -1021,7 +1465,10 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
             Combat.getCombatTarget()
         end
 
-        -- Combat.fight() — placeholder for Step 4.5 (spell/melee rotation)
+        -- Engage combat for the acquired target (Step 4.5)
+        if _state.combat.myTargetID ~= 0 then
+            Combat.fight(fromWhere)
+        end
 
         -- FeignAggroCheck: if we FD'd to drop aggro, wait before standing (mac:538)
         if mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() then

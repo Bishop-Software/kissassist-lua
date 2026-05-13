@@ -360,18 +360,20 @@ Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC hat
 
 ---
 
-#### Step 4.5 — Combat (melee engagement)
+#### ✅ Step 4.5 — Combat (melee engagement)
 
 Mirrors `Combat` (kissassist.mac:1036) — the inner fight loop.
 
-- CombatRadius calculation from `Spawn[myTargetID].MaxRangeTo` vs `MeleeDistance`
-- `CombatStart` flag, announce "ATTACKING", `/attack on`, CheckStick (MQ2MoveUtils)
-- `BeforeAttack` (kissassist.mac:2022): cast pre-combat abilities from `BeforeArray` before first attack
-- Periodic `CheckHealth` calls during combat (every `HealInterval` ticks)
-- Pet engagement at `PetAssistAt`% mob HP
-- Calls `CombatTargetCheck` and `CombatCast` each iteration
+- **`Combat.fight(fromWhere)`**: entry guards (LOS, mezzed non-MA bailout, puller+pulling+out-of-camp, DPSPaused). CombatRadius = `max(MaxRangeTo, MeleeDistance) + 5`. Determines `inRange` as direct distance OR both MA and target within campRadius.
+- **Main engage block** (mob not corpse, HP ≤ assistAt, inRange): `CombatStart` flag — echoes `ATTACKING -> name <-`, local echo for TANKING roles (BroadCast deferred M9). `/look 0` when not underwater. Initiates attack: sets `attacking = true`, stands, taunts for tank/hunter, fires `beforeAttack()`, sends pet via `combatPet()`. CheckStick/ZAxisCheck deferred M7.
+- **`beforeAttack(_tarID, condCheck)`** (kissassist.mac:2022): local helper iterating `beforeArray`; tries each entry as item → AA → disc → ability; `condCheck==2` runs only `|cond`-flagged entries. ConOn condition evaluation deferred.
+- **`combatPet()`** (kissassist.mac:2056): local helper; guards (no pet, pet in combat, DPSPaused, !combatOn); `combatTargetCheck(1)`; for pettank with ReturnToCamp uses camp-relative follow/attack logic; other roles attack if in `petAttackRange`, follow otherwise; sets `timers.petAttack + 3s`. BreakMez deferred M6.
+- **Inner while loop**: event drain each iteration; Burn dispatch via `_cast.doBurn` (stub); NamedWatch stub (sets `namedCheck`); dead/paused target → `combatReset + break`; `_cast.combatCast()` stub (returns `'tcnc'` to restart iteration); `combatTargetCheck(1)`; melee re-attack + `/attack on` when standing; pet re-check each iteration; target-switching MA path (acquire next target or reset); FeignAggroCheck + break if still feigning. MeshButtons/CastMana/WriteDebuffs/Bard/Cures/Heals deferred. ChainPull puller path deferred M5.
+- **Out-of-HP-range else-if** (inRange but HP > assistAt or corpse): burn check, `combatTargetCheck(1)`, `combatPet()`, `beforeAttack(myID, 2)` for `|cond` entries.
+- **New state fields**: `pet.assistAt = 100`, `pet.combatOn = false` (loaded from `[Pet]` INI in `Combat.init`).
+- `Combat.fight(fromWhere)` called from `checkForCombat` when `myTargetID ~= 0`.
 
-**Done when:** script attacks target with melee; `Attacking` flag set.
+**Done when:** script attacks target with melee; `Attacking` flag set. ✅
 
 ---
 

@@ -219,7 +219,9 @@ local State = {
 
     pet = {
         activeState   = false,
+        assistAt      = 100,   -- PetAssistAt: mob HP% threshold to send pet (set from INI)
         attackRange   = 0,
+        combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
         focusOn       = false,
         globalToysGave = '',
         suspendState  = false,

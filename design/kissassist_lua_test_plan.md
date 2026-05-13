@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.4)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.5)
 
 ---
 
@@ -607,7 +607,96 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.4)
+### 4.5 Combat.fight — melee engagement loop (Step 4.5)
+
+**Setup:** Script running in an area with attackable NPCs. MA designated. `meleeOn=1`, `dpsOn=1` in INI. Stand near an NPC that the MA will target.
+
+#### 4.5.1 Entry guards
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.1 | `myTargetID == 0` when fight() is entered | Returns immediately; no attack |
+| 4.5.2 | NPC out of LOS (non-hunter role) | Returns; no `CombatStart` |
+| 4.5.3 | Hunter role, NPC out of LOS | Does NOT return on LOS check; continues to engage |
+| 4.5.4 | `dps.paused == true` | Returns immediately |
+| 4.5.5 | Target is mezzed, non-MA, HP ≤ assistAt | Waits 500ms and returns; does not attack |
+| 4.5.6 | Puller role, `pulling == true`, outside campRadius | Returns; does not engage |
+
+#### 4.5.2 CombatRadius calculation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.7 | `MaxRangeTo` ≤ `meleeDistance` | `combatRadius = meleeDistance` |
+| 4.5.8 | `MaxRangeTo` > `meleeDistance` (e.g. ranged mob) | `combatRadius = MaxRangeTo + 5` |
+
+#### 4.5.3 CombatStart and ATTACKING announce
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.9 | First time fight() engages target | `combatStart = true`; chat shows `ATTACKING -> <name> <-` |
+| 4.5.10 | Tank/hunter role | Also echoes `[KA] TANKING-> <name> <- ID:<id>` |
+| 4.5.11 | PetTank role | Echoes `[KA] <PetName> is TANKING-> <name> <- ID:<id>` |
+| 4.5.12 | CombatStart already true | Announce not repeated on subsequent calls |
+
+#### 4.5.4 Melee initiation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.13 | `meleeOn=true`, character sitting | `/stand` issued before attack |
+| 4.5.14 | Tank/hunter with Taunt skill ready | `/doability Taunt` issued on first engage |
+| 4.5.15 | Not yet in combat, `beforeArray[1] ~= 'null'` | `beforeAttack(myID, 1)` fires configured pre-combat abilities |
+| 4.5.16 | `attacking = true` already | No repeated `/attack on` or `beforeAttack` on re-entry |
+| 4.5.17 | `meleeOn=false`, pet configured, mob in pet range | Pet sent to attack; `attacking = true` set via pet path |
+
+#### 4.5.5 beforeAttack helper
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.18 | Entry is a ready item (exact name) | `/useitem` issued; echoes `## Before Attack >> <name> <<` |
+| 4.5.19 | Entry is a ready AA | `/alt act <id>` issued |
+| 4.5.20 | Entry is a ready disc with sufficient endurance | `/disc "<name>"` issued |
+| 4.5.21 | Entry is a ready activated skill | `/doability "<name>"` issued |
+| 4.5.22 | Target clears mid-loop | Returns immediately without processing remaining entries |
+| 4.5.23 | `condCheck=2`, entry has no `\|cond` | Entry skipped |
+| 4.5.24 | `condCheck=2`, entry has `\|cond` | Entry processed normally |
+
+#### 4.5.6 combatPet helper
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.25 | No pet summoned | Returns immediately |
+| 4.5.26 | Pet already in combat | Returns; no `/pet attack` |
+| 4.5.27 | Mob distance < `petAttackRange`, not mezzed | `/pet attack` + `/pet swarm` issued; `timers.petAttack` set +3s |
+| 4.5.28 | Mob distance ≥ `petAttackRange` | `/pet follow` if not already following |
+| 4.5.29 | PetTank + ReturnToCamp: me in camp, mob in range | `/pet attack` + `/pet swarm` |
+| 4.5.30 | PetTank + ReturnToCamp: pet outside campRadius | `/pet follow` issued |
+| 4.5.31 | Target mezzed | Returns without sending pet |
+
+#### 4.5.7 Inner combat loop
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.32 | Target becomes corpse mid-loop | `combatReset(0, ...)` called; loop breaks; `attacking = false`; `/attack off` |
+| 4.5.33 | `dps.paused` becomes true mid-loop | Treated as dead target: `combatReset + break` |
+| 4.5.34 | `combatTargetCheck(1)` changes `myTargetID` | Next iteration uses updated ID |
+| 4.5.35 | Target in range, `attacking=true`, standing | `/attack on` re-issued each iteration if standing/mounted |
+| 4.5.36 | `targetSwitchingOn=false`, current target drifts from myTargetID | `/target id <myTargetID>` re-issued |
+| 4.5.37 | MA: current target dead, TargetSwitchingOn=true, new target found | `combatTargetCheck(1)` acquires next target; loop continues |
+| 4.5.38 | MA: TargetSwitchingOn=true, no next target | `lastTargetID` restored; `combatReset + break` |
+| 4.5.39 | Non-MA: target dead, TargetSwitchingOn=false | `combatReset(0, '_targetGone') + break` |
+| 4.5.40 | Character feigning after iteration | `feignAggroCheck()` called; if still feigning, loop breaks |
+| 4.5.41 | Tank/pullertank role enters combat | `mez.mobFlag = true` set |
+
+#### 4.5.8 Out-of-HP-range else-if block
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.42 | Mob in range, HP > assistAt (approaching) | `combatTargetCheck(1)` called; `beforeAttack(myID, 2)` fires `\|cond` entries |
+| 4.5.43 | `petCombatOn=true`, mob in petAttackRange, HP ≤ petAssistAt | `combatPet()` called in this block |
+
+---
+
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.5)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -616,7 +705,6 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
 | `namedWatchList` population | M4 (needs KissAssist_Info.ini loader) |
 | `autoBurnTimer` INI key | M4 Step 4.7 (Burn section) |
-| `Combat.fight()` — melee/spell rotation stub in checkForCombat | M4 Step 4.5 |
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
 | BroadCast add/tank-announce (`/echo` stub) | M9 (cross-char comms) |
 | `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
@@ -626,12 +714,26 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
 | CheckForCombat tank EnduranceCheck | M6 (buffs module) |
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
+| fight: CheckCures / CheckHealth during combat | M5 (healing module) |
+| fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
+| fight: CastMana / mana-sit logic | M5 |
+| fight: MercsDoWhat | M6 (merc module) |
+| fight: MezCheck / AECheck / AggroCheck in inner loop | M4.x / later |
+| fight: WriteDebuffs / DebuffStuff | M4 Step 4.8 |
+| fight: DoBardStuff | M8 (bard module) |
+| fight: ChainPullNextMob puller path | M5 Step 5.x |
+| fight: AutoFireOn branches | M7 or later |
+| fight: FaceMobOn | M7 (movement module) |
+| fight: BreakMez for pettank | M6 (pet module) |
+| fight: `beforeAttack` ConOn condition evaluation | M10 (conditions module) |
+| fight: `combatPet` Summon Companion AA cast | M6 (pet/cast module) |
 | combatReset: DPS meter output | M9 (MQ2DPSAdv) |
 | combatReset: loot after kill | M8 (loot module) |
 | combatReset: bard twist restart | M8 (bard module) |
 | combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
 | combatReset: PetHold re-enable | M6 (pet module) |
-| DPS rotation (CombatCast) | M4 Step 4.6 |
+| DPS rotation (`_cast.combatCast`) | M4 Step 4.6 |
+| Burn rotation (`_cast.doBurn`) | M4 Step 4.7 |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 / M6 |
 | `state.session.heals` wire (castMem guard) | M5 |
 | Healing/cures triggered by events | M5 |
@@ -647,4 +749,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.4 complete.*
+*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.5 complete.*
