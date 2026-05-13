@@ -377,16 +377,34 @@ Mirrors `Combat` (kissassist.mac:1036) — the inner fight loop.
 
 ---
 
-#### Step 4.6 — CombatCast + CastDPSSpellCheck + MashButtons
+#### Step 4.6 — CombatCast + CastDPSSpellCheck + MashButtons ✅
 
 Mirrors `CombatCast` (kissassist.mac:1616) — DPS spell/AA rotation inside the combat loop.
 
-- Iterate DPS array entries (format `spell|target|cond|...`): call `Cast.castWhat` for each when ready
-- Parse target type from array entry (`Mob`, `Me`, `MA`, `Group1..5`, spawn name)
-- `CastDPSSpellCheck` (kissassist.mac:2919): check if spell/DoT already on target via `Target.MyBuff[name]` — fills the M4 stub in `Cast.castWhat`
-- `MashButtons` (kissassist.mac:1973): iterate `MashArray` for instant-cast AAs/abilities
+- **`castDPSSpellCheck(spellName)`** (kissassist.mac:2919): local helper in `modules/cast.lua`. Checks `Target.Buff[name].Caster == Me` to skip re-casting active DoTs. Also checks SPA-470 trigger chains (proc DoTs). Returns true if spell already on target by me.
+- **`mashButtons(_tarID)`** (kissassist.mac:1973): local helper in `modules/cast.lua`. Iterates `state.arrays.mashArray`; for each entry fires ready item/AA/disc/skill/command. Retargets if target drifted. Returns without cast if `dpsOn=false`, not in STAND/MOUNT state, no target, or corpse. Cond check deferred M5.
+- **`Cast.combatCast()`** (kissassist.mac:1616): public function in `modules/cast.lua`. Iterates `state.combat.dpsArray` starting at `debuffCount+1` (debuff slots handled by WriteDebuffs, deferred Step 4.8). For each entry:
+  - Drains events via EventFlag repeat loop before each entry.
+  - Validates target (not corpse/dead, not DPSPaused).
+  - Parses `|`-delimited entry: `spellName|hpThresh|targetType|opt4|opt5`. Breaks if `hpThresh` is missing/zero.
+  - Skips `|weave`, `|mash`, `|ambush` tagged entries (handled elsewhere).
+  - Checks readiness (SpellReady/AltAbilityReady/CombatAbilityReady/AbilityReady/ItemReady); skips if nothing ready.
+  - Mezzed guard: non-MA skips non-utility spells on mezzed targets.
+  - HP% gate: skips if `dpsOn` and target HP > `dpsAt` (per-entry threshold or `assistAt` for MA).
+  - Target resolution: `Me`/`Feign` → Me.ID; `MA`/`maonce` → MainAssist (or pet if pettank role); `Group1–5` → Group.Member; default → myTargetID.
+  - Self-buff skip: `Me` target already has buff/song → skips.
+  - Attack-off for self/MA spells when not MA (restores after cast).
+  - Spell cooldown skip: gem-spell while `SpellInCooldown` → `goto next_dps` (DPSOn==2 wait mode deferred).
+  - Calls `castDPSSpellCheck` for Mob/Target/default entries to skip active DoTs.
+  - Calls `Cast.castWhat(spellName, castTargetID, 'dps')`.
+  - Re-enables melee attack if dropped (`/squelch /attack on`).
+  - Returns `'tcnc'` if castWhat returns `'tcnc'` (propagates no-combat-restart signal to fight()).
+  - Sets `state.dps.lastCast`; echoes spell-on-target for SUCCESS; echoes RESISTED.
+  - Per-slot timers (ABTimer/DPSTimer/FDTimer), DAMod, DPSSkip lower bound, WeaveArray/CastWeave, ConOn/CondNo, WriteDebuffs, Feign-death sequence, DPSInterval, DPSOn==2 mode all deferred Step 4.8 / M5.
+  - Ends by calling `mashButtons(myTargetID)`.
+- `Cast.combatCast` is already wired in `Combat.fight()` inner loop via `if _cast.combatCast then _cast.combatCast() end` (Step 4.5 stub now live).
 
-**Done when:** script casts DPS spells and AAs during combat.
+**Done when:** script casts DPS spells and AAs during combat. ✅
 
 ---
 

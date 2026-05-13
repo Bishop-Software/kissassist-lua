@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.5)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.6)
 
 ---
 
@@ -696,7 +696,86 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.5)
+### 4.6 Cast.combatCast — DPS rotation (Step 4.6)
+
+**Setup:** Script running. MA designated. `dpsOn=1` in INI. `[DPS]` section has at least two entries (one spell, one AA). Stand near an attackable NPC. `meleeOn=1`.
+
+#### 4.6.1 Basic DPS rotation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.1 | `dpsOn=true`, script enters combat | `Cast.combatCast()` called from fight() inner loop; DPS spells/AAs fire in order |
+| 4.6.2 | Ready memed spell in DPS array at HP < threshold | `castWhat` called; spell casts; echoes `** SpellName on >> <target> <<` |
+| 4.6.3 | Ready AA in DPS array | `/alt act <ID>` fires via castAA path |
+| 4.6.4 | Ready disc in DPS array | `/disc <ID>` fires via castDisc path |
+| 4.6.5 | Entry with no HP threshold (malformed: `SpellName||Mob`) | Loop breaks on that entry; entries after it not attempted |
+| 4.6.6 | DPS array empty or all entries at index > debuffCount | `mashButtons` called immediately; returns without error |
+
+#### 4.6.2 Target validation and corpse guard
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.7 | Target becomes corpse between DPS entries | `combatCast` returns immediately on next iteration |
+| 4.6.8 | `dps.paused = true` mid-rotation | Returns immediately; no further casts |
+| 4.6.9 | `myTargetID = 0` on entry | Returns immediately |
+
+#### 4.6.3 HP% gate
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.10 | `dpsOn=true`, target HP 98%, entry threshold 95% | Entry skipped (HP > dpsAt) |
+| 4.6.11 | Target HP 90%, entry threshold 95% | Entry cast |
+| 4.6.12 | `iAmMA=true`, entry threshold 80%, global assistAt 95% | Uses assistAt 95% (MA ignores per-entry threshold) |
+
+#### 4.6.4 Target type resolution
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.13 | Entry has `Me` target type | `castTargetID = Me.ID`; castWhat targets self |
+| 4.6.14 | Entry has `MA` target type, non-pettank role | `castTargetID = Spawn[=MainAssist].ID` |
+| 4.6.15 | Entry has `MA` target type, pettank role | `castTargetID = Me.Pet.ID` |
+| 4.6.16 | Entry has `Group2` target type | `castTargetID = Group.Member(2).ID` |
+| 4.6.17 | `Me` target type, buff already on me | Entry skipped; no re-cast |
+
+#### 4.6.5 DPS stacking guard (castDPSSpellCheck)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.18 | DoT spell already on target, cast by me | Entry skipped via `castDPSSpellCheck` |
+| 4.6.19 | Same DoT on target but cast by another player | NOT skipped (different caster) |
+| 4.6.20 | DoT not on target | Cast proceeds normally |
+| 4.6.21 | Spell uses SPA-470 (proc DoT trigger), trigger already on target by me | Entry skipped |
+
+#### 4.6.6 Weave/Mash/Ambush skips
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.22 | Entry string contains `\|weave` | Skipped in DPS loop (goto next_dps) |
+| 4.6.23 | Entry string contains `\|mash` | Skipped in DPS loop |
+| 4.6.24 | Entry string contains `\|ambush` | Skipped in DPS loop |
+
+#### 4.6.7 Attack-off for self/MA casts
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.25 | `Me` targeted spell, non-MA caster, in combat | `/attack off` before cast; restored after |
+| 4.6.26 | MA-targeted spell, MA caster | No attack-off (iAmMA guard) |
+
+#### 4.6.8 MashButtons
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.27 | `mashArray[1]` = ready AA name | `/alt act <ID>` fired; echoes `## Mashing >> <name> <<` if went on cooldown |
+| 4.6.28 | `mashArray[1]` = ready item name | `/useitem "<name>"` fired |
+| 4.6.29 | `mashArray[1]` = ready disc (sufficient endurance) | `/disc <ID>` fired (live) or `/disc "<name>"` (emu) |
+| 4.6.30 | `mashArray[1]` = `'null'` | Returns immediately without firing anything |
+| 4.6.31 | Target becomes corpse during mash loop | Returns immediately |
+| 4.6.32 | `dpsOn=false` | `mashButtons` returns immediately; no mash fires |
+| 4.6.33 | Character sitting | `mashButtons` returns (not STAND/MOUNT state) |
+
+---
+
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.6)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -732,9 +811,19 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | combatReset: bard twist restart | M8 (bard module) |
 | combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
 | combatReset: PetHold re-enable | M6 (pet module) |
-| DPS rotation (`_cast.combatCast`) | M4 Step 4.6 |
 | Burn rotation (`_cast.doBurn`) | M4 Step 4.7 |
-| DPS/Buffs stacking checks in castWhat | M4 Step 4.6 / M6 |
+| combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M4 Step 4.8 |
+| combatCast: DPSSkip lower HP bound | M4 Step 4.8 |
+| combatCast: DPSOn==2 wait-for-cooldown mode | M4 Step 4.8 |
+| combatCast: DAMod duration modifiers | M4 Step 4.8 |
+| combatCast: Feign-death sequence (FDTimer) | M4 Step 4.8 |
+| combatCast: DPSInterval for untiered spells | M4 Step 4.8 |
+| combatCast: WeaveArray / CastWeave during cooldown | M8 (bard module) |
+| combatCast: WriteDebuffs at entry | M4 Step 4.8 |
+| combatCast: TargetSwitchingOn+IAmMA mid-rotation retarget | M4 Step 4.8 |
+| mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
+| mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M4 Step 4.8 |
+| DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
 | `state.session.heals` wire (castMem guard) | M5 |
 | Healing/cures triggered by events | M5 |
 | Mez timer reset (MezBroke) | M5 |
@@ -749,4 +838,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.5 complete.*
+*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.6 complete.*
