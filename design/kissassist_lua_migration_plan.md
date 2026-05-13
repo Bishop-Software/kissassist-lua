@@ -301,7 +301,7 @@ Additional logic:
 
 ---
 
-### Milestone 4 — Combat Core 🔄 IN PROGRESS
+### Milestone 4 — Combat Core ✅ COMPLETE
 **Goal:** Script fights when controlling a single character.
 
 - `combat.lua` — `CheckForCombat`, `Combat`, `CombatTargetCheck`, `CombatTargetCheckRaid`
@@ -441,12 +441,69 @@ Mirrors `Burn` (kissassist.mac:11770).
 ---
 
 ### Milestone 5 — Healing & Recovery
-**Goal:** Character keeps self and group alive.
+**Goal:** Character keeps self and group alive; dead players get rezzed; debuffs get cured.
 
 - `healing.lua` — `CheckHealth`, `DoGroupHealStuff`, `CheckCures`, `RezCheck`, `RezWithCheck`
 - Health threshold triage, MQ2Rez plugin event handling
 
 **Done when:** Healer classes heal group members and rez dead players.
+
+---
+
+#### ✅ Step 5.1 — `healing.lua` scaffold + INI wiring + state audit
+
+Create `modules/healing.lua` with `Heal.init(state, utils, cast)`. Load all heal config from INI into `state.heal`: `healsOn`, `sHealPct`, `groupWatchPct`, `healRemChk1–3`, `autoRezAll`, `corpseRezCheck`, medding thresholds, single-heal flags. Audit `state.heal` in `state.lua` for any missing fields and add them. Wire `Heal.init` into `init.lua`. Wire `/addimmune` bind (currently a stub in `binds.lua`).
+
+- **`modules/healing.lua`** created with `Heal.init(state, utils, cast)`. Loads `[Heals]`, `[Cures]`, and `[General]` med/group-watch config into `state.heal`. `GroupWatchOn` pipe-format (`1|pct`) parsed to split `groupWatchOn` and `groupWatchPct`. Stub comments for Steps 5.2–5.6.
+- **`state.lua` heal table** — 16 new fields added: `healsOn`, `healsArray`, `curesOn`, `curesArray`, `healInterval`, `autoRezOn`, `xTarHeal`, `xTarHealList`, `healGroupPetsOn`, `rezMeLast`, `medOn` (default true), `medStart` (20), `medStop` (100), `medCombat`, `groupWatchOn`, `corpsRecoveryOn`.
+- **`init.lua`** — `Heal` required; `Heal.init(State, Utils, Cast)` called after `Combat.init`.
+- **`/addimmune` bind** (`binds.lua`) — targets current NPC; strips `#` prefix and corpse suffix; appends ID to `state.mez.immuneIDs`; persists name to `InfoFileName` INI under zone key `MezImmune`.
+
+**Done when:** module loads cleanly; heal state fields populated from INI. ✅
+
+---
+
+#### Step 5.2 — `CheckHealth`: self-triage + single-heal dispatch
+
+Port `Sub CheckHealth` — the main health triage entry point. Self-heal path (`sHealPct` threshold, `singleHealPoint`), MA-heal path, group member scan (lowest HP below threshold). Guards: dead, hovering, DMZ, medding, mezzed. Calls `Cast.castWhat(..., 'SingleHeal')`.
+
+**Done when:** script heals self when HP drops below threshold.
+
+---
+
+#### Step 5.3 — `DoGroupHealStuff`: group heal + HoT + medding
+
+Port `Sub DoGroupHealStuff`. Count group members below `groupWatchPct`; decide single-target triage vs AoE/group heal. HoT (heal-over-time) slot management. Medding: sit-to-med control (`state.heal.medding`, `state.timers.sitToMed`), interrupted-medding event wiring (deferred from Step 2.2).
+
+**Done when:** script fires group heals when multiple members are low.
+
+---
+
+#### Step 5.4 — `CheckCures` + `WriteDebuffs`
+
+Port `Sub CheckCures`: iterate cure array from INI, check group members for matching debuffs by SPA type, call `Cast.castWhat` with `'cure'` sentFrom. Port `Sub WriteDebuffs` (mac:12569): write self-debuff status to `KissAssist_Buffs.ini` for cross-character healer awareness. Wire `MezBroke` timer reset that was deferred in Step 2.2.
+
+**Done when:** script removes debuffs from group members; `KissAssist_Buffs.ini` updated with self-debuff state.
+
+---
+
+#### Step 5.5 — `RezCheck` / `RezWithCheck`
+
+MQ2Rez integration. `RezCheck`: scan for dead group members needing rez, check `autoRezAll`. `RezWithCheck`: validate rez target is recoverable (not LD, not already rezzing), call `Cast.castWhat` with `'Rez'` sentFrom. `corpseRezCheck` state management. Rez sickness guard.
+
+**Done when:** script rezzes dead group members using MQ2Rez.
+
+---
+
+#### Step 5.6 — Wire into combat loop + main loop
+
+Add `Heal.checkHealth()` and `Heal.checkCures()` calls in `Combat.fight()` inner loop (currently commented as deferred). Add heal/rez/cure checks to the `init.lua` main loop for out-of-combat contexts. Verify heal interrupts in `castSpell` fire correctly when `sentFrom == 'SingleHeal'` or `'GroupHeal'` (cast interrupt guards for those sentFrom values are already stubbed in `cast.lua`).
+
+**Done when:** heals fire mid-combat and out-of-combat; rez fires after fights.
+
+---
+
+**Suggested order:** 5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 5.6. Steps 5.2 and 5.3 can be worked together since they share the same triage scan logic.
 
 ---
 

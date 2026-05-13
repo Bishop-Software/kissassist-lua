@@ -209,6 +209,23 @@ local State = {
         singleHealPoint     = false,
         singleHealPointMA   = false,
         singleHealPointRange = false,
+        -- Step 5.1 — INI-loaded fields (defaults mirror Bind_Settings mac defaults)
+        healsOn         = false,
+        healsArray      = {},
+        curesOn         = false,
+        curesArray      = {},
+        healInterval    = 0,
+        autoRezOn       = false,
+        xTarHeal        = false,
+        xTarHealList    = '',
+        healGroupPetsOn = false,
+        rezMeLast       = false,
+        medOn           = true,   -- mac default: 1
+        medStart        = 20,
+        medStop         = 100,
+        medCombat       = false,
+        groupWatchOn    = false,
+        corpsRecoveryOn = false,
     },
 
     buffs = {

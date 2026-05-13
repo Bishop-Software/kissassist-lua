@@ -1,4 +1,4 @@
-# KissAssist Lua — In-Game Test Plan (Milestones 1–4)
+# KissAssist Lua — In-Game Test Plan (Milestones 1–5)
 
 All tests are manual and in-game. No automated test framework exists.
 Tests are ordered from cheapest (startup/config) to most interactive (casting).
@@ -221,7 +221,7 @@ These fire from game text. Trigger each by causing the condition in-game or by l
 | 2.5.8 | `/campfire` | `>> Campfire disabled` (when `campfireOn=false`) |
 | 2.5.9 | `/addpull` | `>> AddToPull — M7` |
 | 2.5.10 | `/addignore` | `>> AddToIgnore — M7` |
-| 2.5.11 | `/addimmune` | `>> AddMezImmune — M5` |
+| 2.5.11 | `/addimmune` | ~~stub~~ — implemented Step 5.1; see Section 5.2 |
 | 2.5.12 | `/writespells` | `>> WriteMySpells — M10` |
 | 2.5.13 | `/kisscheck` | `>> KissCheck (INI scan) — M10` |
 | 2.5.14 | `/kasettings` | `>> KaSettings — M11` |
@@ -592,21 +592,6 @@ end)
 
 ---
 
-## Section 5 — Integration Smoke Test
-
-Run after all individual tests pass to verify modules interact correctly.
-
-| # | Scenario | Steps | Expected |
-|---|----------|-------|----------|
-| 5.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 5.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 5.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 5.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 5.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 5.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
-
----
-
 ### 4.5 Combat.fight — melee engagement loop (Step 4.5)
 
 **Setup:** Script running in an area with attackable NPCs. MA designated. `meleeOn=1`, `dpsOn=1` in INI. Stand near an NPC that the MA will target.
@@ -871,6 +856,78 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+## Section 5 — Healing & Recovery (Milestone 5)
+
+---
+
+### 5.1 Heal.init — module load and state wiring (Step 5.1)
+
+**Setup:** Valid pickle config with `[Heals]`, `[Cures]`, and `[General]` sections populated. Start with `/lua run kissassist-lua assist TankName debug`.
+
+#### 5.1.1 — Config loading
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.1.1 | Start script with `[Heals] HealsOn=1` | `state.heal.healsOn = true`; debug line: `Heal.init done — healsOn=true(N) ...` |
+| 5.1.2 | `[Heals] HealsOn=0` (default) | `state.heal.healsOn = false` |
+| 5.1.3 | `[Heals] Heals1=Devout Light Rk. II\|50` through `Heals3=...` | `state.heal.healsArray` has 3 entries; `healsArray[1] = 'Devout Light Rk. II\|50'` |
+| 5.1.4 | `[Heals]` section absent or empty | `state.heal.healsArray = {}`; no crash |
+| 5.1.5 | `[Cures] CuresOn=1` | `state.heal.curesOn = true` |
+| 5.1.6 | `[Cures] Cures1=Expurgation Rk. II\|poison` through `Cures3=...` | `state.heal.curesArray` has 3 entries |
+| 5.1.7 | `[General] MedOn=1` (default) | `state.heal.medOn = true` |
+| 5.1.8 | `[General] MedOn=0` | `state.heal.medOn = false` |
+| 5.1.9 | `[General] MedStart=30`, `MedStop=95` | `state.heal.medStart = 30`; `state.heal.medStop = 95` |
+| 5.1.10 | `[General] MedStart` absent | `state.heal.medStart = 20` (mac default) |
+| 5.1.11 | `[General] GroupWatchOn=1\|25` (pipe format) | `state.heal.groupWatchOn = true`; `state.heal.groupWatchPct = 25` |
+| 5.1.12 | `[General] GroupWatchOn=0` (plain) | `state.heal.groupWatchOn = false`; `groupWatchPct` unchanged (default 20) |
+| 5.1.13 | `[Heals] AutoRezOn=1` | `state.heal.autoRezOn = true` |
+| 5.1.14 | `[Heals] XTarHeal=1` | `state.heal.xTarHeal = true` |
+| 5.1.15 | `[Heals] RezMeLast=1` | `state.heal.rezMeLast = true` |
+| 5.1.16 | `[Heals] HealGroupPetsOn=1` | `state.heal.healGroupPetsOn = true` |
+| 5.1.17 | `[General] CorpseRecoveryOn=1` | `state.heal.corpsRecoveryOn = true` |
+| 5.1.18 | `[General] MedCombat=1` | `state.heal.medCombat = true` |
+
+#### 5.1.2 — Debug output
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.1.19 | Start with `debug` flag | Chat shows `[heals] Heal.init done — healsOn=true(N) curesOn=true(N) medOn=true medStart=20 medStop=100` (values from INI) |
+| 5.1.20 | No INI / defaults only | No crash; all `state.heal` fields have their default values |
+
+---
+
+### 5.2 /addimmune bind (Step 5.1)
+
+**Setup:** Script running. Various targets available.
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.2.1 | `/addimmune` with NPC targeted | `state.mez.immuneIDs` gains `\|<ID>`; prints `>> Mez Immune -> <name> <- ID:<id> Added to immune list.`; INI updated |
+| 5.2.2 | `/addimmune` with no target | Prints `--AddMezImmune: Target an NPC to add to the mez immune list.`; no state change |
+| 5.2.3 | `/addimmune` targeting a PC | Prints same error message; no state change |
+| 5.2.4 | `/addimmune` same NPC twice | Second call prints `>> <name> (ID:<id>) is already on the mez immune list.`; no duplicate in `immuneIDs` |
+| 5.2.5 | `/addimmune` with named mob (`CleanName` starts with `#`) | `#` stripped; `immuneIDs` has ID; INI has name without `#` |
+| 5.2.6 | `/addimmune` targeting a corpse (`CleanName` ends with `'s corpse'`) | Corpse suffix stripped; base name stored |
+| 5.2.7 | INI write path — valid `infoFileName` and `zoneName` | `Ini[infoFileName][zoneName][MezImmune]` contains the mob name after call |
+| 5.2.8 | INI write path — second mob added | Existing entry appended with comma separator; no overwrite of first name |
+
+---
+
+## Section 6 — Integration Smoke Test
+
+Run after all individual tests pass to verify modules interact correctly.
+
+| # | Scenario | Steps | Expected |
+|---|----------|-------|----------|
+| 6.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 6.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 6.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 6.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 6.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 6.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.8)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -920,9 +977,14 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
 | mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M5 stretch |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
-| `state.session.heals` wire (castMem guard) | M5 |
-| Healing/cures triggered by events | M5 |
-| Mez timer reset (MezBroke) | M5 |
+| `state.session.heals` wire (castMem guard) | M5 Step 5.2 |
+| `/addimmune` bind | ✅ Step 5.1 |
+| Heal.init — INI loading + state wiring | ✅ Step 5.1 |
+| Healing/cures triggered by events | M5 Steps 5.2–5.4 |
+| Mez timer reset (MezBroke) | M5 Step 5.4 |
+| CheckHealth / DoGroupHealStuff | M5 Steps 5.2–5.3 |
+| CheckCures / WriteDebuffs (healer) | M5 Step 5.4 |
+| RezCheck / RezWithCheck | M5 Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
@@ -934,4 +996,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.8 complete. Milestone 4 is now complete.*
+*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Step 5.1 complete. Section 5 added for Milestone 5 tests.*
