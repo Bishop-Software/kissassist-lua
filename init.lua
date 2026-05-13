@@ -64,6 +64,9 @@ printf('\agKissAssist ready. \awEntering main loop.')
 -- Main loop — mq.delay() processes events internally in MQ2Lua
 while not State.terminate do
     mq.doevents()
+    if State.combat.dpsOn or State.combat.meleeOn then
+        Combat.checkForCombat(0, 'main', 0)
+    end
     mq.delay(50)
 end
 

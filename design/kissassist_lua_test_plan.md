@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.3)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.4)
 
 ---
 
@@ -511,6 +511,85 @@ end)
 | 4.3.3.9 | XTarAutoSet re-targets | `xTarAutoSet = true`; `myTargetID` changed; not MA | `/target id N` issued; `/xtarget set` called |
 | 4.3.3.10 | Debug output | Run with `debug` flag | Prints `combatTargetCheck: myTarget=... id=... lastID=...` |
 
+### 4.4 Combat.checkForCombat / Combat.combatReset / Combat.checkForAdds / Combat.feignAggroCheck (Step 4.4)
+
+**Setup:** Script running with `dpsOn = true` or `meleeOn = true`. Character in a zone with valid mobs.
+
+#### 4.4.1 — Combat.checkForCombat entry guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.1.1 | ChaseAssist + moving guard | `chaseAssist = true`; character moving; not MA | Returns immediately; no radar/assist called |
+| 4.4.1.2 | DMZ guard | Zone is a DMZ; not in instance | Returns immediately after mobRadar |
+| 4.4.1.3 | Hovering guard | `Me.Hovering() = true` | Returns immediately |
+| 4.4.1.4 | Dead + no aggro guard | `iAmDead = true`; `aggroTargetID = 0` | Returns immediately |
+| 4.4.1.5 | No mobs + no aggro guard | `mobCount = 0`; `aggroTargetID = 0` | Returns immediately |
+| 4.4.1.6 | DPS + melee both off | `dpsOn = false`; `meleeOn = false` | Returns immediately |
+| 4.4.1.7 | iAmDead clears when rezzed | `iAmDead = true`; rez sickness buff present | `iAmDead` cleared to `false` |
+| 4.4.1.8 | Main loop wiring | Script running with `dpsOn = true` and mob present | `checkForCombat` called each main loop tick |
+
+#### 4.4.2 — Non-MA assist path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.2.1 | Assist loop acquires target | Non-MA; mob in range; MA has target | `Combat.assist` called; `myTargetID` set |
+| 4.4.2.2 | EngageWaitTimer=0 exits loop immediately | `waitTime = 0`; no target set after assist | Loop exits without spinning |
+| 4.4.2.3 | Loop exits when myTargetID set | `myTargetID` locked after first assist call | Inner loop breaks without re-calling assist |
+| 4.4.2.4 | Offtank with dead MA — deferred | Role = `offtank`; MA gone | Breaks out of assist loop (switchMA deferred) |
+
+#### 4.4.3 — MA path (getCombatTarget + engage wait)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.3.1 | MA waits for mob in radius | MA role; mob approaching camp; `aggroTargetID` set | Loops until `mobCount > 0`, then calls `getCombatTarget` |
+| 4.4.3.2 | EngageWaitTimer expires | `waitTime = 0`; mob never enters radius | Loop exits immediately; `getCombatTarget` still called |
+| 4.4.3.3 | Puller-role MA skips wait | Role = `pullertank`; `aggroTargetID` set | Skips wait loop; calls `getCombatTarget` directly |
+| 4.4.3.4 | Mob corpse during wait | Mob dies while MA waiting | Wait loop breaks; `getCombatTarget` still called |
+
+#### 4.4.4 — Post-combat guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.4.1 | FeignAggroCheck called | `Me.Feigning() = true` after assist path | `feignAggroCheck` called; waits out aggroOff timer |
+| 4.4.4.2 | ChainPull==2 exits | `pull.chainPull = 2` | Returns immediately after combat block |
+| 4.4.4.3 | Non-manual target dead → CombatReset | `role = 'assist'`; `myTargetID` points to corpse | `combatReset(0, ...)` called; target fields cleared |
+
+#### 4.4.5 — Combat.combatReset
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.5.1 | Core field reset | Call `combatReset(0, 'test')` | `myTargetID=0`, `combatStart=false`, `attacking=false`, `validTarget=false` |
+| 4.4.5.2 | Attack off issued | Call `combatReset(0, 'test')` | `/attack off` command sent |
+| 4.4.5.3 | Target cleared | Call `combatReset(0, 'test')` | `/target clear` command sent |
+| 4.4.5.4 | Burn state cleared for dead burn target | `burnID = N`; mob N is a corpse | `burnCalled=false`, `burnID=0`; echo printed |
+| 4.4.5.5 | TargetSwitchingOn reset for non-MA | Non-MA; `targetSwitchingOn=true` | Reset to `false` |
+| 4.4.5.6 | Tank timer set | Call `combatReset` | `timers.tank` set to `os.clock() + 30` |
+| 4.4.5.7 | AggroOff wait | `timers.aggroOff` active | Waits up to 2s; continues when timer expires |
+| 4.4.5.8 | Event drain | Pending events in queue | `doevents` loop runs until `eventFlag` is false |
+| 4.4.5.9 | Debug output | Run with `debug` flag | Prints `combatReset: enter ...` and `done ...` |
+
+#### 4.4.6 — Combat.checkForAdds
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.6.1 | mobCount ≤ 1 guard | `mobCount = 1` | Returns immediately |
+| 4.4.6.2 | Dead guard | `iAmDead = true`; `mobCount = 3` | Returns immediately |
+| 4.4.6.3 | DPS paused guard | `dps.paused = true`; `mobCount = 3` | Returns immediately |
+| 4.4.6.4 | Re-acquire valid living target | `myTargetID` set; target not acquired; within campRadius | `/target id N` sent; returns |
+| 4.4.6.5 | Add spam popup | `aggroID` set; `myTargetID = 0`; add within campRadius; spam timer expired | `/popup Add(s) in camp detected` shown |
+| 4.4.6.6 | Add spam throttle | Add spam popup just fired (5s ago) | Popup suppressed until `timers.addSpam` expires |
+| 4.4.6.7 | Tank role targets aggro | Role = `tank`; no current target; `aggroTargetID` set | `/target id aggroID` sent |
+| 4.4.6.8 | Stale myTargetID cleaned | `myTargetID` points to a corpse; target not NPC | `lastTargetID` updated; `myTargetID=0`; `/target clear` sent |
+| 4.4.6.9 | Debug output | Run with `debug` flag | Prints `checkForAdds: mobCount=N from=...` |
+
+#### 4.4.7 — Combat.feignAggroCheck
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.7.1 | AggroOff timer active — waits | `timers.aggroOff` set to future; `Me.Feigning() = true` | Loops calling `doevents` + delay until feign drops or timer expires |
+| 4.4.7.2 | AggroOff timer expired — single doevents | `timers.aggroOff = 0` | Calls `doevents` once and returns |
+| 4.4.7.3 | Not feigning — exits immediately | `timers.aggroOff` active; `Me.Feigning() = false` | While loop exits immediately |
+
 ---
 
 ## Section 5 — Integration Smoke Test
@@ -528,21 +607,30 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.3)
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.4)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
-| `Combat.mobRadar` — `'pull'` mode | M4 Step 4.4 (pull.lua wires it) |
+| `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
 | `namedWatchList` population | M4 (needs KissAssist_Info.ini loader) |
 | `autoBurnTimer` INI key | M4 Step 4.7 (Burn section) |
-| CombatReset (called from /backoff) | M4 Step 4.4 |
+| `Combat.fight()` — melee/spell rotation stub in checkForCombat | M4 Step 4.5 |
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
-| BroadCast tank-announce (`/echo` stub in combatTargetCheck) | M9 (cross-char comms) |
-| `CombatTargetCheckRaid` | M4 Step 4.4 (raid context) |
+| BroadCast add/tank-announce (`/echo` stub) | M9 (cross-char comms) |
+| `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
 | Full `/kaburn` rotation | M4 Step 4.7 |
-| CheckForCombat main loop wire | M4 Step 4.4 |
+| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.x |
+| CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
+| CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
+| CheckForCombat tank EnduranceCheck | M6 (buffs module) |
+| SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
+| combatReset: DPS meter output | M9 (MQ2DPSAdv) |
+| combatReset: loot after kill | M8 (loot module) |
+| combatReset: bard twist restart | M8 (bard module) |
+| combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
+| combatReset: PetHold re-enable | M6 (pet module) |
 | DPS rotation (CombatCast) | M4 Step 4.6 |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 / M6 |
 | `state.session.heals` wire (castMem guard) | M5 |
@@ -559,4 +647,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-09. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.2 complete.*
+*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.4 complete.*

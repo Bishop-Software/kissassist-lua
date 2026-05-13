@@ -674,4 +674,388 @@ function Combat.combatTargetCheck(setTarget)
         _state.combat.myTargetName, _state.combat.myTargetID, _state.combat.lastTargetID)
 end
 
+-- Mirrors Sub FeignAggroCheck (kissassist.mac:14524).
+-- If still feigning/invis after combat, waits out the aggroOff timer before standing.
+function Combat.feignAggroCheck()
+    local expiry = _state.timers.aggroOff or 0
+    if expiry ~= 0 and os.clock() < expiry then
+        while mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() do
+            mq.doevents()
+            mq.delay(250)
+        end
+    else
+        mq.doevents()
+    end
+end
+
+-- Mirrors Sub CombatReset (kissassist.mac:2144).
+-- sFlag: 0=full reset (DPS output + loot), 1=quick reset (skip DPS/loot).
+-- Clears CombatStart, stops attack, resets all target tracking fields.
+function Combat.combatReset(sFlag, calledFrom)
+    _utils.debug('combat', 'combatReset: enter sFlag=%s from=%s', tostring(sFlag), tostring(calledFrom))
+
+    -- DPS meter output (deferred — MQ2DPSAdv not yet wired, Step M9)
+
+    Combat.mobRadar('los', _state.combat.meleeDistance)
+
+    -- Mez array and immune-ID cleanup (mac:2196–2214)
+    if _state.mez.mezOn then
+        local myTID  = _state.combat.myTargetID
+        local xTotal = _state.combat.xSlotTotal
+        for j = 1, xTotal do
+            local entry = _state.arrays.mezArray[j]
+            if entry and entry[1] ~= 'NULL' then
+                local sp = mq.TLO.Spawn('id ' .. entry[1])
+                if entry[1] == tostring(myTID)
+                   or not sp or (sp.ID() or 0) == 0
+                   or (sp.Type() or ''):lower() == 'corpse' then
+                    _state.arrays.mezArray[j] = {'NULL','NULL','NULL'}
+                end
+            end
+        end
+        local immuneIDs = _state.mez.immuneIDs or ''
+        if immuneIDs ~= '' then
+            local kept = {}
+            for id in immuneIDs:gmatch('|([^|]+)') do
+                local sp = mq.TLO.Spawn('id ' .. id)
+                if sp and (sp.ID() or 0) ~= 0 and (sp.Type() or ''):lower() ~= 'corpse' then
+                    kept[#kept+1] = id
+                end
+            end
+            _state.mez.immuneIDs = #kept > 0 and ('|' .. table.concat(kept, '|')) or ''
+        end
+        _state.mez.mobDone = false
+    end
+
+    -- MobsToIgnoreByID: remove dead/corpse entries (mac:2216–2224)
+    local ignoreIDs = _state.pull.mobsToIgnoreByID or 'null'
+    if ignoreIDs ~= 'null' and ignoreIDs ~= '' then
+        local kept = {}
+        for id in ignoreIDs:gmatch('|([^|]+)') do
+            local sp = mq.TLO.Spawn('id ' .. id)
+            if sp and (sp.ID() or 0) ~= 0 and (sp.Type() or ''):lower() ~= 'corpse' then
+                kept[#kept+1] = id
+            end
+        end
+        _state.pull.mobsToIgnoreByID = #kept > 0 and ('|' .. table.concat(kept, '|')) or 'null'
+    end
+
+    -- Core state reset (mac:2226–2234)
+    _state.combat.calledTargetID  = 0
+    _state.combat.aggroTargetID2  = '0'
+    _state.combat.myTargetID      = 0
+    _state.combat.myTargetName    = ''
+    _state.combat.lastTargetID    = 0
+    _state.combat.validTarget     = false
+    _state.combat.combatStart     = false
+    _state.pull.pulled            = false
+
+    -- Stop attacking and clear target (mac:2247,2250)
+    mq.cmd('/squelch /attack off')
+    mq.cmd('/squelch /target clear')
+
+    -- Reset XTarget slot to auto-hater for non-MA (mac:2252–2254)
+    if _state.combat.xTarAutoSet and not mq.TLO.Me.Hovering() then
+        local ma = _state.session.mainAssist
+        if (mq.TLO.Group.Member(ma).Index() or 0) == 0 and not _state.session.iAmMA then
+            local xSlot = _state.combat.xTSlot
+            if xSlot > 0 then
+                mq.cmd('/xtarget set ' .. xSlot .. ' autohater')
+            end
+        end
+    end
+
+    -- Pet: send back to camp (mac:2263–2266)
+    if (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
+        _state.timers.petAttack = 0
+        mq.cmd('/pet back off')
+        -- PetHold re-enable (deferred — pet module Step M6)
+    end
+
+    -- Combat flags (mac:2280–2282)
+    _state.combat.attacking  = false
+    _state.combat.burnActive = false
+    _state.dps.target        = 0
+
+    -- Clear burn state if burn target died (mac:2283–2287)
+    local burnID = _state.combat.burnID
+    if burnID ~= 0 then
+        local bSp = mq.TLO.Spawn('id ' .. burnID)
+        if not bSp or (bSp.ID() or 0) == 0 or (bSp.Type() or ''):lower() == 'corpse' then
+            _state.combat.burnCalled = false
+            _state.combat.burnID     = 0
+            mq.cmd('/echo Burn Target is Dead. Pausing Burn.')
+        end
+    end
+
+    -- Loot (deferred — loot module Step M8)
+    -- Bard stuff (deferred — bard module)
+
+    -- TargetSwitching reset for non-MA (mac:2311)
+    if not _state.session.iAmMA then
+        _state.combat.targetSwitchingOn = false
+    end
+
+    -- Reset tank and pet-follow timers (mac:2312,2314)
+    _state.timers.tank      = os.clock() + 30
+    _state.timers.petFollow = os.clock() + 60
+
+    -- Wait up to 2s for aggroOff timer to clear (mac:2315 /delay 2s ${AggroOffTimer}==0)
+    mq.delay(2000, function()
+        local exp = _state.timers.aggroOff or 0
+        return exp == 0 or os.clock() >= exp
+    end)
+
+    -- Drain pending events (mac:2321–2325)
+    repeat
+        _state.combat.eventFlag = false
+        mq.doevents()
+    until not _state.combat.eventFlag
+
+    -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
+
+    _utils.debug('combat', 'combatReset: done from=%s', tostring(calledFrom))
+end
+
+-- Mirrors Sub CheckForAdds (kissassist.mac:2333).
+-- Called after each combat pass to detect and announce new mobs in camp.
+function Combat.checkForAdds(calledFrom)
+    Combat.mobRadar('los', _state.combat.meleeDistance)
+
+    local mobCount = _state.combat.mobCount
+    local aggroID  = tonumber(_state.combat.aggroTargetID) or 0
+
+    if mobCount <= 1 then return end
+    if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
+    if _state.pull.pulling then return end
+    if not _state.combat.dpsOn and not _state.combat.meleeOn then return end
+
+    local role     = _state.session.role
+    local isPuller = role == 'puller' or role == 'pullertank' or role == 'pullerpettank'
+
+    if isPuller then
+        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
+                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        if campDist >= _state.movement.campRadius then return end
+    end
+
+    if _state.session.iAmDead then return end
+    if _state.pull.chainPull == 2 or _state.dps.paused then return end
+
+    -- Re-acquire a valid living target within camp radius before declaring adds (mac:2346)
+    local myID = _state.combat.myTargetID
+    if (mq.TLO.Target.ID() or 0) == 0 and myID ~= 0 then
+        local sp = mq.TLO.Spawn('id ' .. myID)
+        if sp and (sp.ID() or 0) ~= 0 then
+            local spDist = dist2D(_state.movement.campY, _state.movement.campX,
+                                   sp.Y() or 0, sp.X() or 0)
+            if spDist < _state.movement.campRadius then
+                mq.cmd('/squelch /target id ' .. myID)
+                return
+            end
+        end
+    end
+
+    -- Add spam popup + optional broadcast (mac:2351–2356)
+    if aggroID ~= 0 and myID == 0 then
+        local aggrSp   = mq.TLO.Spawn('id ' .. aggroID)
+        local aggrY    = aggrSp and aggrSp.Y() or 0
+        local aggrX    = aggrSp and aggrSp.X() or 0
+        local aggrDist = dist2D(_state.movement.campY, _state.movement.campX, aggrY, aggrX)
+        local addExpiry = _state.timers.addSpam or 0
+        if aggrDist <= _state.movement.campRadius and os.clock() >= addExpiry then
+            mq.cmd('/popup Add(s) in camp detected')
+            local isTank = role == 'tank' or role == 'pullertank'
+                        or role == 'pettank' or role == 'pullerpettank'
+            if _state.session.iAmMA or isTank then
+                -- BroadCast (deferred — DanNet/EQBC Step M9)
+                mq.cmd('/echo [KA] Add(s) in camp detected')
+            end
+            if role == 'pullertank' or role == 'pullerpettank' then
+                _state.pull.pulled = false
+            end
+            _state.timers.addSpam = os.clock() + 5
+        end
+    end
+
+    -- Puller still returning toward camp — don't stall (mac:2358)
+    if isPuller and _state.pull.pulled then
+        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
+                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        if campDist >= 15 then return end
+    end
+
+    -- Tank roles acquire aggroTargetID if no target (mac:2359)
+    local isTankRole = role == 'tank'    or role == 'pullertank'
+                    or role == 'pettank' or role == 'pullerpettank'
+                    or role == 'hunter' or role == 'hunterpettank'
+    if (mq.TLO.Target.ID() or 0) == 0 and isTankRole and aggroID ~= 0 then
+        mq.cmd('/squelch /target id ' .. aggroID)
+    end
+
+    -- Stale myTargetID cleanup: if current target is not an NPC, clear it (mac:2360)
+    local tgtType = (mq.TLO.Target.Type() or ''):lower()
+    if tgtType ~= 'npc' and myID ~= 0 then
+        local sp = mq.TLO.Spawn('id ' .. myID)
+        if not sp or (sp.ID() or 0) == 0 or (sp.Type() or ''):lower() == 'corpse' then
+            _state.combat.lastTargetID = myID
+            _state.combat.myTargetID   = 0
+        end
+        mq.cmd('/squelch /target clear')
+        return
+    end
+
+    _utils.debug('combat', 'checkForAdds: mobCount=%d from=%s', mobCount, tostring(calledFrom))
+end
+
+-- Mirrors Sub CheckForCombat (kissassist.mac:484).
+-- Called from the main loop each tick when dpsOn or meleeOn.
+-- skipCombat: 0=full combat path, 1=healer/no-DPS mode (cures/heals only, no melee)
+-- waitTime: EngageWaitTimer initial countdown in 50ms ticks (0 = no wait)
+function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
+    skipCombat = skipCombat or 0
+    fromWhere  = fromWhere  or 'main'
+    waitTime   = waitTime   or 0
+
+    -- ChaseAssist + moving guard: don't interrupt a moving non-MA chaser (mac:485)
+    if _state.session.chaseAssist and mq.TLO.Me.Moving() then
+        local myName     = mq.TLO.Me.CleanName() or ''
+        local whoToChase = _state.movement.whoToChase
+        if not _state.session.iAmMA or whoToChase ~= myName then
+            return
+        end
+    end
+
+    if skipCombat == 0 then
+        -- Clear iAmDead once resurrection sickness fades and corpse despawns (mac:489)
+        if _state.session.iAmDead
+           and (_state.movement.campZone == (mq.TLO.Zone.ID() or 0)) then
+            local sickBuff  = mq.TLO.Me.Buff('Resurrection Sickness')
+            local hasSick   = sickBuff and (sickBuff.ID() or 0) ~= 0
+            local myName    = mq.TLO.Me.CleanName() or ''
+            local corpseCount = mq.TLO.SpawnCount('pccorpse ' .. myName) or 0
+            if hasSick or corpseCount == 0 then
+                _state.session.iAmDead = false
+            end
+        end
+
+        Combat.mobRadar('los', _state.combat.meleeDistance)
+
+        -- DoWeChase (deferred — movement module Step 7.x)
+
+        -- Hard guards: bail if combat is not appropriate now (mac:493)
+        local aggroID  = tonumber(_state.combat.aggroTargetID) or 0
+        local mobCount = _state.combat.mobCount
+        if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
+        if mq.TLO.Me.Hovering() then return end
+        if _state.session.iAmDead and aggroID == 0 then return end
+        if mobCount == 0 and aggroID == 0 then return end
+        if not _state.combat.dpsOn and not _state.combat.meleeOn then return end
+
+        -- Bard DPS twist (deferred — bard module)
+
+        -- EngageWaitTimer: deadline after which we stop waiting for a target (mac:496)
+        local engageDeadline = os.clock() + (waitTime * 0.05)
+
+        if not _state.session.iAmMA then
+            -- Non-MA: assist loop with EngageWaitTimer (mac:499–515)
+            while true do
+                local maName = _state.session.mainAssist
+                local maID   = mq.TLO.Spawn('=' .. maName).ID() or 0
+
+                if _state.session.role ~= 'offtank' or maID ~= 0 then
+                    Combat.assist(fromWhere)
+                    -- SwitchMA return value (deferred — DanNet/EQBC Step M9)
+                else
+                    -- Offtank with dead MA → would switchMA (deferred)
+                    break
+                end
+
+                -- CheckHealth (deferred — healing module Step M5)
+
+                local myTID = _state.combat.myTargetID
+                local aID   = tonumber(_state.combat.aggroTargetID) or 0
+                if myTID ~= 0 or _state.session.role ~= 'assist'
+                   or os.clock() >= engageDeadline or aID == 0 then
+                    break
+                end
+                mq.delay(50)
+            end
+            -- LOSBeforeCombat position check (deferred — movement module Step 7.x)
+
+        else
+            -- MA/Offtank path: wait for mob in melee radius then select target (mac:520–535)
+            local role     = _state.session.role
+            local isPuller = role == 'pullertank' or role == 'pullerpettank'
+                          or role == 'hunter'     or role == 'hunterpettank'
+
+            if not isPuller then
+                local aID = tonumber(_state.combat.aggroTargetID) or 0
+                if aID ~= 0 then
+                    while true do
+                        local sp = mq.TLO.Spawn('id ' .. aID)
+                        if not sp or (sp.ID() or 0) == 0
+                           or (sp.Type() or ''):lower() == 'corpse' then break end
+
+                        local md       = _state.combat.meleeDistance
+                        local meY      = mq.TLO.Me.Y() or 0
+                        local meX      = mq.TLO.Me.X() or 0
+                        local campDist = dist2D(_state.movement.campY, _state.movement.campX, meY, meX)
+                        local cnt
+                        if campDist > md then
+                            cnt = mq.TLO.SpawnCount('xtarhater radius ' .. md .. ' zradius 50') or 0
+                        else
+                            local cY = _state.movement.campY
+                            local cX = _state.movement.campX
+                            cnt = mq.TLO.SpawnCount('xtarhater loc ' .. cX .. ' ' .. cY
+                                                   .. ' radius ' .. md .. ' zradius 50') or 0
+                        end
+                        _state.combat.mobCount = cnt
+
+                        if cnt > 0 or os.clock() >= engageDeadline then break end
+                        mq.delay(50)
+                    end
+                end
+            end
+
+            Combat.getCombatTarget()
+        end
+
+        -- Combat.fight() — placeholder for Step 4.5 (spell/melee rotation)
+
+        -- FeignAggroCheck: if we FD'd to drop aggro, wait before standing (mac:538)
+        if mq.TLO.Me.Feigning() or mq.TLO.Me.Invis() then
+            Combat.feignAggroCheck()
+        end
+
+        -- ChainPull==2: puller signaled all done, exit combat pass (mac:540)
+        if _state.pull.chainPull == 2 then return end
+    end
+
+    -- MezCheck (deferred — mez module Step M4.x)
+
+    -- SkipCombat==1 healer loop (deferred — healing module Step M5)
+
+    -- CheckForAdds: scan for new mobs that entered camp during combat (mac:586)
+    Combat.checkForAdds(fromWhere)
+
+    -- Tank/pullertank: camp movement and mob-count gating (mac:587–599)
+    local role = _state.session.role
+    if role == 'tank' or role == 'pullertank' then
+        -- DoWeChase, DoWeMove, EnduranceCheck (deferred — movement/buffs modules)
+    elseif role ~= 'manual' then
+        -- Non-manual non-tank: CombatReset if our target died (mac:601)
+        local myID = _state.combat.myTargetID
+        if myID ~= 0 then
+            local sp     = mq.TLO.Spawn('id ' .. myID)
+            local spType = sp and sp.Type() or ''
+            if (sp and sp.ID() or 0) == 0 or spType:lower() == 'corpse' then
+                Combat.combatReset(0, fromWhere .. '_targetDead')
+            end
+        end
+    end
+
+    _utils.debug('combat', 'checkForCombat: done from=%s', fromWhere)
+end
+
 return Combat

@@ -348,13 +348,13 @@ Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC hat
 
 ---
 
-#### Step 4.4 — CheckForCombat + CombatReset + CheckForAdds
+#### ✅ Step 4.4 — CheckForCombat + CombatReset + CheckForAdds
 
-- **`CheckForCombat`** (kissassist.mac:484): outer combat control loop — DMZ/dead/no-mobs/no-DPS guards; calls `MobRadar`, `Assist`, then `Combat`; handles `ChainPull==2` exit; FeignAggroCheck after combat ends. IAmMA vs assist branching with `EngageWaitTimer`.
-- **`CombatReset`** (kissassist.mac:2144): clears `CombatStart`, turns off attack (`/attack off`), resets `Attacking`, `MyTargetID`, `AggroTargetID`.
-- **`CheckForAdds`** (kissassist.mac:2333): detects new mobs joining during combat; updates `mobCount`.
-- **`FeignAggroCheck`** (kissassist.mac:14524): if still feigning after combat, stands up.
-- Wire `Combat.checkForCombat()` call into `init.lua` main loop when `dpsOn || meleeOn`.
+- **`Combat.checkForCombat(skipCombat, fromWhere, waitTime)`** (kissassist.mac:484): outer combat control loop — chaseAssist+moving guard; DMZ/hovering/dead/no-mobs/no-DPS guards; calls `mobRadar`, then MA vs non-MA branching: non-MA runs `assist()` loop with EngageWaitTimer, MA waits for mob in radius then calls `getCombatTarget()`; calls `feignAggroCheck()` after combat; ChainPull==2 exit; calls `checkForAdds()`; non-manual CombatReset if target died. `Combat.fight()` stub present for Step 4.5.
+- **`Combat.combatReset(sFlag, calledFrom)`** (kissassist.mac:2144): mez array + immuneIDs + mobsToIgnoreByID cleanup; resets `myTargetID/aggroTargetID2/calledTargetID/combatStart/validTarget/pulled`; `/attack off` + `/target clear`; resets XTarget slot to autohater; sends pet back; clears `attacking/burnActive/dps.target`; clears burn state if burn target died; resets tank+petFollow timers; waits up to 2s for aggroOff timer; drains events. DPS meter output, loot, bard, MQ2Melee deferred.
+- **`Combat.checkForAdds(calledFrom)`** (kissassist.mac:2333): calls `mobRadar`; guards (mobCount≤1, DMZ, pulling, !dps/melee, puller past campRadius, dead, chainPull==2, paused); re-acquires valid living target within campRadius; add spam popup + echo; puller-returning guard; tank roles target aggroID; stale myTargetID cleanup.
+- **`Combat.feignAggroCheck()`** (kissassist.mac:14524): if aggroOff timer active, loops while feigning/invis draining events; else single `doevents`.
+- Wired `Combat.checkForCombat(0, 'main', 0)` into `init.lua` main loop when `dpsOn || meleeOn`.
 
 **Done when:** script enters and exits combat in response to nearby mobs; `CombatStart` flag correct.
 
