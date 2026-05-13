@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.6)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.7)
 
 ---
 
@@ -775,19 +775,49 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.6)
+### 4.7 Cast.doBurn — Burn sequence (Step 4.7)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.7.1 | Basic burn fires | `burnOn=true`, `burnArray` has one valid spell, `burnID` set by `/kaburn` | `Cast.castWhat` called with spell; `burnActive` set to `true` |
+| 4.7.2 | `burnOn=false` guard | `burnOn=false` | Returns immediately; prints "Burn is turned Off." |
+| 4.7.3 | Hovering guard | `Me.Hovering()=true` | Returns immediately without iterating array |
+| 4.7.4 | Wrong zone guard | `campZone` set to a different zone ID | Returns immediately |
+| 4.7.5 | Announce on first activation | `burnActive=false` before call | `/echo BURN ACTIVATED => Autobots Transform <=` sent once |
+| 4.7.6 | No announce on repeat call | `burnActive=true` before call | No activation echo |
+| 4.7.7 | Tribute activation | `useTribute=true`, `Me.TributeActive()=false` | `/tribute personal on` + `/trophy personal on` sent; `timers.tribute` set to `now + 570` |
+| 4.7.8 | Tribute already active | `useTribute=true`, `Me.TributeActive()=true` | No tribute commands sent |
+| 4.7.9 | `null` entry skipped | `burnArray = {'null\|Mob'}` | Entry skipped; no castWhat call |
+| 4.7.10 | `Mob` target resolves to myTargetID | Entry `SpellName\|Mob` | `burnTargetID = state.combat.myTargetID` |
+| 4.7.11 | `Me` target resolves to self | Entry `SpellName\|Me` | `burnTargetID = Me.ID()` |
+| 4.7.12 | `MA` target resolves to main assist | Entry `SpellName\|MA` | `burnTargetID = Spawn['=MainAssist'].ID()` |
+| 4.7.13 | `Pet` target resolves to pet | Entry `SpellName\|Pet` | `burnTargetID = Me.Pet.ID()` |
+| 4.7.14 | Unknown target defaults to myTargetID | Entry `SpellName\|group1` | `burnTargetID = myTargetID` |
+| 4.7.15 | CAST_SUCCESS echoes + waits (non-bard) | Spell returns `CAST_SUCCESS`; CastingWindow open briefly | `Casting >> BURN1:SpellName` printed; waits for CastingWindow to close |
+| 4.7.16 | Bard skips cast-wait | `iAmABard=true`; spell returns `CAST_SUCCESS` | No cast-window wait loop |
+| 4.7.17 | Hovering mid-loop aborts | Second entry; `Me.Hovering()=true` during loop | Loop breaks; no further entries cast |
+| 4.7.18 | NamedWatch — named target triggers burn | `burnOnNamed=true`; `namedCheck=false`; target `Named()=true`; within `meleeDistance` | `/echo *** Mob:(Name) is a NAMED!`; `doBurn()` called; `namedCheck=true` |
+| 4.7.19 | NamedWatch — non-named target not triggered | `burnOnNamed=true`; target `Named()=false`; empty `namedWatchList` | No burn triggered; `namedCheck` stays false |
+| 4.7.20 | NamedWatch — watchlist match triggers burn | `burnOnNamed=true`; target in `namedWatchList` by name+ID | `doBurn()` called; `namedCheck=true` |
+| 4.7.21 | NamedWatch — out of range, no trigger | `burnOnNamed=true`; target distance > `meleeDistance` | No burn triggered even if Named |
+| 4.7.22 | NamedWatch — already checked, no re-trigger | `namedCheck=true` | NamedWatch block skipped entirely |
+| 4.7.23 | `/kaburn` sets burnID | Call `onBurn()` bind handler with no arg while in combat | `state.combat.burnID = myTargetID`; fight loop dispatches `doBurn()` next tick |
+| 4.7.24 | burnActive cleared on combatReset | Kill mob; `combatReset` called | `burnActive=false` reset for next fight |
+
+---
+
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.7)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
 | `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
-| `namedWatchList` population | M4 (needs KissAssist_Info.ini loader) |
-| `autoBurnTimer` INI key | M4 Step 4.7 (Burn section) |
+| `namedWatchList` population from INI | M4 (needs KissAssist_Info.ini loader) |
+| `autoBurnTimer` auto-burn trigger | M4 Step 4.8 |
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
-| BroadCast add/tank-announce (`/echo` stub) | M9 (cross-char comms) |
+| BroadCast burn/add/tank-announce | M9 (cross-char comms) |
 | `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
-| Full `/kaburn` rotation | M4 Step 4.7 |
 | CheckForCombat SkipCombat==1 healer loop | M5 Step 5.x |
 | CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
 | CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
@@ -811,7 +841,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | combatReset: bard twist restart | M8 (bard module) |
 | combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
 | combatReset: PetHold re-enable | M6 (pet module) |
-| Burn rotation (`_cast.doBurn`) | M4 Step 4.7 |
+| doBurn: condNo / abortFlag per-entry | M4 Step 4.8 |
 | combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M4 Step 4.8 |
 | combatCast: DPSSkip lower HP bound | M4 Step 4.8 |
 | combatCast: DPSOn==2 wait-for-cooldown mode | M4 Step 4.8 |
@@ -838,4 +868,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-12. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.6 complete.*
+*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.7 complete.*

@@ -1078,4 +1078,75 @@ function Cast.combatCast()
     mashButtons(state.combat.myTargetID)
 end
 
+-- ─── Burn sequence (mac:11770) ────────────────────────────────────────────────
+
+function Cast.doBurn()
+    -- Guards (mac:11771-11773)
+    if mq.TLO.Me.Hovering() then return end
+    if (state.movement.campZone or 0) ~= 0
+       and (mq.TLO.Zone.ID() or 0) ~= state.movement.campZone then return end
+    if not state.combat.burnOn then
+        printf('Leaving Burn. Burn is turned Off.')
+        return
+    end
+
+    -- Announce on first activation; BroadCast deferred M9 (mac:11782)
+    if not state.combat.burnActive then
+        mq.cmd('/echo BURN ACTIVATED => Autobots Transform <=')
+    end
+
+    -- Tribute (mac:11783-11787)
+    if state.combat.useTribute and not mq.TLO.Me.TributeActive() then
+        mq.cmd('/squelch /tribute personal on')
+        mq.cmd('/squelch /trophy personal on')
+        state.timers.tribute = os.clock() + 570
+    end
+
+    -- Iterate burn array (mac:11788-11825)
+    for i, entry in ipairs(state.combat.burnArray) do
+        if mq.TLO.Me.Hovering() then break end
+
+        local parts = {}
+        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spellName  = parts[1] or 'null'
+        local targetType = parts[2] or 'Mob'
+        -- parts[3] = arg3 (abort flag / cond) deferred → Step 4.8
+
+        if spellName == 'null' or spellName == '' then goto next_burn end
+
+        -- Resolve target ID (mac:11799-11812); abortFlag deferred → Step 4.8
+        local tType = targetType:lower()
+        local burnTargetID
+        if tType == 'me' then
+            burnTargetID = mq.TLO.Me.ID() or 0
+        elseif tType == 'ma' then
+            burnTargetID = mq.TLO.Spawn('=' .. state.session.mainAssist).ID() or 0
+        elseif tType == 'pet' then
+            burnTargetID = mq.TLO.Me.Pet.ID() or 0
+        else
+            burnTargetID = state.combat.myTargetID
+        end
+
+        -- condNo/abortFlag (mac:11793-11815) deferred → Step 4.8
+
+        local result = Cast.castWhat(spellName, burnTargetID, 'burn')
+
+        if result == 'CAST_SUCCESS' then
+            printf('Casting >> BURN%d:%s', i, spellName)
+            if not state.session.iAmABard then
+                local deadline = os.clock() + 10
+                while os.clock() < deadline
+                      and (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                      and mq.TLO.Window('CastingWindow').Open() do
+                    mq.delay(50)
+                end
+            end
+        end
+
+        ::next_burn::
+    end
+
+    state.combat.burnActive = true
+end
+
 return Cast

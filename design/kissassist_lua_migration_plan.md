@@ -408,14 +408,15 @@ Mirrors `CombatCast` (kissassist.mac:1616) — DPS spell/AA rotation inside the 
 
 ---
 
-#### Step 4.7 — Burn sequence
+#### Step 4.7 — Burn sequence ✅
 
 Mirrors `Burn` (kissassist.mac:11770).
 
-- Iterate `Burn` array entries (same `spell|target|cond` format as DPS), call `Cast.castWhat`
-- Tribute activation (`/tribute personal on`) at burn start when `UseTribute` set
-- Auto-burn triggers: `/kaburn` bind (already stubbed in binds.lua), named-mob detection via `NamedWatch`/`NamedCheck` list, `AutoBurnTimer`
-- `BurnActive` flag; broadcast on burn start
+- **`Cast.doBurn()`** (cast.lua): guards (hovering/wrong zone/burnOn off); broadcast "BURN ACTIVATED" on first activation; tribute activation (`/tribute personal on` + `/trophy personal on`, sets `state.timers.tribute + 570s`) when `state.combat.useTribute` set; iterates `state.combat.burnArray` parsing `spell|target` entries, resolves target (Mob/Me/MA/Pet → targetID), calls `Cast.castWhat`; waits for cast window to close (non-bard); sets `state.combat.burnActive = true`. condNo/abortFlag deferred → Step 4.8.
+- **`NamedWatch` in `Combat.fight()`** (combat.lua): when `burnOnNamed` and not yet `namedCheck`, checks `sp.Named()` on current target; also walks `namedWatchList` for list-mode detection; on match echoes named alert, calls `Cast.doBurn()`, sets `namedCheck = true`.
+- **`state.combat.useTribute`** added to state.lua.
+- `/kaburn` bind already sets `state.combat.burnID` (binds.lua:98-114); fight loop clears it after dispatch.
+- `AutoBurnTimer` trigger deferred → Step 4.8. BroadCast deferred → M9.
 
 **Done when:** `/kaburn` triggers burn sequence in combat; named mobs auto-burn.
 

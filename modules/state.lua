@@ -84,6 +84,7 @@ local State = {
         namedCheck         = false,
         namedWatchList     = {},
         targetSwitchingOn  = false,
+        useTribute         = false,
         raidAssistEntry    = 1,
         raidTargetID       = '0',
         validTarget        = false,

@@ -954,7 +954,7 @@ function Combat.fight(fromWhere)
 
             -- Burn if flagged (mac:1139-1141)
             if _state.combat.burnOn and _state.combat.burnID ~= 0 then
-                if _cast.doBurn then _cast.doBurn(_state.combat.burnID) end
+                if _cast.doBurn then _cast.doBurn() end
                 _state.combat.burnID = 0
             end
 
@@ -963,11 +963,30 @@ function Combat.fight(fromWhere)
             -- Deferred: MezCheck, AECheck, AggroCheck, CheckCures/CheckHealth (M4.x/M5)
             -- Deferred: DoBardStuff (bard module)
 
-            -- NamedWatch: flag named mob for burn if in range (mac:1177)
+            -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
             if not _state.combat.namedCheck and _state.combat.burnOnNamed then
                 sp = mq.TLO.Spawn('id ' .. myID)
-                if (sp and sp.Distance() or 999) <= _state.combat.meleeDistance then
-                    _state.combat.namedCheck = true  -- NamedWatch logic deferred
+                if sp and (sp.Distance() or 999) <= _state.combat.meleeDistance then
+                    local tName   = sp.CleanName() or ''
+                    local isNamed = sp.Named() or false
+                    -- Also check namedWatchList (BurnAllNamed==2 mode: specific mobs only)
+                    if not isNamed and #_state.combat.namedWatchList > 0 then
+                        for _, wName in ipairs(_state.combat.namedWatchList) do
+                            if wName ~= '' and wName ~= 'null' then
+                                local ws = mq.TLO.Spawn(wName)
+                                if ws and ws.ID() == myID and ws.CleanName() == tName then
+                                    isNamed = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if isNamed then
+                        mq.cmd('/popup *** Mob:(' .. tName .. ') is a NAMED!')
+                        mq.cmd('/echo *** Mob:(' .. tName .. ') is a NAMED!')
+                        if _cast.doBurn then _cast.doBurn() end
+                        _state.combat.namedCheck = true
+                    end
                 end
             end
 
