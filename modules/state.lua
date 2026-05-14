@@ -34,6 +34,7 @@ local State = {
         chaseAssist     = false,
         pullPath        = 'null',
         parseDPSTimer   = 0,
+        heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
     },
 
     debug = {
@@ -206,11 +207,11 @@ local State = {
         medStat2            = 'Endurance',
         needCuring          = false,
         sHealPct            = 0,
-        singleHealPoint     = false,
-        singleHealPointMA   = false,
-        singleHealPointRange = false,
+        singleHealPoint     = 0,
+        singleHealPointMA   = 0,
+        singleHealPointRange = 0,
         -- Step 5.1 — INI-loaded fields (defaults mirror Bind_Settings mac defaults)
-        healsOn         = false,
+        healsOn         = 0,   -- integer: 0=off 1=self+group+MA 2=self+group 3=MA-OOG+self 4=self-only
         healsArray      = {},
         curesOn         = false,
         curesArray      = {},

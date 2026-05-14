@@ -29,7 +29,7 @@ function Heal.init(state, utils, cast)
     end
 
     -- [Heals]
-    _state.heal.healsOn         = Config.get('Heals', 'HealsOn',         '0') == '1'
+    _state.heal.healsOn         = tonumber(Config.get('Heals', 'HealsOn', '0')) or 0
     _state.heal.healInterval    = tonumber(Config.get('Heals', 'HealInterval', '0'))  or 0
     _state.heal.autoRezOn       = Config.get('Heals', 'AutoRezOn',       '0') == '1'
     _state.heal.xTarHeal        = Config.get('Heals', 'XTarHeal',        '0') == '1'
@@ -46,6 +46,25 @@ function Heal.init(state, utils, cast)
         end
     end
 
+    -- Derive singleHealPoint/MA/Range from healsArray (mirrors FindSingleHeals, mac:12012)
+    for _, entry in ipairs(_state.heal.healsArray) do
+        local spell = entry:match('^([^|]+)') or ''
+        local pct   = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
+        local tag   = entry:match('^[^|]+|[^|]+|([^|]*)') or ''
+        if tag == 'MA' then
+            if pct > _state.heal.singleHealPointMA then _state.heal.singleHealPointMA = pct end
+        else
+            if pct > _state.heal.singleHealPoint then _state.heal.singleHealPoint = pct end
+        end
+        local r = mq.TLO.Spell(spell).Range() or 0
+        if r > _state.heal.singleHealPointRange then _state.heal.singleHealPointRange = r end
+    end
+    if _state.heal.singleHealPoint    == 0 then _state.heal.singleHealPoint    = 99  end
+    if _state.heal.singleHealPointMA  == 0 then _state.heal.singleHealPointMA  = _state.heal.singleHealPoint end
+    if _state.heal.singleHealPointRange == 0 then _state.heal.singleHealPointRange = 200 end
+    -- Wire session flag used by castMem guard (cast.lua:488)
+    _state.session.heals = _state.heal.healsOn > 0
+
     -- [Cures]
     _state.heal.curesOn = Config.get('Cures', 'CuresOn', '0') == '1'
 
@@ -59,16 +78,138 @@ function Heal.init(state, utils, cast)
     end
 
     _utils.debug('heals', string.format(
-        'Heal.init done — healsOn=%s(%d) curesOn=%s(%d) medOn=%s medStart=%d medStop=%d',
-        tostring(_state.heal.healsOn),  #_state.heal.healsArray,
-        tostring(_state.heal.curesOn),  #_state.heal.curesArray,
-        tostring(_state.heal.medOn), _state.heal.medStart, _state.heal.medStop))
+        'Heal.init done — healsOn=%d(%d spells) curesOn=%s(%d) medOn=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
+        _state.heal.healsOn, #_state.heal.healsArray,
+        tostring(_state.heal.curesOn), #_state.heal.curesArray,
+        tostring(_state.heal.medOn), _state.heal.medStart, _state.heal.medStop,
+        _state.heal.singleHealPoint, _state.heal.singleHealPointMA, _state.heal.singleHealPointRange))
 end
 
--- Step 5.2: Heal.checkHealth()   — self-triage + single-heal dispatch
--- Step 5.3: Heal.doGroupHealStuff() — group heal + HoT + medding
--- Step 5.4: Heal.checkCures()    — debuff removal + WriteDebuffs
--- Step 5.5: Heal.rezCheck()      — rez dead group members via MQ2Rez
--- Step 5.6: wire above into Combat.fight() and main loop
+-- Classes that can cast heals on others (mirrors mac:6393 Select list)
+local HEALING_CLASSES = {BST=true, CLR=true, ENC=true, SHM=true, DRU=true, RNG=true, PAL=true}
+
+-- Iterate healsArray to find and cast the first spell whose threshold covers hpPct.
+-- Mirrors Sub SingleHeal dispatch (mac:6546). targetID must already be resolved.
+local function singleHeal(name, targetID, hpPct, sentFrom)
+    if mq.TLO.Me.Moving() or mq.TLO.Me.Hovering() then return end
+    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
+    if not targetID or targetID == 0 then return end
+
+    for _, entry in ipairs(_state.heal.healsArray) do
+        local spell     = entry:match('^([^|]+)') or ''
+        local threshold = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
+        if spell ~= '' and threshold > 0 and hpPct <= threshold then
+            _utils.debug('heals', string.format('singleHeal: %s (%d%%) -> %s', name, hpPct, spell))
+            _cast.castWhat(spell, targetID, sentFrom)
+            return
+        end
+    end
+end
+
+-- Port of Sub CheckHealth (mac:6368). Identifies who needs healing and dispatches singleHeal.
+-- sentFrom: caller tag ('MainLoop', 'CheckForCombat', etc.)
+function Heal.checkHealth(sentFrom)
+    if _state.heal.healsOn == 0 then return end
+    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
+    if _state.heal.medding and not _state.heal.medCombat then return end
+
+    _utils.debug('heals', 'checkHealth enter ' .. sentFrom)
+
+    local healsOnVal = _state.heal.healsOn
+
+    -- Self-heal check
+    local selfPct = mq.TLO.Me.PctHPs() or 100
+    if selfPct < _state.heal.singleHealPoint then
+        singleHeal(mq.TLO.Me.CleanName(), mq.TLO.Me.ID(), selfPct, 'SingleHeal')
+    end
+
+    -- Self-only mode: stop here
+    if healsOnVal == 4 then
+        _utils.debug('heals', 'checkHealth leave (self-only) ' .. sentFrom)
+        return
+    end
+
+    local myClass = mq.TLO.Me.Class.ShortName() or ''
+    if not HEALING_CLASSES[myClass] then
+        _utils.debug('heals', 'checkHealth leave (non-healer class) ' .. sentFrom)
+        return
+    end
+
+    -- MA out-of-group heal (healsOn 1 or 3)
+    if healsOnVal == 1 or healsOnVal == 3 then
+        local maName = _state.session.mainAssist
+        if maName ~= '' then
+            ---@diagnostic disable-next-line: undefined-field
+            local maID  = mq.TLO.Spawn(maName .. ' PC').ID()  or 0
+            ---@diagnostic disable-next-line: undefined-field
+            local maPct = mq.TLO.Spawn(maName .. ' PC').PctHPs() or 100
+            ---@diagnostic disable-next-line: undefined-field
+            local maType = mq.TLO.Spawn(maName .. ' PC').Type() or ''
+            if maID ~= 0 and maType ~= 'corpse' and maID ~= mq.TLO.Me.ID()
+                    and maPct < _state.heal.singleHealPointMA then
+                singleHeal(maName, maID, maPct, 'SingleHeal')
+            end
+        end
+    end
+
+    -- Group scan: find most-hurt member (healsOn 1 or 2)
+    if (healsOnVal == 1 or healsOnVal == 2) and (mq.TLO.Group.Members() or 0) > 0 then
+        local mostHurtName = ''
+        local mostHurtID   = 0
+        local mostHurtPct  = 100
+
+        for i = 0, 5 do
+            local m = mq.TLO.Group.Member(i)
+            ---@diagnostic disable-next-line: undefined-field
+            local mID   = m and m.ID()       or 0
+            ---@diagnostic disable-next-line: undefined-field
+            local mType = m and m.Type()     or ''
+            ---@diagnostic disable-next-line: undefined-field
+            local mPct  = m and m.PctHPs()   or 100
+            ---@diagnostic disable-next-line: undefined-field
+            local mDist = m and m.Distance() or 9999
+
+            if mID > 0 and mType ~= 'corpse' and mPct >= 1
+                    and mDist <= _state.heal.singleHealPointRange then
+                ---@diagnostic disable-next-line: undefined-field
+                local mClass = m and m.Class.ShortName() or ''
+                ---@diagnostic disable-next-line: undefined-field
+                local mLevel = m and m.Level() or 0
+                -- Berserkers at 95+ only healed below 70% (mac:6418)
+                local eligible = (mClass ~= 'BER') or (mLevel < 95) or (mPct < 70)
+                if eligible and mPct < mostHurtPct then
+                    ---@diagnostic disable-next-line: undefined-field
+                    mostHurtName = m.CleanName() or ''
+                    mostHurtID   = mID
+                    mostHurtPct  = mPct
+                end
+
+                -- Pet check (mac:6435)
+                if _state.heal.healGroupPetsOn then
+                    ---@diagnostic disable-next-line: undefined-field
+                    local petID  = m.Pet.ID()     or 0
+                    ---@diagnostic disable-next-line: undefined-field
+                    local petPct = m.Pet.PctHPs() or 100
+                    if petID > 0 and petPct < mostHurtPct then
+                        ---@diagnostic disable-next-line: undefined-field
+                        mostHurtName = m.Pet.CleanName() or ''
+                        mostHurtID   = petID
+                        mostHurtPct  = petPct
+                    end
+                end
+            end
+        end
+
+        if mostHurtID ~= 0 and mostHurtPct < _state.heal.singleHealPoint then
+            singleHeal(mostHurtName, mostHurtID, mostHurtPct, 'SingleHeal')
+        end
+    end
+
+    -- Step 5.3: Heal.doGroupHealStuff() — group heal + HoT + medding
+    -- Step 5.4: Heal.checkCures()       — debuff removal + WriteDebuffs
+    -- Step 5.5: Heal.rezCheck()         — rez dead group members via MQ2Rez
+
+    _utils.debug('heals', 'checkHealth leave ' .. sentFrom)
+end
 
 return Heal

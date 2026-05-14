@@ -868,8 +868,8 @@ end)
 
 | # | Action | Expected |
 |---|--------|----------|
-| 5.1.1 | Start script with `[Heals] HealsOn=1` | `state.heal.healsOn = true`; debug line: `Heal.init done — healsOn=true(N) ...` |
-| 5.1.2 | `[Heals] HealsOn=0` (default) | `state.heal.healsOn = false` |
+| 5.1.1 | Start script with `[Heals] HealsOn=1` | `state.heal.healsOn = 1`; `state.session.heals = true` |
+| 5.1.2 | `[Heals] HealsOn=0` (default) | `state.heal.healsOn = 0`; `state.session.heals = false` |
 | 5.1.3 | `[Heals] Heals1=Devout Light Rk. II\|50` through `Heals3=...` | `state.heal.healsArray` has 3 entries; `healsArray[1] = 'Devout Light Rk. II\|50'` |
 | 5.1.4 | `[Heals]` section absent or empty | `state.heal.healsArray = {}`; no crash |
 | 5.1.5 | `[Cures] CuresOn=1` | `state.heal.curesOn = true` |
@@ -891,7 +891,7 @@ end)
 
 | # | Action | Expected |
 |---|--------|----------|
-| 5.1.19 | Start with `debug` flag | Chat shows `[heals] Heal.init done — healsOn=true(N) curesOn=true(N) medOn=true medStart=20 medStop=100` (values from INI) |
+| 5.1.19 | Start with `debug` flag | Chat shows `[heals] Heal.init done — healsOn=1(N spells) curesOn=true(N) medOn=true medStart=20 medStop=100 sHP=<n> sHPma=<n> sHPrange=<n>` (values from INI) |
 | 5.1.20 | No INI / defaults only | No crash; all `state.heal` fields have their default values |
 
 ---
@@ -913,6 +913,65 @@ end)
 
 ---
 
+### 5.3 Heal.checkHealth — self-triage + single-heal dispatch (Step 5.2)
+
+**Setup:** Script running with `[Heals] HealsOn=1` and at least one entry in healsArray. Use `/debug heals on` to observe dispatch.
+
+#### 5.3.1 — Guard conditions
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.1 | `healsOn=0` — no healing | `state.heal.healsOn = 0` | `checkHealth` returns immediately; no cast attempted |
+| 5.3.2 | Invis without aggro — no healing | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.3.3 | Invis with aggro — heals fire | `Me.Invis()=true`, `aggroTargetID='<id>'` | Heals proceed normally |
+| 5.3.4 | Medding without `medCombat` — no healing | `state.heal.medding=true`, `medCombat=false` | Returns immediately |
+| 5.3.5 | Medding with `medCombat=true` — heals fire | `state.heal.medding=true`, `medCombat=true` | Heals proceed normally |
+
+#### 5.3.2 — Self-heal path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.6 | Self HP below `singleHealPoint` | `Me.PctHPs()=40`, `singleHealPoint=80` | `singleHeal` called; spell from healsArray with threshold ≥ 40 cast on self |
+| 5.3.7 | Self HP above threshold — no self-heal | `Me.PctHPs()=90`, `singleHealPoint=80` | No self-cast |
+| 5.3.8 | `healsOn=4` (self-only) — returns after self check | `healsOn=4`, `Me.PctHPs()=50` | Self healed; group/MA checks skipped |
+| 5.3.9 | Non-healer class — stops after self | `Me.Class.ShortName()='WAR'` | Self-heal check runs; MA and group scans skipped |
+
+#### 5.3.3 — MA out-of-group heal path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.10 | `healsOn=1`, MA below `singleHealPointMA` | MA HP 45%, threshold 80 | `singleHeal` called on MA |
+| 5.3.11 | `healsOn=2` — MA OOG heal skipped | `healsOn=2` | MA heal path skipped; group scan runs |
+| 5.3.12 | `healsOn=3` — MA healed, no group scan | `healsOn=3` | MA healed if needed; group member loop skipped |
+| 5.3.13 | MA is self — no double-heal | `mainAssist = Me.CleanName()` | MA path skipped (`maID == Me.ID()`) |
+| 5.3.14 | MA is corpse — skipped | `MA.Type() = 'corpse'` | MA path skipped |
+
+#### 5.3.4 — Group member scan
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.15 | Group member below threshold | `Member[1].PctHPs()=30`, `singleHealPoint=80` | That member healed |
+| 5.3.16 | Most hurt member chosen | Members at 70%, 40%, 60% | Member at 40% healed |
+| 5.3.17 | Member out of range — skipped | `Member.Distance() > singleHealPointRange` | Out-of-range member not considered |
+| 5.3.18 | Corpse member — skipped | `Member.Type()='corpse'` | Corpse not considered |
+| 5.3.19 | Berserker ≥ level 95 above 70% — skipped | BER member at 75% HP, level 95 | Not healed (BER special rule) |
+| 5.3.20 | Berserker ≥ level 95 below 70% — healed | BER member at 65% HP, level 95 | Healed normally |
+| 5.3.21 | `healGroupPetsOn=true` — pet considered | `Member[0].Pet.PctHPs()=20`, `singleHealPoint=80` | Pet healed if most hurt |
+| 5.3.22 | `healGroupPetsOn=false` — pets ignored | `Member[0].Pet.PctHPs()=10` | Pet not considered |
+
+#### 5.3.5 — singleHeal dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.23 | Moving — no cast | `Me.Moving()=true` | `singleHeal` returns without casting |
+| 5.3.24 | Hovering — no cast | `Me.Hovering()=true` | `singleHeal` returns without casting |
+| 5.3.25 | healsArray empty — no cast | `state.heal.healsArray = {}` | `singleHeal` iterates nothing; no crash |
+| 5.3.26 | Threshold computation — singleHealPoint from array | `healsArray = {'ClericSpell\|70\|G', 'FastHeal\|40\|G'}` | `singleHealPoint = 70` after `Heal.init()` |
+| 5.3.27 | MA threshold computed separately | `healsArray = {'CLRSpell\|70\|', 'MASpell\|90\|MA'}` | `singleHealPoint=70`, `singleHealPointMA=90` |
+| 5.3.28 | `session.heals` wired | `healsOn=1` after `Heal.init()` | `state.session.heals = true`; castMem no longer blocked |
+
+---
+
 ## Section 6 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -928,28 +987,28 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.8)
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.2)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
 | `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
-| `namedWatchList` population from INI | M4 (needs KissAssist_Info.ini loader) |
-| `autoBurnTimer` auto-burn trigger | M4 Step 4.8 |
+| `namedWatchList` population from INI | M5 (needs KissAssist_Info.ini loader; M4 complete without it) |
+| `autoBurnTimer` auto-burn trigger | N/A — not present in kissassist.mac source; auto-burn uses `/kaburn` bind only |
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
 | BroadCast burn/add/tank-announce | M9 (cross-char comms) |
-| `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
-| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.x |
+| `CombatTargetCheckRaid` | M9 (raid/cross-char comms; M4 complete without it) |
+| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.6 |
 | CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
 | CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
 | CheckForCombat tank EnduranceCheck | M6 (buffs module) |
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
-| fight: CheckCures / CheckHealth during combat | M5 (healing module) |
+| fight: CheckCures / CheckHealth during combat | M5 Step 5.6 |
 | fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
-| fight: CastMana / mana-sit logic | M5 |
+| fight: CastMana / mana-sit logic | M5 Step 5.3 (medding/mana-sit in DoGroupHealStuff) |
 | fight: MercsDoWhat | M6 (merc module) |
-| fight: MezCheck / AECheck | M5 (mez module) |
+| fight: MezCheck / AECheck | M5 Step 5.x (mez sub-step) |
 | fight: AggroCheck in inner loop | ✅ Step 4.8 |
 | fight: WriteDebuffs / DebuffStuff | ✅ Step 4.8 (`doDebuffStuff`) |
 | fight: DoBardStuff | M8 (bard module) |
@@ -977,12 +1036,13 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
 | mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M5 stretch |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
-| `state.session.heals` wire (castMem guard) | M5 Step 5.2 |
+| `state.session.heals` wire (castMem guard) | ✅ Step 5.2 |
 | `/addimmune` bind | ✅ Step 5.1 |
 | Heal.init — INI loading + state wiring | ✅ Step 5.1 |
 | Healing/cures triggered by events | M5 Steps 5.2–5.4 |
 | Mez timer reset (MezBroke) | M5 Step 5.4 |
-| CheckHealth / DoGroupHealStuff | M5 Steps 5.2–5.3 |
+| CheckHealth | ✅ Step 5.2 |
+| DoGroupHealStuff | M5 Step 5.3 |
 | CheckCures / WriteDebuffs (healer) | M5 Step 5.4 |
 | RezCheck / RezWithCheck | M5 Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
@@ -996,4 +1056,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Step 5.1 complete. Section 5 added for Milestone 5 tests.*
+*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.2 complete. Section 5.3 added for Heal.checkHealth (28 test cases). healsOn corrected to integer type. session.heals and CheckHealth marked ✅ in Known Deferred.*

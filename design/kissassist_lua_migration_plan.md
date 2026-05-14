@@ -463,11 +463,17 @@ Create `modules/healing.lua` with `Heal.init(state, utils, cast)`. Load all heal
 
 ---
 
-#### Step 5.2 — `CheckHealth`: self-triage + single-heal dispatch
+#### ✅ Step 5.2 — `CheckHealth`: self-triage + single-heal dispatch
 
 Port `Sub CheckHealth` — the main health triage entry point. Self-heal path (`sHealPct` threshold, `singleHealPoint`), MA-heal path, group member scan (lowest HP below threshold). Guards: dead, hovering, DMZ, medding, mezzed. Calls `Cast.castWhat(..., 'SingleHeal')`.
 
-**Done when:** script heals self when HP drops below threshold.
+**Done when:** script heals self when HP drops below threshold. ✅
+
+**Implemented:**
+- `state.lua`: `healsOn` changed to integer (0–4); `singleHealPoint/MA/Range` changed from `false` to `0`; `session.heals` field added
+- `Heal.init()`: `healsOn` loaded as `tonumber`; `singleHealPoint/MA/Range` computed from `healsArray` (mirrors `FindSingleHeals` mac:12012); `state.session.heals` wired to `healsOn > 0`
+- `healing.lua`: `local singleHeal()` iterates `healsArray`, finds first spell where threshold ≥ hpPct, calls `_cast.castWhat(spell, targetID, 'SingleHeal')`
+- `healing.lua`: `Heal.checkHealth(sentFrom)` — guards (healsOn==0, invis, medding), self-heal, MA OOG heal (healsOn 1/3), group member scan (lowest HP, berserker cap, pet check if `healGroupPetsOn`); stubs for Steps 5.3–5.5
 
 ---
 
