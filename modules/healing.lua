@@ -91,7 +91,7 @@ function Heal.init(state, utils, cast)
     _state.heal.medStat = MANA_CLASSES[initClass] and 'Mana' or 'Endurance'
 
     -- [Cures]
-    _state.heal.curesOn = Config.get('Cures', 'CuresOn', '0') == '1'
+    _state.heal.curesOn = tonumber(Config.get('Cures', 'CuresOn', '0')) or 0
 
     local curesRaw = Config.get('Cures', 'Cures', nil)
     if type(curesRaw) == 'table' then
@@ -103,9 +103,9 @@ function Heal.init(state, utils, cast)
     end
 
     _utils.debug('heals', string.format(
-        'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%s(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
+        'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%d(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
         _state.heal.healsOn, #_state.heal.healsArray, #_state.heal.groupHealArray,
-        tostring(_state.heal.curesOn), #_state.heal.curesArray,
+        _state.heal.curesOn, #_state.heal.curesArray,
         tostring(_state.heal.medOn), _state.heal.medStat, _state.heal.medStart, _state.heal.medStop,
         _state.heal.singleHealPoint, _state.heal.singleHealPointMA, _state.heal.singleHealPointRange))
 end
@@ -244,7 +244,8 @@ function Heal.checkHealth(sentFrom)
         end
     end
 
-    -- Step 5.4: Heal.checkCures()       — debuff removal + WriteDebuffs
+    -- Note: Heal.checkCures() is called from the combat loop (Step 5.6), not here,
+    --       because checkCures() calls checkHealth() internally (mac:12617,12763).
     -- Step 5.5: Heal.rezCheck()         — rez dead group members via MQ2Rez
 
     _utils.debug('heals', 'checkHealth leave ' .. sentFrom)
@@ -323,6 +324,213 @@ function Heal.doWeMed()
             mq.cmd('/sit')
         end
     end
+end
+
+-- Port of Sub WriteDebuffs (mac:12569). Writes self-debuff state to KissAssist_Buffs.ini
+-- for cross-character healer awareness. Called from main loop and after self-cures.
+-- Only the non-DanNet path is implemented (DanNet is deprecated in the Lua port).
+function Heal.writeDebuffs()
+    local buffFile = _state.session.buffFileName
+    local meID     = mq.TLO.Me.ID()
+
+    ---@diagnostic disable-next-line: undefined-field
+    local poison   = mq.TLO.Me.Poisoned.ID()   or 0
+    ---@diagnostic disable-next-line: undefined-field
+    local disease  = mq.TLO.Me.Diseased.ID()   or 0
+    ---@diagnostic disable-next-line: undefined-field
+    local cursed   = mq.TLO.Me.Cursed.ID()     or 0
+    ---@diagnostic disable-next-line: undefined-field
+    local restless = mq.TLO.Me.Song('Restless Curse').ID() or 0
+    ---@diagnostic disable-next-line: undefined-field
+    local corrupt  = mq.TLO.Me.Corrupted.ID()  or 0
+    ---@diagnostic disable-next-line: undefined-field
+    local mezzed   = mq.TLO.Me.Mezzed.ID()     or 0
+
+    local curseTotal  = cursed + restless
+    local debuffTotal = poison + disease + curseTotal + corrupt + mezzed
+
+    if debuffTotal > 0 then
+        if not _state.heal.needCuring then
+            _state.heal.needCuring = true
+            local debuffList = string.format('%d|%d|%d|%d|%d|%d',
+                debuffTotal, poison, disease, curseTotal, corrupt, mezzed)
+            mq.cmdf('/ini "%s" "%s" Debuffs "%s"', buffFile, tostring(meID), debuffList)
+            _utils.debug('heals', 'writeDebuffs: writing ' .. debuffList)
+        end
+    else
+        if _state.heal.needCuring then
+            _state.heal.needCuring = false
+            mq.cmdf('/ini "%s" "%s" Debuffs ""', buffFile, tostring(meID))
+            _utils.debug('heals', 'writeDebuffs: cleared')
+        end
+    end
+end
+
+-- Port of Sub CheckCures (mac:12596). Iterates curesArray, checks targets for matching debuffs
+-- via KissAssist_Buffs.ini (non-DanNet path), calls castWhat with sentFrom='Cure'.
+-- CuresOn: 0=off 1=everyone-in-zone 2=self-only 3=group-only.
+-- Also wires MezBroke timer reset that was deferred from Step 2.2 events.lua.
+function Heal.checkCures()
+    if _state.heal.curesOn == 0 then return end
+    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
+    -- mac:12599: return when medding AND medCombat (don't interrupt combat-med for cures)
+    if _state.heal.medding and _state.heal.medCombat then return end
+
+    _utils.debug('heals', 'checkCures enter')
+
+    local curesOnVal = _state.heal.curesOn
+    local buffFile   = _state.session.buffFileName
+    local meID       = mq.TLO.Me.ID()
+
+    -- Build target ID list (mac:12624-12644, non-DanNet path only).
+    -- CuresOn=2: self only. Otherwise read section names from KissAssist_Buffs.ini.
+    local idList = {}
+    if curesOnVal == 2 then
+        idList[1] = meID
+    else
+        local sections = mq.TLO.Ini(buffFile)() or ''
+        for id in sections:gmatch('[^|\n,]+') do
+            local n = tonumber(id)
+            if n and n > 0 then idList[#idList + 1] = n end
+        end
+        if #idList == 0 then idList[1] = meID end
+    end
+
+    for _, targetID in ipairs(idList) do
+        local spawn     = mq.TLO.Spawn('id ' .. tostring(targetID))
+        local spawnType = spawn and spawn.Type() or ''
+        if spawnType == '' or spawnType == 'Corpse' then goto next_target end
+        local dist = spawn.Distance() or 9999
+        if dist > 100 then goto next_target end
+
+        -- CuresOn=3: skip targets not in our group (mac:12657)
+        if curesOnVal == 3 then
+            local inGroup = false
+            for gi = 0, (mq.TLO.Group.Members() or 0) do
+                local gm = mq.TLO.Group.Member(gi)
+                ---@diagnostic disable-next-line: undefined-field
+                if gm and gm.ID() == targetID then inGroup = true; break end
+            end
+            if not inGroup then goto next_target end
+        end
+
+        local cureCast = false
+
+        for _, entry in ipairs(_state.heal.curesArray) do
+            if entry == '' or entry == 'null' or entry == 'NULL' then goto next_cure end
+
+            -- Parse: SpellName[|debuffType[|scope][|condN]] (mac:12665-12686)
+            local parts = {}
+            for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+            local spellName = parts[1] or ''
+            local arg2      = (parts[2] or ''):lower()
+            local arg3      = (parts[3] or ''):lower()
+            if spellName == '' then goto next_cure end
+
+            -- Resolve debuff type and scope from pipe-delimited fields
+            local debuffType, scope
+            if arg2 == '' or arg2:find('cond', 1, true) then
+                debuffType = ''; scope = 'everyone'
+            elseif arg2 == 'me' then
+                debuffType = ''; scope = 'me'
+            else
+                debuffType = arg2
+                scope = (arg3 == 'me') and 'me' or 'everyone'
+            end
+
+            if scope == 'me' and targetID ~= meID then goto next_cure end
+
+            -- Spell ready check: skip if nothing can cast it (mac:12695)
+            local rankName = mq.TLO.Spell(spellName).RankName() or spellName
+            local ready = mq.TLO.Me.SpellReady(rankName)()
+                or mq.TLO.Me.AltAbilityReady(spellName)()
+                or mq.TLO.Me.CombatAbilityReady(rankName)()
+                or mq.TLO.Me.ItemReady(spellName)()
+            if not ready then goto next_cure end
+
+            -- Get debuff state: live TLO for self, ini cache for others (mac:12700-12727)
+            local poison, disease, curse, corrupt, mezzed
+            if targetID == meID then
+                ---@diagnostic disable-next-line: undefined-field
+                poison  = mq.TLO.Me.Poisoned.ID()  or 0
+                ---@diagnostic disable-next-line: undefined-field
+                disease = mq.TLO.Me.Diseased.ID()  or 0
+                ---@diagnostic disable-next-line: undefined-field
+                local cursedID  = mq.TLO.Me.Cursed.ID() or 0
+                ---@diagnostic disable-next-line: undefined-field
+                local restlesID = mq.TLO.Me.Song('Restless Curse').ID() or 0
+                curse   = cursedID + restlesID
+                ---@diagnostic disable-next-line: undefined-field
+                corrupt = mq.TLO.Me.Corrupted.ID() or 0
+                ---@diagnostic disable-next-line: undefined-field
+                mezzed  = mq.TLO.Me.Mezzed.ID()   or 0
+                if (poison + disease + curse + corrupt + mezzed) == 0 then break end
+            else
+                local raw = mq.TLO.Ini(buffFile, tostring(targetID), 'Debuffs')() or '0'
+                local rp  = {}
+                for p in (raw .. '|'):gmatch('([^|]*)|') do rp[#rp + 1] = p end
+                if (tonumber(rp[1]) or 0) == 0 then break end  -- no debuffs recorded for this target
+                poison  = tonumber(rp[2]) or 0
+                disease = tonumber(rp[3]) or 0
+                curse   = tonumber(rp[4]) or 0
+                corrupt = tonumber(rp[5]) or 0
+                mezzed  = tonumber(rp[6]) or 0
+            end
+
+            -- Debuff type match (mac:12729-12744)
+            local shouldCure = false
+            if debuffType == '' then
+                shouldCure = true
+            elseif debuffType == 'poison'     then shouldCure = poison  > 0
+            elseif debuffType == 'disease'    then shouldCure = disease > 0
+            elseif debuffType == 'curse'      then shouldCure = curse   > 0
+            elseif debuffType == 'corruption' then shouldCure = corrupt > 0
+            elseif debuffType == 'mezzed'     then shouldCure = mezzed  > 0
+            end
+            if not shouldCure then goto next_cure end
+
+            -- Group spell + out-of-group target guard (mac:12746)
+            do
+                local tt = mq.TLO.Spell(spellName).TargetType() or ''
+                if tt:lower():find('group v1', 1, true) then
+                    local inGroup = false
+                    for gi = 0, (mq.TLO.Group.Members() or 0) do
+                        local gm = mq.TLO.Group.Member(gi)
+                        ---@diagnostic disable-next-line: undefined-field
+                        if gm and gm.ID() == targetID then inGroup = true; break end
+                    end
+                    if not inGroup then goto next_cure end
+                end
+            end
+
+            _utils.debug('heals', string.format('checkCures: %s -> id=%d (%s)', spellName, targetID, debuffType))
+            _cast.castWhat(spellName, targetID, 'Cure')
+            if _state.cast.castReturn == 'CAST_SUCCESS' then
+                ---@diagnostic disable-next-line: undefined-field
+                mq.cmdf('/%s o "CURING: >> %s << with %s"',
+                    _state.session.broadcastSay, spawn.CleanName() or '', spellName)
+                cureCast = true
+                -- Re-check heals after a cure (mac:12761-12764)
+                if _state.heal.healsOn > 0 then
+                    Heal.checkHealth('CheckCures')
+                end
+            end
+
+            ::next_cure::
+        end
+
+        -- After self-cure, refresh debuff ini entry (mac:12768-12776)
+        if targetID == meID and cureCast then
+            Heal.writeDebuffs()
+        end
+
+        ::next_target::
+    end
+
+    -- Wire MezBroke timer reset deferred from Step 2.2 events.lua (onMezBroke handler)
+    _state.mez.broke = false
+
+    _utils.debug('heals', 'checkCures leave')
 end
 
 return Heal

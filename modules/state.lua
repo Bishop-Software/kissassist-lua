@@ -216,7 +216,7 @@ local State = {
         -- Step 5.3 — group heal dispatch (built from healsArray at init by FindGroupHeals logic)
         groupHealArray  = {},  -- group-target spells only (TargetType contains 'group' or 'Targeted AE')
         groupHealTimers = {},  -- per-slot os.clock() expiry; 0=expired (mirrors SpellGH${j} mac timers)
-        curesOn         = false,
+        curesOn         = 0,    -- 0=off 1=everyone 2=self-only 3=group-only
         curesArray      = {},
         healInterval    = 0,
         autoRezOn       = false,

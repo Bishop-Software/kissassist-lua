@@ -1025,6 +1025,86 @@ end)
 
 ---
 
+## Section 5.5 — Heal.writeDebuffs + Heal.checkCures (Step 5.4)
+
+#### 5.5.1 — curesOn integer loading
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.1 | CuresOn=0 loads as 0 | INI `CuresOn=0` | `state.heal.curesOn == 0` |
+| 5.5.2 | CuresOn=1 loads as 1 | INI `CuresOn=1` | `state.heal.curesOn == 1` |
+| 5.5.3 | CuresOn=2 loads as 2 | INI `CuresOn=2` | `state.heal.curesOn == 2` |
+| 5.5.4 | CuresOn=3 loads as 3 | INI `CuresOn=3` | `state.heal.curesOn == 3` |
+
+#### 5.5.2 — Heal.writeDebuffs
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.5 | Not debuffed, `needCuring=false` — no-op | All `Me.*ID()=0` | No ini write; `needCuring` stays false |
+| 5.5.6 | Newly poisoned, `needCuring=false` — writes ini | `Me.Poisoned.ID()=1234`, others 0 | `needCuring=true`; `/ini` called with `"1\|1234\|0\|0\|0\|0"` |
+| 5.5.7 | Poisoned + diseased — writes combined | `Poisoned.ID()=100`, `Diseased.ID()=200` | `needCuring=true`; count field is `300` |
+| 5.5.8 | Curse + Restless Curse — combined into curse field | `Cursed.ID()=50`, `Song('Restless Curse').ID()=60` | Curse field = `110` |
+| 5.5.9 | Already debuffed + `needCuring=true` — no re-write | `Me.Poisoned.ID()=1234`, `needCuring=true` | No second ini write (state gate prevents duplicate) |
+| 5.5.10 | Was debuffed, cured, `needCuring=true` — clears | All debuffs gone, `needCuring=true` | `needCuring=false`; `/ini` called with empty Debuffs value |
+| 5.5.11 | Was clean, still clean, `needCuring=false` — no-op | All 0, `needCuring=false` | No ini write; `needCuring` stays false |
+
+#### 5.5.3 — Heal.checkCures guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.12 | `curesOn=0` — returns immediately | `state.heal.curesOn=0` | Returns; no cure logic runs |
+| 5.5.13 | Invisible, no aggro — returns | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.5.14 | Invisible with aggro — proceeds | `Me.Invis()=true`, `aggroTargetID='1234'` | Does not return early on invis guard |
+| 5.5.15 | Medding + medCombat — returns | `medding=true`, `medCombat=true` | Returns immediately (mac:12599) |
+| 5.5.16 | Medding, medCombat=false — proceeds | `medding=true`, `medCombat=false` | Does not return early |
+
+#### 5.5.4 — Target list building
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.17 | CuresOn=2 (self-only) — only Me.ID in list | `curesOn=2` | Only `Me.ID()` iterated; no ini section read |
+| 5.5.18 | CuresOn=1 — reads section names from ini | `curesOn=1`, ini has sections `12345` and `67890` | Both IDs iterated |
+| 5.5.19 | Empty ini sections, CuresOn=1 — falls back to self | `curesOn=1`, ini returns `''` | Falls back to `[Me.ID()]` |
+| 5.5.20 | CuresOn=3, target not in group — skipped | `curesOn=3`, target `12345` not in `Group.Member(0..5)` | Target skipped; no cure attempt |
+| 5.5.21 | Target is Corpse — skipped | `Spawn.Type()='Corpse'` | Target skipped |
+| 5.5.22 | Target > 100 distance — skipped | `Spawn.Distance()=150` | Target skipped |
+
+#### 5.5.5 — Cure entry parsing and dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.23 | Blank entry skipped | `curesArray[1]=''` | No cast attempt |
+| 5.5.24 | Scope `me`, target is self — cures | `entry='CurePoison\|poison\|me'`, `targetID=Me.ID()` | Cure attempted on self |
+| 5.5.25 | Scope `me`, target is other — skipped | `entry='CurePoison\|poison\|me'`, `targetID=99999` | Skip; no cast |
+| 5.5.26 | No type filter (`arg2=''`) — cures regardless | `entry='Cleanse'`, target has any debuff | Cure attempted unconditionally |
+| 5.5.27 | Type `poison`, target poisoned — cures | `debuffType='poison'`, `poison>0` | `castWhat('Cleanse', targetID, 'Cure')` called |
+| 5.5.28 | Type `poison`, target not poisoned — skipped | `debuffType='poison'`, `poison=0` | No cast |
+| 5.5.29 | Type `disease` — matches disease field | `debuffType='disease'`, `disease>0` | Cast fires |
+| 5.5.30 | Type `curse` — matches combined curse field | `debuffType='curse'`, `curse>0` | Cast fires |
+| 5.5.31 | Type `corruption` — matches corrupt field | `debuffType='corruption'`, `corrupt>0` | Cast fires |
+| 5.5.32 | Type `mezzed` — matches mez field | `debuffType='mezzed'`, `mezzed>0` | Cast fires |
+| 5.5.33 | Spell not ready — skipped | `Me.SpellReady=false`, no AA/disc/item ready either | No cast |
+| 5.5.34 | Group-spell, target out-of-group — skipped | `TargetType='Group v1'`, target not in group | Skip with no cast |
+| 5.5.35 | Self-target: live TLO read; no debuffs — breaks cure loop | `targetID=Me.ID()`, all debuffs 0 | Inner cure loop breaks; moves to next target |
+| 5.5.36 | Other target: ini count=0 — breaks cure loop | `Ini[targetID][Debuffs]='0\|...'` first field = 0 | Inner loop breaks |
+
+#### 5.5.6 — Post-cast behavior
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.37 | Successful cure — broadcasts | `castReturn='CAST_SUCCESS'` | `/bc o "CURING: >> <name> << with <spell>"` issued |
+| 5.5.38 | Successful cure + healsOn>0 — re-checks health | `castReturn='CAST_SUCCESS'`, `healsOn=1` | `Heal.checkHealth('CheckCures')` called |
+| 5.5.39 | Successful self-cure — refreshes writeDebuffs | `targetID=Me.ID()`, `castReturn='CAST_SUCCESS'` | `Heal.writeDebuffs()` called after cure loop |
+| 5.5.40 | Failed cure — no broadcast or health re-check | `castReturn='CAST_FIZZLE'` | No broadcast; no checkHealth call |
+
+#### 5.5.7 — MezBroke reset
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.41 | checkCures resets mez.broke | `state.mez.broke=true` before call | `state.mez.broke=false` after checkCures returns |
+
+---
+
 ## Section 6 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1040,7 +1120,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.3)
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.4)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1092,12 +1172,12 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `state.session.heals` wire (castMem guard) | ✅ Step 5.2 |
 | `/addimmune` bind | ✅ Step 5.1 |
 | Heal.init — INI loading + state wiring | ✅ Step 5.1 |
-| Healing/cures triggered by events | M5 Steps 5.2–5.4 |
-| Mez timer reset (MezBroke) | M5 Step 5.4 |
+| Healing/cures triggered by events | M5 Steps 5.2–5.6 |
+| Mez timer reset (MezBroke) | ✅ Step 5.4 (`checkCures` resets `state.mez.broke` at end) |
 | CheckHealth | ✅ Step 5.2 |
 | DoGroupHealStuff | ✅ Step 5.3 |
 | doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
-| CheckCures / WriteDebuffs (healer) | M5 Step 5.4 |
+| CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
 | RezCheck / RezWithCheck | M5 Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
@@ -1110,4 +1190,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.3 complete. Section 5.4 added for Heal.doGroupHealStuff + Heal.doWeMed (29 test cases). DoGroupHealStuff and doWeMed marked ✅ in Known Deferred.*
+*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.4 complete. Section 5.5 added for Heal.writeDebuffs + Heal.checkCures (37 test cases). MezBroke reset, CheckCures/WriteDebuffs marked ✅ in Known Deferred.*

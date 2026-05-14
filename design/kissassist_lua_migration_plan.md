@@ -493,11 +493,19 @@ Port `Sub DoGroupHealStuff`. Count group members below `groupWatchPct`; decide s
 
 ---
 
-#### Step 5.4 — `CheckCures` + `WriteDebuffs`
+#### ✅ Step 5.4 — `CheckCures` + `WriteDebuffs`
 
 Port `Sub CheckCures`: iterate cure array from INI, check group members for matching debuffs by SPA type, call `Cast.castWhat` with `'cure'` sentFrom. Port `Sub WriteDebuffs` (mac:12569): write self-debuff status to `KissAssist_Buffs.ini` for cross-character healer awareness. Wire `MezBroke` timer reset that was deferred in Step 2.2.
 
 **Done when:** script removes debuffs from group members; `KissAssist_Buffs.ini` updated with self-debuff state.
+
+✅ Implemented (May 13 2026):
+- `state.lua`: Changed `heal.curesOn` from `false` (boolean) to `0` (integer, 0=off 1=everyone 2=self 3=group)
+- `healing.lua` `Heal.init()`: Load `curesOn` as integer via `tonumber()`, not boolean comparison
+- `healing.lua` `Heal.writeDebuffs()`: Port of mac:12569 — computes debuff sum (Poisoned/Diseased/Cursed/Corrupted/Mezzed + Restless Curse song), writes `count|poison|disease|curse|corrupt|mez` format to `KissAssist_Buffs.ini` under `[Me.ID]`; clears entry when clean; only updates on state change (needCuring flag gate)
+- `healing.lua` `Heal.checkCures()`: Port of mac:12596 — guards (curesOn=0, invis, medding+medCombat); builds target ID list from ini sections (CuresOn=2=self only, else reads `KissAssist_Buffs.ini` section names); for each target: skip corpse/distance>100/non-group (curesOn=3); for each cure entry: parse SpellName|debuffType|scope|condN, check ready, fetch debuff state (live TLO for self, ini cache for others), type-match, group-spell guard; calls `castWhat` with sentFrom='Cure'; on success broadcasts cure and re-checks health; after self-cure refreshes `writeDebuffs`; DanNet path omitted (deprecated)
+- `healing.lua` `checkHealth()`: Stub comment updated — `checkCures` is wired from combat loop in Step 5.6 (not from checkHealth, to avoid recursion since checkCures calls checkHealth internally)
+- `events.lua` MezBroke deferred item: `_state.mez.broke = false` reset added at end of `checkCures()`
 
 ---
 
