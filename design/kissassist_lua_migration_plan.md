@@ -509,11 +509,19 @@ Port `Sub CheckCures`: iterate cure array from INI, check group members for matc
 
 ---
 
-#### Step 5.5 — `RezCheck` / `RezWithCheck`
+#### ✅ Step 5.5 — `RezCheck` / `RezWithCheck`
 
 MQ2Rez integration. `RezCheck`: scan for dead group members needing rez, check `autoRezAll`. `RezWithCheck`: validate rez target is recoverable (not LD, not already rezzing), call `Cast.castWhat` with `'Rez'` sentFrom. `corpseRezCheck` state management. Rez sickness guard.
 
 **Done when:** script rezzes dead group members using MQ2Rez.
+
+**Implemented:**
+- `state.lua`: `autoRezOn` changed from boolean to integer (0=off, 1=normal, 2=OOC-only); added `autoRezArray = {}`, `battleRezTimers = {0,0,0,0,0}`, `oocRezTimers = {}`. Removed duplicate boolean `autoRezOn` field.
+- `healing.lua` `Heal.init()`: loads `autoRezOn` via `tonumber()`; loads `AutoRez` array from `[Heals]` INI section; debug log updated.
+- `healing.lua` `rezWithCheck()` (local): selects first ready rez spell from `autoRezArray` filtered by combat state vs rez type (rez/rezooc/rezcombat). Returns spell name or nil. Condition eval (ConOn) deferred to Step 6+.
+- `healing.lua` `Heal.rezCheck()`: guards (autoRezOn, DMZ+instance, hovering, invis+no-aggro, autoRezOn==2+combat). Phases: MA corpse → self (if !rezMeLast) → group slots 1-5 with `battleRezTimers` → self (if rezMeLast) → OOC `autoRezAll` pass with `corpseRezCheck` try-count tracking (max 3). Per-corpse `oocRezTimers` replace mac dynamic timer variables.
+- `healing.lua` `checkHealth()`: stub replaced with `if _state.heal.autoRezOn > 0 then Heal.rezCheck() end`.
+- Test plan: Section 5.6 added (39 test cases 5.6.1–5.6.45). Known Deferred updated.
 
 ---
 

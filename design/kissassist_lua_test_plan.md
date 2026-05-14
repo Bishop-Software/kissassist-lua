@@ -1105,6 +1105,95 @@ end)
 
 ---
 
+## Section 5.6 — Heal.rezCheck + rezWithCheck (Step 5.5)
+
+#### 5.6.1 — autoRezOn integer loading
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.1 | AutoRezOn=0 loads as 0 | INI `AutoRezOn=0` | `state.heal.autoRezOn == 0` |
+| 5.6.2 | AutoRezOn=1 loads as 1 | INI `AutoRezOn=1` | `state.heal.autoRezOn == 1` |
+| 5.6.3 | AutoRezOn=2 loads as 2 | INI `AutoRezOn=2` | `state.heal.autoRezOn == 2` |
+
+#### 5.6.2 — AutoRez array loading
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.4 | AutoRez entries load into array | INI `AutoRez1=Resurrection\|0\|rez` | `state.heal.autoRezArray[1] == 'Resurrection\|0\|rez'` |
+| 5.6.5 | Multiple entries load in order | INI `AutoRez1=…`, `AutoRez2=…` | Array has both entries in order |
+| 5.6.6 | NULL entries skipped | INI `AutoRez1=NULL` | Array is empty |
+
+#### 5.6.3 — rezCheck guards
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.7 | `autoRezOn=0` — returns immediately | `state.heal.autoRezOn=0` | Returns; no rez logic runs |
+| 5.6.8 | DMZ zone, not in instance — returns | `state.misc.dmz=true`, `Zone.IsInstance()=false` | Returns immediately |
+| 5.6.9 | DMZ zone, in instance — proceeds | `state.misc.dmz=true`, `Zone.IsInstance()=true` | Does not return early on DMZ guard |
+| 5.6.10 | Hovering — returns | `Me.Hovering()=true` | Returns immediately |
+| 5.6.11 | Invisible, no aggro — returns | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.6.12 | `autoRezOn=2`, aggro present — returns | `autoRezOn=2`, `aggroTargetID='1234'` | Returns (OOC-only mode) |
+| 5.6.13 | `autoRezOn=1`, aggro present — proceeds | `autoRezOn=1`, `aggroTargetID='1234'` | Does not return early on combat guard |
+| 5.6.14 | No rez spell ready — returns early | `autoRezArray` empty or no spell ready | Returns after probe; no targeting attempted |
+
+#### 5.6.4 — rezWithCheck spell selection
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.15 | `rez` type — valid OOC and in combat | `rezType='rez'`, `Me.SpellReady()=true` | Returns spell name |
+| 5.6.16 | `rezooc` type — valid OOC, skipped in combat | `rezType='rezooc'`, in combat | Returns nil; spell skipped |
+| 5.6.17 | `rezooc` type — valid when OOC | `rezType='rezooc'`, not in combat | Returns spell name |
+| 5.6.18 | `rezcombat` type — valid in combat, skipped OOC | `rezType='rezcombat'`, not in combat | Returns nil; spell skipped |
+| 5.6.19 | `rezcombat` type — valid when in combat | `rezType='rezcombat'`, in combat | Returns spell name |
+| 5.6.20 | Unknown rez type — stops iteration | `rezType='invalid'`, second entry is valid | Returns nil; loop stops at bad entry |
+| 5.6.21 | Spell not ready — skipped | `SpellReady()=false`, `AltAbilityReady()=false`, `ItemReady()=false` | Returns nil |
+| 5.6.22 | First ready spell returned | Two entries, first not ready, second ready | Returns second spell name |
+
+#### 5.6.5 — MA corpse rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.23 | MA corpse in range — rezzes | MA has corpse within 150, rez ready, no OOC timer | Target set to corpse; `castWhat` called; broadcast sent |
+| 5.6.24 | MA corpse — OOC timer not expired — skips | `oocRezTimers[maCorpseID]` in future | No cast attempted |
+| 5.6.25 | No MA set — skips MA phase | `state.session.mainAssist=''` | MA phase skipped cleanly |
+
+#### 5.6.6 — Self rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.26 | Self corpse exists, timer clear — rezzes | Own pccorpse in range, `oocRezTimers` clear | `castWhat` called with corpse ID; broadcast sent |
+| 5.6.27 | Self corpse, OOC timer active — skips | `oocRezTimers[myCopseID]` in future | No cast |
+| 5.6.28 | No self corpse — skips | No pccorpse for own name | Self rez phase no-ops |
+| 5.6.29 | `rezMeLast=false` — self rezzes before group | `rezMeLast=false`, both self and group member have corpse | Self rezzed first |
+| 5.6.30 | `rezMeLast=true` — group rezzes before self | `rezMeLast=true`, both self and group member have corpse | Group member rezzed first |
+
+#### 5.6.7 — Group member rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.31 | Group member corpse in range — rezzes | Member corpse < 100 dist, battleRezTimers[i]=0 | `castWhat` called; broadcast "REZZED" |
+| 5.6.32 | battleRezTimer not expired — skips slot | `battleRezTimers[i]` in future | No cast for that slot |
+| 5.6.33 | MA member — skipped | Member's name == mainAssist | Slot skipped |
+| 5.6.34 | Corpse > 100 dist — skipped | Corpse distance = 150 | No cast |
+| 5.6.35 | OOC rez success — timer set to 60s | Non-combat, rez success | `battleRezTimers[i] = os.clock() + 60` |
+| 5.6.36 | Combat rez success — timer set to 180s | `combatStart=true`, rez success | `battleRezTimers[i] = os.clock() + 180` |
+| 5.6.37 | Call of Wild rez success — timer set to 360s | Spell name contains 'Call of', rez success | `battleRezTimers[i] = os.clock() + 360` |
+| 5.6.38 | Rez fails — throttle timer set to 60s | `castReturn != CAST_SUCCESS` | `battleRezTimers[i] = os.clock() + 60` |
+| 5.6.39 | Member in other zone + Call of Wild — skipped | `OtherZone()=true`, spell contains 'Call of' | Slot skipped |
+
+#### 5.6.8 — autoRezAll OOC pass
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.40 | `autoRezAll=false` — OOC pass skipped | `autoRezAll=false`, corpses present | autoRezAll block not entered |
+| 5.6.41 | `combatStart=true` — OOC pass skipped | `combatStart=true`, `autoRezAll=true` | autoRezAll block not entered |
+| 5.6.42 | New corpse, tries=0 — casts and records | `autoRezAll=true`, OOC, corpse nearby, timer clear | Cast attempted; `corpseRezCheck` updated to `id:1|…` |
+| 5.6.43 | tries=3 — skipped | `corpseRezCheck` has `id:3|` | No cast for that corpse |
+| 5.6.44 | OOC timer active — skipped | `oocRezTimers[id]` in future | No cast |
+| 5.6.45 | No corpses remain — prunes timers + resets corpseRezCheck | `SpawnCount=0` | `corpseRezCheck='null'`; stale timer entries removed |
+
+---
+
 ## Section 6 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1120,7 +1209,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.4)
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.5)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1178,7 +1267,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | DoGroupHealStuff | ✅ Step 5.3 |
 | doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
 | CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
-| RezCheck / RezWithCheck | M5 Step 5.5 |
+| RezCheck / RezWithCheck | ✅ Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
@@ -1190,4 +1279,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.4 complete. Section 5.5 added for Heal.writeDebuffs + Heal.checkCures (37 test cases). MezBroke reset, CheckCures/WriteDebuffs marked ✅ in Known Deferred.*
+*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.5 complete. Section 5.6 added for Heal.rezCheck + rezWithCheck (39 test cases). RezCheck/RezWithCheck marked ✅ in Known Deferred.*

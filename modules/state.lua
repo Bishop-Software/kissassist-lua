@@ -195,7 +195,11 @@ local State = {
 
     heal = {
         autoRezAll          = false,
+        autoRezArray        = {},
+        autoRezOn           = 0,   -- 0=off 1=normal 2=OOC-only (mac AutoRezOn)
+        battleRezTimers     = {0,0,0,0,0},  -- per group slot 1-5; os.clock() expiry
         corpseRezCheck      = 'null',
+        oocRezTimers        = {},            -- [corpseID] = os.clock() expiry
         groupWatchPct       = 20,
         healAgain           = false,
         healRemChk1         = 'Divine Barrier',
@@ -219,7 +223,6 @@ local State = {
         curesOn         = 0,    -- 0=off 1=everyone 2=self-only 3=group-only
         curesArray      = {},
         healInterval    = 0,
-        autoRezOn       = false,
         xTarHeal        = false,
         xTarHealList    = '',
         healGroupPetsOn = false,

@@ -31,7 +31,7 @@ function Heal.init(state, utils, cast)
     -- [Heals]
     _state.heal.healsOn         = tonumber(Config.get('Heals', 'HealsOn', '0')) or 0
     _state.heal.healInterval    = tonumber(Config.get('Heals', 'HealInterval', '0'))  or 0
-    _state.heal.autoRezOn       = Config.get('Heals', 'AutoRezOn',       '0') == '1'
+    _state.heal.autoRezOn       = tonumber(Config.get('Heals', 'AutoRezOn', '0')) or 0
     _state.heal.xTarHeal        = Config.get('Heals', 'XTarHeal',        '0') == '1'
     _state.heal.xTarHealList    = Config.get('Heals', 'XTarHealList',    '')  or ''
     _state.heal.healGroupPetsOn = Config.get('Heals', 'HealGroupPetsOn', '0') == '1'
@@ -102,10 +102,21 @@ function Heal.init(state, utils, cast)
         end
     end
 
+    -- [Heals] AutoRez entries: SpellName|arg2|RezType (rez/rezooc/rezcombat)
+    local autoRezRaw = Config.get('Heals', 'AutoRez', nil)
+    if type(autoRezRaw) == 'table' then
+        for _, v in ipairs(autoRezRaw) do
+            if v and v ~= '' and v ~= 'NULL' and v ~= 'null' then
+                _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = v
+            end
+        end
+    end
+
     _utils.debug('heals', string.format(
-        'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%d(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
+        'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%d(%d) autoRezOn=%d(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
         _state.heal.healsOn, #_state.heal.healsArray, #_state.heal.groupHealArray,
         _state.heal.curesOn, #_state.heal.curesArray,
+        _state.heal.autoRezOn, #_state.heal.autoRezArray,
         tostring(_state.heal.medOn), _state.heal.medStat, _state.heal.medStart, _state.heal.medStop,
         _state.heal.singleHealPoint, _state.heal.singleHealPointMA, _state.heal.singleHealPointRange))
 end
@@ -246,7 +257,7 @@ function Heal.checkHealth(sentFrom)
 
     -- Note: Heal.checkCures() is called from the combat loop (Step 5.6), not here,
     --       because checkCures() calls checkHealth() internally (mac:12617,12763).
-    -- Step 5.5: Heal.rezCheck()         — rez dead group members via MQ2Rez
+    if _state.heal.autoRezOn > 0 then Heal.rezCheck() end
 
     _utils.debug('heals', 'checkHealth leave ' .. sentFrom)
 end
@@ -324,6 +335,45 @@ function Heal.doWeMed()
             mq.cmd('/sit')
         end
     end
+end
+
+-- Port of Sub RezWithCheck (mac:6799). Selects the first ready rez spell from autoRezArray
+-- that is legal for the current combat state. Returns spell name string or nil.
+-- who='status': skip condition evaluation (just probe readiness).
+-- RezType field (arg3): rez=always, rezooc=OOC-only, rezcombat=combat-only.
+local function rezWithCheck()
+    local inCombat = _state.combat.combatStart
+        or (mq.TLO.SpawnCount('xtarhater radius ' .. (_state.combat.meleeDistance or 30))() or 0) > 0
+
+    for _, entry in ipairs(_state.heal.autoRezArray) do
+        if entry == '' or entry == 'null' or entry == 'NULL' then break end
+        local parts = {}
+        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spellName = parts[1] or ''
+        local rezType   = (parts[3] or ''):lower()
+        if spellName == '' then break end
+
+        -- Validate rez type; stop on first unknown (mac:6807-6810)
+        if rezType ~= 'rez' and rezType ~= 'rezooc' and rezType ~= 'rezcombat' then
+            if rezType ~= '' and rezType ~= 'null' then
+                _utils.debug('heals', 'rezWithCheck: invalid rez type ' .. rezType)
+            end
+            break
+        end
+
+        -- Filter by combat state, then check readiness (mac:6811-6817)
+        local combatFiltered = (inCombat and rezType == 'rezooc')
+                            or (not inCombat and rezType == 'rezcombat')
+        if not combatFiltered then
+            local rankName = mq.TLO.Spell(spellName).RankName() or spellName
+            local ready = mq.TLO.Me.SpellReady(rankName)()
+                or mq.TLO.Me.AltAbilityReady(spellName)()
+                or mq.TLO.Me.ItemReady(spellName)()
+            -- ConOn / condition eval simplified (deferred to Step 6+); return first ready spell
+            if ready then return spellName end
+        end
+    end
+    return nil
 end
 
 -- Port of Sub WriteDebuffs (mac:12569). Writes self-debuff state to KissAssist_Buffs.ini
@@ -531,6 +581,208 @@ function Heal.checkCures()
     _state.mez.broke = false
 
     _utils.debug('heals', 'checkCures leave')
+end
+
+-- Port of Sub RezCheck (mac:6834). Scans for dead group members / self and rezzes them.
+-- Phase order: MA corpse → self (if !rezMeLast) → group slots 1-5 → self (if rezMeLast)
+-- → OOC autoRezAll pass with CorpseRezCheck try-count tracking.
+-- autoRezOn: 0=off 1=normal 2=OOC-only (mac:6836, 6840).
+function Heal.rezCheck()
+    if _state.heal.autoRezOn == 0 then return end
+    ---@diagnostic disable-next-line: undefined-field
+    if _state.misc.dmz and not (mq.TLO.Zone.IsInstance() or false) then return end
+    if mq.TLO.Me.Hovering() then return end
+    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
+    -- autoRezOn==2: rez only OOC; abort if in combat (mac:6840)
+    if _state.heal.autoRezOn == 2 and _state.combat.aggroTargetID ~= '' then return end
+
+    -- Quick probe: if no rez spell is ready at all, bail out early (mac:6855-6860)
+    if not rezWithCheck() then
+        _utils.debug('heals', 'rezCheck: no rez ready')
+        return
+    end
+
+    _utils.debug('heals', 'rezCheck enter')
+
+    local RZ_RADIUS   = 150
+    local meName      = mq.TLO.Me.CleanName() or ''
+    local maName      = _state.session.mainAssist
+
+    -- Cast a rez spell at corpseID, broadcast msg on success, set oocRezTimers[corpseID].
+    -- Returns true on CAST_SUCCESS.
+    local function doRez(spell, corpseID, broadcastMsg, timerSecs)
+        mq.cmdf('/squelch /tar id %d', corpseID)
+        mq.delay(500, function() return mq.TLO.Target.ID() == corpseID end)
+        if mq.TLO.Target.ID() ~= corpseID then return false end
+        if (mq.TLO.Target.Distance() or 9999) > _state.movement.campRadius then
+            mq.cmd('/corpse')
+            mq.delay(500)
+        end
+        _cast.castWhat(spell, corpseID, 'RezCheck')
+        if _state.cast.castReturn == 'CAST_SUCCESS' then
+            mq.cmdf('/%s o "%s"', _state.session.broadcastSay, broadcastMsg)
+            _state.heal.oocRezTimers[corpseID] = os.clock() + timerSecs
+            mq.cmd('/squelch /target clear')
+            return true
+        end
+        return false
+    end
+
+    -- Phase 1: MA corpse (mac:6862-6882)
+    if maName ~= '' then
+        local maCorpseID = mq.TLO.Spawn(
+            'pccorpse ' .. maName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() or 0
+        if maCorpseID ~= 0 then
+            local spell = rezWithCheck()
+            if spell and os.clock() >= (_state.heal.oocRezTimers[maCorpseID] or 0) then
+                _utils.debug('heals', 'rezCheck: rezzing MA ' .. maName)
+                doRez(spell, maCorpseID, 'REZZING MA =>> ' .. maName .. ' <<=', 60)
+            end
+        end
+    end
+
+    -- Self rez helper (mac:6886-6911 and 6947-6973)
+    local function rezSelf()
+        local corpseID = mq.TLO.Spawn(
+            'pccorpse ' .. meName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() or 0
+        if corpseID == 0 then return end
+        local spell = rezWithCheck()
+        if not spell then return end
+        if os.clock() < (_state.heal.oocRezTimers[corpseID] or 0) then return end
+        _utils.debug('heals', 'rezCheck: rezzing self')
+        doRez(spell, corpseID, 'REZZING ME =>> ' .. meName .. ' <<=', 60)
+    end
+
+    -- Group rez helper — slots 1-5 (mac:6914-6945)
+    local function rezGroup()
+        for i = 1, 5 do
+            local spell = rezWithCheck()
+            if not spell then break end
+
+            local m = mq.TLO.Group.Member(i)
+            ---@diagnostic disable-next-line: undefined-field
+            local memberName = m and m.CleanName() or ''
+            if memberName == '' or memberName == maName then goto next_gm end
+
+            ---@diagnostic disable-next-line: undefined-field
+            local otherZone = m and m.OtherZone() or false
+            -- Skip if Call of Wild rez and member is in another zone (mac:6920)
+            if spell:find('Call of', 1, true) and otherZone then goto next_gm end
+
+            do
+                local corpseID = mq.TLO.Spawn(memberName .. ' pccorpse').ID() or 0
+                if corpseID == 0 then goto next_gm end
+
+                if os.clock() < (_state.heal.battleRezTimers[i] or 0) then goto next_gm end
+
+                local dist = mq.TLO.Spawn('id ' .. tostring(corpseID)).Distance() or 9999
+                if dist > 100 then goto next_gm end
+
+                _utils.debug('heals', 'rezCheck: rezzing group member ' .. memberName)
+                mq.cmdf('/squelch /tar id %d', corpseID)
+                mq.delay(500, function() return mq.TLO.Target.ID() == corpseID end)
+                if mq.TLO.Target.ID() ~= corpseID then goto next_gm end
+                if (mq.TLO.Target.Distance() or 9999) > _state.movement.campRadius then
+                    mq.cmd('/corpse')
+                    mq.delay(500)
+                end
+                _cast.castWhat(spell, corpseID, 'RezCheckG')
+                if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    local isCallOfWild = spell:find('Call of', 1, true)
+                    if _state.combat.combatStart then
+                        mq.cmdf('/%s o "BATTLE REZZED =>> %s <<="', _state.session.broadcastSay, memberName)
+                        _state.heal.battleRezTimers[i] = os.clock() + (isCallOfWild and 360 or 180)
+                    else
+                        mq.cmdf('/%s o "REZZED =>> %s <<="', _state.session.broadcastSay, memberName)
+                        _state.heal.battleRezTimers[i] = os.clock() + (isCallOfWild and 360 or 60)
+                    end
+                    mq.cmd('/squelch /target clear')
+                else
+                    -- On failure, throttle retries for this slot (mac:6940)
+                    if memberName ~= maName then
+                        _state.heal.battleRezTimers[i] = os.clock() + 60
+                    end
+                end
+            end
+
+            ::next_gm::
+        end
+    end
+
+    -- Phase 2+3: self then group, or group then self depending on rezMeLast (mac:6884, 6946)
+    if not _state.heal.rezMeLast then
+        rezSelf()
+        rezGroup()
+    else
+        rezGroup()
+        rezSelf()
+    end
+
+    -- Phase 4: OOC autoRezAll — rez any nearby pccorpse up to 3 times (mac:7018-7081)
+    if not _state.combat.combatStart and _state.heal.autoRezAll then
+        local corpseCount = mq.TLO.SpawnCount(
+            'pccorpse radius ' .. RZ_RADIUS .. ' zradius 50')() or 0
+        if corpseCount > 0 then
+            for j = 1, corpseCount do
+                local spell = rezWithCheck()
+                if not spell then break end
+
+                ---@diagnostic disable-next-line: undefined-field
+                local corpseID = mq.TLO.NearestSpawn(j,
+                    'pccorpse radius ' .. RZ_RADIUS .. ' zradius 50').ID() or 0
+                if corpseID == 0 then goto next_ra end
+                -- Skip own corpse (already handled above)
+                if corpseID == mq.TLO.Spawn(
+                    'pccorpse ' .. meName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() then
+                    goto next_ra
+                end
+                if os.clock() < (_state.heal.oocRezTimers[corpseID] or 0) then goto next_ra end
+
+                -- Parse try count from corpseRezCheck (mac:7030-7044)
+                local crc     = _state.heal.corpseRezCheck
+                local tryStr  = crc:match(tostring(corpseID) .. ':(%d+)|')
+                local tries   = tonumber(tryStr) or 0
+
+                if tries < 3 then
+                    local corpseSpawn = mq.TLO.Spawn('id ' .. tostring(corpseID))
+                    local dist = corpseSpawn and corpseSpawn.Distance() or 9999
+                    if dist <= RZ_RADIUS then
+                        local rezName = corpseSpawn and corpseSpawn.CleanName() or ''
+                        _cast.castWhat(spell, corpseID, 'RezCheckA')
+                        if _state.cast.castReturn == 'CAST_SUCCESS' then
+                            tries = tries + 1
+                            mq.cmdf('/%s o "Rezzing =>> %s for the %d Time<<="',
+                                _state.session.broadcastSay, rezName, tries)
+                            _state.heal.oocRezTimers[corpseID] = os.clock() + 180
+                            -- Update corpseRezCheck string (mac:7055-7059)
+                            if tryStr then
+                                _state.heal.corpseRezCheck = crc:gsub(
+                                    tostring(corpseID) .. ':%d+|',
+                                    tostring(corpseID) .. ':' .. tries .. '|')
+                            else
+                                _state.heal.corpseRezCheck =
+                                    tostring(corpseID) .. ':' .. tries .. '|' .. crc
+                            end
+                            mq.cmd('/squelch /target clear')
+                        end
+                    end
+                end
+
+                ::next_ra::
+            end
+        else
+            -- No corpses remain: prune oocRezTimers and reset corpseRezCheck (mac:7067-7080)
+            for id in pairs(_state.heal.oocRezTimers) do
+                local s = mq.TLO.Spawn('id ' .. tostring(id))
+                if not s or (s.Type() or '') ~= 'Corpse' then
+                    _state.heal.oocRezTimers[id] = nil
+                end
+            end
+            _state.heal.corpseRezCheck = 'null'
+        end
+    end
+
+    _utils.debug('heals', 'rezCheck leave')
 end
 
 return Heal
