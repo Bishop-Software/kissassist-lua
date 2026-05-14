@@ -65,6 +65,31 @@ function Heal.init(state, utils, cast)
     -- Wire session flag used by castMem guard (cast.lua:488)
     _state.session.heals = _state.heal.healsOn > 0
 
+    -- Build groupHealArray from healsArray (mirrors FindGroupHeals mac:12075).
+    -- Include spells whose TargetType contains 'group' (catches Group v2/v3 etc.)
+    -- or TargetType 'Targeted AE' when the entry tag is not 'MA' or 'ME'.
+    for _, entry in ipairs(_state.heal.healsArray) do
+        local spell = entry:match('^([^|]+)') or ''
+        local tag   = entry:match('^[^|]+|[^|]+|([^|]*)') or ''
+        if spell ~= '' then
+            local tt    = mq.TLO.Spell(spell).TargetType() or ''
+            local ttLow = tt:lower()
+            local isGroup = ttLow:find('group', 1, true) ~= nil
+            local isAE    = tt == 'Targeted AE' and tag ~= 'MA' and tag ~= 'ME'
+            local isSingleSelf = ttLow == 'self' or ttLow == 'single'
+            if (isGroup or isAE) and not isSingleSelf then
+                local n = #_state.heal.groupHealArray + 1
+                _state.heal.groupHealArray[n]  = entry
+                _state.heal.groupHealTimers[n] = 0
+            end
+        end
+    end
+
+    -- Derive medStat from class once (Mana for casters, Endurance for melee/hybrids without mana; mirrors DoWeMed mac:3852)
+    local MANA_CLASSES = {BST=true,BRD=true,CLR=true,DRU=true,ENC=true,MAG=true,NEC=true,PAL=true,RNG=true,SHM=true,SHD=true,WIZ=true}
+    local initClass = mq.TLO.Me.Class.ShortName() or ''
+    _state.heal.medStat = MANA_CLASSES[initClass] and 'Mana' or 'Endurance'
+
     -- [Cures]
     _state.heal.curesOn = Config.get('Cures', 'CuresOn', '0') == '1'
 
@@ -78,15 +103,18 @@ function Heal.init(state, utils, cast)
     end
 
     _utils.debug('heals', string.format(
-        'Heal.init done — healsOn=%d(%d spells) curesOn=%s(%d) medOn=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
-        _state.heal.healsOn, #_state.heal.healsArray,
+        'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%s(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',
+        _state.heal.healsOn, #_state.heal.healsArray, #_state.heal.groupHealArray,
         tostring(_state.heal.curesOn), #_state.heal.curesArray,
-        tostring(_state.heal.medOn), _state.heal.medStart, _state.heal.medStop,
+        tostring(_state.heal.medOn), _state.heal.medStat, _state.heal.medStart, _state.heal.medStop,
         _state.heal.singleHealPoint, _state.heal.singleHealPointMA, _state.heal.singleHealPointRange))
 end
 
 -- Classes that can cast heals on others (mirrors mac:6393 Select list)
 local HEALING_CLASSES = {BST=true, CLR=true, ENC=true, SHM=true, DRU=true, RNG=true, PAL=true}
+
+-- Classes that can cast group heals (mac:6522)
+local GROUP_HEAL_CLASSES = {BST=true, CLR=true, SHM=true, DRU=true, PAL=true}
 
 -- Iterate healsArray to find and cast the first spell whose threshold covers hpPct.
 -- Mirrors Sub SingleHeal dispatch (mac:6546). targetID must already be resolved.
@@ -205,11 +233,96 @@ function Heal.checkHealth(sentFrom)
         end
     end
 
-    -- Step 5.3: Heal.doGroupHealStuff() — group heal + HoT + medding
+    -- Group heal dispatch: only for group-heal-capable classes when 2+ members are below 90% HP (mac:6522-6530)
+    if GROUP_HEAL_CLASSES[myClass] then
+        ---@diagnostic disable-next-line: undefined-field
+        local avgHPs = mq.TLO.Group.AvgHPs() or 100
+        ---@diagnostic disable-next-line: undefined-field
+        local injured90 = mq.TLO.Group.Injured(90) or 0
+        if avgHPs < 100 and (mq.TLO.Group.Members() or 0) > 0 and injured90 > 1 then
+            Heal.doGroupHealStuff()
+        end
+    end
+
     -- Step 5.4: Heal.checkCures()       — debuff removal + WriteDebuffs
     -- Step 5.5: Heal.rezCheck()         — rez dead group members via MQ2Rez
 
     _utils.debug('heals', 'checkHealth leave ' .. sentFrom)
+end
+
+-- Port of Sub DoGroupHealStuff (mac:6739). Iterates groupHealArray (group-target spells filtered
+-- from healsArray at init). Fires the first spell whose threshold covers 2+ injured members and
+-- whose per-slot HoT timer has expired. sentFrom='GroupHeal' bypasses the invis guard in castWhat.
+function Heal.doGroupHealStuff()
+    _utils.debug('heals', 'doGroupHealStuff enter')
+
+    mq.doevents()
+
+    for i, entry in ipairs(_state.heal.groupHealArray) do
+        local spell = entry:match('^([^|]+)') or ''
+        local pct   = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
+        -- Mac returns on first empty/zero-threshold entry (mac:6749)
+        if spell == '' or pct == 0 then break end
+
+        if os.clock() >= _state.heal.groupHealTimers[i] then
+            ---@diagnostic disable-next-line: undefined-field
+            local injured = mq.TLO.Group.Injured(pct) or 0
+            if injured > 1 then
+                _utils.debug('heals', string.format('doGroupHealStuff: %s pct=%d injured=%d', spell, pct, injured))
+                _cast.castWhat(spell, mq.TLO.Me.ID(), 'GroupHeal')
+                if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    local dur = mq.TLO.Spell(spell).MyDuration.TotalSeconds() or 0
+                    _state.heal.groupHealTimers[i] = os.clock() + dur
+                    _state.heal.healAgain = true
+                    _utils.debug('heals', string.format('doGroupHealStuff: %s cast ok, timer=%ds', spell, dur))
+                    return
+                end
+            end
+        end
+    end
+
+    _utils.debug('heals', 'doGroupHealStuff leave')
+end
+
+-- Simplified port of Sub DoWeMed (mac:3836). Manages sit-to-med when out of combat.
+-- Full MeddingInterrupted state machine and bard twist-med are deferred (Step 5.6).
+-- Called from the main loop out-of-combat (init.lua, Step 5.6).
+function Heal.doWeMed()
+    if not _state.heal.medOn then return end
+    -- Only med in combat if medCombat is on (mac:3838)
+    if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then return end
+    if mq.TLO.Me.Moving() then return end
+
+    local stat = _state.heal.medStat
+    if stat == '' then return end
+
+    local pct
+    if stat == 'Mana' then
+        pct = mq.TLO.Me.PctMana() or 100
+    else
+        pct = mq.TLO.Me.PctEndurance() or 100
+    end
+
+    if not _state.heal.medding then
+        if pct < _state.heal.medStart then
+            _state.heal.medding = true
+            _utils.debug('heals', string.format('doWeMed: start medding %s at %d%%', stat, pct))
+            if not mq.TLO.Me.Sitting() then
+                mq.cmd('/sit')
+            end
+        end
+    else
+        if pct >= _state.heal.medStop then
+            _state.heal.medding = false
+            _utils.debug('heals', string.format('doWeMed: done medding %s at %d%%', stat, pct))
+            if mq.TLO.Me.Sitting() then
+                mq.cmd('/stand')
+            end
+        elseif not mq.TLO.Me.Sitting() then
+            -- Re-sit if something stood us up mid-med
+            mq.cmd('/sit')
+        end
+    end
 end
 
 return Heal

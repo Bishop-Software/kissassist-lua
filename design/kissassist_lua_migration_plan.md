@@ -477,11 +477,19 @@ Port `Sub CheckHealth` — the main health triage entry point. Self-heal path (`
 
 ---
 
-#### Step 5.3 — `DoGroupHealStuff`: group heal + HoT + medding
+#### ✅ Step 5.3 — `DoGroupHealStuff`: group heal + HoT + medding
 
 Port `Sub DoGroupHealStuff`. Count group members below `groupWatchPct`; decide single-target triage vs AoE/group heal. HoT (heal-over-time) slot management. Medding: sit-to-med control (`state.heal.medding`, `state.timers.sitToMed`), interrupted-medding event wiring (deferred from Step 2.2).
 
 **Done when:** script fires group heals when multiple members are low.
+
+✅ **Implemented:**
+- `state.lua`: added `heal.groupHealArray` (filtered group-target spells) and `heal.groupHealTimers` (per-slot `os.clock()` expiry, mirrors `SpellGH${j}` mac timers)
+- `healing.lua` `Heal.init()`: builds `groupHealArray` from `healsArray` via `FindGroupHeals` filter (TargetType contains 'group' or is 'Targeted AE' without MA/ME tag); initializes `groupHealTimers`; derives `medStat` (Mana vs Endurance) from class (mirrors `DoWeMed` mac:3852)
+- `healing.lua` `Heal.doGroupHealStuff()`: iterates `groupHealArray`; breaks on empty/zero-threshold entry (mirrors mac:6749 `/return`); checks per-slot timer; fires `castWhat(..., 'GroupHeal')` when `Group.Injured(pct) > 1`; sets HoT timer to `os.clock() + MyDuration` on success
+- `healing.lua` `Heal.checkHealth()`: replaced Step 5.3 stub with `Heal.doGroupHealStuff()` call gated by `GROUP_HEAL_CLASSES` and `Group.AvgHPs < 100 && Injured(90) > 1`
+- `healing.lua` `Heal.doWeMed()`: simplified port of `DoWeMed` (mac:3836) — guards (medOn, medCombat, Moving), sits when `pct < medStart`, stands when `pct >= medStop`, re-sits if interrupted mid-med; full `MeddingInterrupted` state machine deferred to Step 5.6
+- Wiring `Heal.doWeMed()` into `init.lua` main loop deferred to Step 5.6
 
 ---
 

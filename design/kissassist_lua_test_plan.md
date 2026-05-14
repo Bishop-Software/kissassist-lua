@@ -972,6 +972,59 @@ end)
 
 ---
 
+### 5.4 Heal.doGroupHealStuff + Heal.doWeMed (Step 5.3)
+
+#### 5.4.1 — groupHealArray population at init
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.1 | Group-type spell included | `healsArray = {'GroupHeal\|80\|'}` where `Spell.TargetType()='Group v2'` | `groupHealArray` contains the entry; `groupHealTimers[1] = 0` |
+| 5.4.2 | Single-target spell excluded | `healsArray = {'SingleHeal\|80\|'}` where `TargetType='Single'` | `groupHealArray` empty |
+| 5.4.3 | Self-target spell excluded | `healsArray = {'SelfHeal\|80\|'}` where `TargetType='Self'` | `groupHealArray` empty |
+| 5.4.4 | Targeted AE without MA/ME tag included | `TargetType='Targeted AE'`, tag='' | Included in `groupHealArray` |
+| 5.4.5 | Targeted AE with MA tag excluded | `TargetType='Targeted AE'`, tag='MA' | Excluded from `groupHealArray` |
+| 5.4.6 | medStat derived — caster class | `Me.Class.ShortName()='CLR'` | `state.heal.medStat = 'Mana'` |
+| 5.4.7 | medStat derived — melee class | `Me.Class.ShortName()='WAR'` | `state.heal.medStat = 'Endurance'` |
+| 5.4.8 | medStat derived — bard | `Me.Class.ShortName()='BRD'` | `state.heal.medStat = 'Mana'` |
+
+#### 5.4.2 — Heal.doGroupHealStuff dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.9 | groupHealArray empty — no cast | `groupHealArray = {}` | Returns immediately; no cast |
+| 5.4.10 | Injured count ≤ 1 — no cast | `Group.Injured(80)=1` | Spell not cast (needs > 1) |
+| 5.4.11 | Injured count > 1, timer expired — cast fires | `Group.Injured(80)=3`, `groupHealTimers[1]=0` | `castWhat(spell, Me.ID(), 'GroupHeal')` called |
+| 5.4.12 | Timer not expired — no cast | `groupHealTimers[1] = os.clock() + 9999` | Spell skipped |
+| 5.4.13 | Successful cast sets HoT timer | Cast returns `CAST_SUCCESS`, `MyDuration=30s` | `groupHealTimers[1] = os.clock() + 30` |
+| 5.4.14 | Successful cast sets healAgain | Cast returns `CAST_SUCCESS` | `state.heal.healAgain = true` |
+| 5.4.15 | Successful cast returns immediately | Two group spells in array | Only first matching spell cast; loop exits after success |
+| 5.4.16 | Zero-threshold entry stops iteration | `groupHealArray[2] = 'Spell\|0\|'` | Loop breaks on zero-threshold; no further spells checked |
+
+#### 5.4.3 — doGroupHealStuff call site in checkHealth
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.17 | Non-group-heal class — doGroupHealStuff skipped | `Me.Class.ShortName()='WAR'` | `doGroupHealStuff` not called |
+| 5.4.18 | Group avg HP = 100 — skipped | `Group.AvgHPs()=100` | `doGroupHealStuff` not called |
+| 5.4.19 | No group members — skipped | `Group.Members()=0` | `doGroupHealStuff` not called |
+| 5.4.20 | Group-heal class, avg < 100, 2+ injured | `CLR`, `AvgHPs=85`, `Group.Injured(90)=3` | `doGroupHealStuff` called |
+
+#### 5.4.4 — Heal.doWeMed
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.21 | `medOn=false` — no action | `state.heal.medOn = false` | Returns immediately; no sit/stand |
+| 5.4.22 | In combat, `medCombat=false` — no action | `aggroTargetID='1234'`, `medCombat=false` | Returns immediately |
+| 5.4.23 | In combat, `medCombat=true` — allowed | `aggroTargetID='1234'`, `medCombat=true` | Proceeds to medding check |
+| 5.4.24 | Moving — no action | `Me.Moving()=true` | Returns immediately |
+| 5.4.25 | Mana below medStart — sits | `PctMana=15`, `medStart=20` | `state.heal.medding=true`; `/sit` issued |
+| 5.4.26 | Endurance below medStart — sits | `medStat='Endurance'`, `PctEndurance=10`, `medStart=20` | `state.heal.medding=true`; `/sit` issued |
+| 5.4.27 | Medding, mana reaches medStop — stands | `medding=true`, `PctMana=100`, `medStop=100` | `state.heal.medding=false`; `/stand` issued |
+| 5.4.28 | Medding but stood up externally — re-sits | `medding=true`, `Me.Sitting()=false`, `PctMana=50` | `/sit` re-issued |
+| 5.4.29 | Mana above medStart, not medding — no action | `PctMana=80`, `medStart=20`, `medding=false` | No sit/stand; no state change |
+
+---
+
 ## Section 6 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -987,7 +1040,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.2)
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.3)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1006,7 +1059,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
 | fight: CheckCures / CheckHealth during combat | M5 Step 5.6 |
 | fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
-| fight: CastMana / mana-sit logic | M5 Step 5.3 (medding/mana-sit in DoGroupHealStuff) |
+| fight: CastMana / mana-sit logic | ✅ Step 5.3 (`Heal.doWeMed` implemented; wired into main loop at Step 5.6) |
 | fight: MercsDoWhat | M6 (merc module) |
 | fight: MezCheck / AECheck | M5 Step 5.x (mez sub-step) |
 | fight: AggroCheck in inner loop | ✅ Step 4.8 |
@@ -1042,7 +1095,8 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | Healing/cures triggered by events | M5 Steps 5.2–5.4 |
 | Mez timer reset (MezBroke) | M5 Step 5.4 |
 | CheckHealth | ✅ Step 5.2 |
-| DoGroupHealStuff | M5 Step 5.3 |
+| DoGroupHealStuff | ✅ Step 5.3 |
+| doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
 | CheckCures / WriteDebuffs (healer) | M5 Step 5.4 |
 | RezCheck / RezWithCheck | M5 Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
@@ -1056,4 +1110,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.2 complete. Section 5.3 added for Heal.checkHealth (28 test cases). healsOn corrected to integer type. session.heals and CheckHealth marked ✅ in Known Deferred.*
+*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.3 complete. Section 5.4 added for Heal.doGroupHealStuff + Heal.doWeMed (29 test cases). DoGroupHealStuff and doWeMed marked ✅ in Known Deferred.*
