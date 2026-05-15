@@ -153,6 +153,8 @@ function Config.migrateIni(state)
         TwistOn          = r('General','TwistOn'),
         TwistMed         = r('General','TwistMed'),
         TwistWhat        = r('General','TwistWhat'),
+        MountOn          = r('General','MountOn'),
+        MountSpell       = r('General','MountSpell'),
     }
 
     -- [SpellS] / [Spells] — gem assignments and casting options

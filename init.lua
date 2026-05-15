@@ -7,6 +7,7 @@ local Binds  = require('modules.binds')
 local Cast   = require('modules.cast')
 local Combat = require('modules.combat')
 local Heal   = require('modules.healing')
+local Buffs  = require('modules.buffs')
 
 local VERSION = '1.0.0'
 
@@ -60,6 +61,7 @@ Binds.register(State, Utils)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Combat.init(State, Utils, Cast, Heal)
+Buffs.init(State, Utils, Cast)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 

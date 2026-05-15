@@ -550,10 +550,141 @@ Add `Heal.checkHealth()` and `Heal.checkCures()` calls in `Combat.fight()` inner
 ### Milestone 6 — Buff System
 **Goal:** Self-buffing and group buffing work.
 
-- `buffs.lua` — `CheckBuffs`, `WriteBuffs`, `CheckBegforBuffs`, `CheckPetBuffs`
-- Cross-character state tracking via MQ2DanNet/EQBC (or Lua actors — see architectural decisions)
+- `buffs.lua` — `CheckBuffs`, `WriteBuffs`, `WriteBuffsPet`, `WriteBuffsMerc`, `CheckBegforBuffs`, `CheckPetBuffs`, `CheckBegforPetBuffs`
+- Cross-character buff state via `KissAssist_Buffs.ini` (DanNet shim deferred; actors path in M9/comms.lua)
 
-**Done when:** Characters self-buff on startup and respond to buff requests.
+**Done when:** Characters self-buff on startup, rebuff when worn off, group-buff group members, `/buffgroup` forces a full rebuff cycle.
+
+---
+
+#### Step 6.1 — `buffs.lua` scaffold + INI wiring + state audit ✅
+
+Create `modules/buffs.lua` with `Buffs.init(state, utils, cast)`. Load all buff config from INI and audit `state.buffs` for missing fields.
+
+- **`[Buffs]` INI section** (mac:14657–14671): `buffsOn`, `buffsSize` (default 20), `buffsArray[]` (loaded same pattern as `dpsArray`), `rebuffOn`, `checkBuffsTimer`, `powerSource`
+- **Mount fields**: `mountOn`, `mountSpell` — triggered from within CheckBuffs (mac:4200)
+- **`[Pet]` INI section**: `petBuffsOn`, `petBuffsArray[]`
+- **New state fields in `state.buffs`**: `buffsOn`, `buffsArray`, `rebuffOn`, `checkBuffsTimer`, `powerSource`, `mountOn`, `mountSpell`, `petBuffsOn`, `petBuffsArray`, `blockedBuffsCount`
+- **New timer fields in `state.timers`**: `writeBuffs`, `readBuffs`, `petBuffCheck`
+- **Per-slot per-member timers**: `state.buffs.slotTimers[i][j]` — 2D table replacing `.mac`'s dynamic `Buff${i}GM${j}` variables (`i` = spell slot 1–buffsSize, `j` = group member 0–5)
+- Wire `Buffs.init(State, Utils, Cast)` into `init.lua` before main loop
+
+**Done when:** module loads cleanly; `state.buffs.buffsArray` and `state.buffs.petBuffsArray` populated from INI.
+
+---
+
+#### Step 6.2 — `WriteBuffs` + `WriteBuffsPet` + `WriteBuffsMerc`
+
+Port the three buff-state export functions (mac:17072, mac:12318, mac:12364). These write each character's current buff/blocked-buff list to `KissAssist_Buffs.ini` so other characters can check what buffs are already present before casting.
+
+- **`Buffs.writeBuffs()`** (mac:17072): guards (`timers.writeBuffs`, in-combat, DanNet active); writes `Day/Hour/Zone/Buffs/Blockedbuffs/AmILooting/MyRole` under `[Me.ID]`; iterates 41 buff slots + `blockedBuffsCount` (30 emu / 40 live) blocked slots; sets `state.timers.writeBuffs = os.clock() + 30`
+- **`Buffs.writeBuffsPet()`** (mac:12364): writes pet's current buff list under `[Me.ID_pet]` key
+- **`Buffs.writeBuffsMerc()`** (mac:12318): writes merc buff list (merc-only guard via `state.session.mercOn`)
+- Wire into `init.lua` main loop: runs when `CombatState != COMBAT && !DanNetOn` (mirrors mac:398–401)
+
+**Done when:** `KissAssist_Buffs.ini` updated with character's buff list every 30s out of combat.
+
+---
+
+#### Step 6.3 — `CheckBuffs`: entry parsing + self / group-type dispatch
+
+Port the entry point, loop guards, and the two simplest target-type branches (mac:4170–4521).
+
+- **Guards** (mac:4171): `!buffsOn`, dead, hovering, invis (non-Rogue), chaseAssist+moving, whoToChase==me+moving → return
+- **PowerSource refuel** (mac:4192–4198): if PowerSource item exists with no charge, click to destroy cursor and refill
+- **Mount cast** (mac:4200): `mountOn && !Me.Mount.ID && (Zone.Outdoor || Type 1/2/5) && OOC` → local `castMount()` helper
+- **Per-entry loop** (mac:4207): iterates `buffsArray[]`; drains events each iteration; aggro bail (distance < 200), invis bail, `|0` skip, interleaved cure/heal/rez check (mirrors mac:4218–4227), `calledTargetID` sync
+- **Entry parsing** (mac:4233–4272): `|`-split into `spellToCast`, `2ndPart`..`5thPart`; `Dual` tag normalization; `alias` entry skip; `|cond` prefix cleared (ConOn deferred to M10)
+- **`buffToCheck` resolution** (mac:4273–4293): gold subscription strips ` Rk.` suffix from check name for non-Dual entries; Dual entries check `3rdPart` instead
+- **`bookSpellTT` / `spellRange`** (mac:4295–4305): derive target type and effective range from spell book; default range 100
+- **Combat/invis/timer bail** (mac:4308–4309): if in COMBAT with aggro, or `readBuffsTimer`, or dead/invis → return
+- **Condition check** (mac:4311–4315): `|cond` number extraction; ConOn evaluation deferred to M10 (always passes)
+- **`group v` target type** (mac:4491–4521): cast group buff on self; skip if `slotTimers[i][0]` set; drain `WornOff` events; `CastWhat(..., 'Buffs-nomem')`; set timer on SUCCESS/TAKEHOLD
+- **`self` target type** (mac:4640–4647): check `Me.Buff[buffToCheck]` / `Me.Song[buffToCheck]`; `CastWhat` on Me.ID
+
+**Done when:** script self-buffs and casts group-type buffs on self when `BuffsOn=1`.
+
+---
+
+#### Step 6.4 — `CheckBuffs`: single-target group iteration + class filters
+
+Port the single-target path that iterates each group member and all class-filter tags (mac:4523–4638).
+
+- **Single-target group loop** (mac:4525–4613): iterate `j` from `Group` downto `0`; skip if member not alive, distance ≥ `spellRange`, or `slotTimers[i][j]` > 0
+- **`|me` / `|Dualme`**: skip if `j > 0` (self only)
+- **`|MA` / `|DualMA`**: skip if member is not the main assist spawn
+- **`|!MA`**: skip if member IS the main assist
+- **`|Melee` / `|DualMelee`**: skip non-melee classes (`BRD,BER,BST,MNK,PAL,ROG,RNG,SHD,WAR`)
+- **`|Caster` / `|DualCaster`**: skip non-caster classes (`CLR,DRU,SHM,BST,ENC,MAG,NEC,PAL,SHD,RNG,WIZ`)
+- **`|class` / `|Dualclass`**: skip if member's ShortName not in `5thPart` list
+- **`|!class` / `|Dual!class`**: skip if member's ShortName IS in `5thPart` list
+- **Per-cast**: mana check; spell cooldown wait (up to 6s gem timer); aggro bail mid-loop; `WornOff` drain; `CastWhat(..., 'Buffs-nomem')`; `slotTimers[i][j]` set on SUCCESS/TAKEHOLD/HASBUFF; components error disables slot
+- **Pet extension** (mac:4580–4609): DanNet path skipped (stub); non-DanNet path: pet buff via DanNet only — omit for now
+- **No-group fallback** (mac:4614–4637): when no group and no class-filter tags, cast on Me.ID
+
+**Done when:** script buffs each group member individually with single-target spells, respecting per-slot-per-member timers.
+
+---
+
+#### Step 6.5 — `CheckBuffs`: special action tags + `CheckBegforBuffs`
+
+Port the remaining `2ndPart` action branches and the beg-for-buffs subsystem (mac:4319–4403, mac:13199–13303).
+
+- **`|Endgroup` / `|Managroup`** (mac:4319–4328): `regenOther()` local helper — find lowest-resource group member, cast regen spell, set `slotTimers[i][0]`
+- **`|mana`** (mac:4329–4338): cast mana-regen on self if `PctMana > threshold` or HP < threshold
+- **`|End`** (mac:4341–4342): endurance disc/AA when `PctEndurance <= threshold`; checks `CombatAbilityReady` or `AltAbilityReady`
+- **`|Remove`** (mac:4344–4348): `/removebuff spellName` if buff/song slot active; condition-guarded
+- **`|Aura`** (mac:4353–4354): `checkAura()` local helper — cast aura if `Me.Aura[1]` not matching
+- **`|Once`** (mac:4356–4361): `buffOnce()` — cast once; on SUCCESS set entry to `spellName|0` to disable
+- **`|summon`** (mac:4363–4369): stub — `printf` + continue (full SummonStuff deferred)
+- **`|mgb` / `|dualmgb`** (mac:4370–4371): stub — call `castWhat` without MGB flag; full `massGroupBuff()` deferred
+- **`|begfor|alias`** (mac:4372–4393): broadcast beg request via `Comms.broadcast` if item/buff count below threshold; sets 900s `slotTimers[i][0]`
+- **`|command:`** (mac:4395–4399): `targetTag()` resolution then `CastWhat(..., 'Buffs')`
+- **`Buffs.checkBegforBuffs()`** (mac:13199): iterates `state.buffs.kaBegForList` pipe-delimited queue; resolves `buffToCast` from `buffsArray[idx]`; casts on requesting PC; calls `removeFromBegList()` on SUCCESS/RECOVER or self-type; increments index on other failures; clears `kaBegActive` when list empty
+- **`removeFromBegList()`** (mac:13249): local helper — removes entry from `kaBegForList`; handles AE-item dedup (same alias+slot entries) and single-type dedup
+
+**Done when:** beg-for-buff queue processes correctly; special action tags (Aura, Once, Remove, mana, End) fire.
+
+---
+
+#### Step 6.6 — `CheckPetBuffs` + `CheckBegforPetBuffs`
+
+Port the pet-specific buff functions (mac:5402–5517, mac:13307+).
+
+- **`Buffs.checkPetBuffs()`** (mac:5402): guards (`Me.Pet.ID`, `petOn`, `petBuffsOn`, `combatStart`, `pulling`, `timers.petBuffCheck`, invis); sets `state.timers.petBuffCheck = os.clock() + 60`; iterates `petBuffsArray`; per-entry: parse `1stPart|2ndPart|3rdPart`; `|dual` tag = different cast name vs buff check name; check spell in book vs item vs ability; scan 50 pet buff slots for `PTempBuff` match via `Me.PetBuff[j].Name`; if not found: `castWhat(1stPart, Me.Pet.ID, 'Pet-nomem')`; `|pettoys|begfor` — `Comms.broadcast('PetToysPlease Me.Pet.Name')` + timer; pet shrink after loop if `petShrinkOn`; clear target if pet was targeted
+- **`Buffs.checkBegforPetBuffs()`** (mac:13307): iterates `state.buffs.kaBegForPetList`; resolves pet ID from group member name; casts pet toy spells; removes entries after success; clears `kaPetBegActive` when list empty
+- Wire both into `init.lua` main loop after pet check (matches mac:396–397)
+
+**Done when:** script buffs own pet from `petBuffsArray`; group pet toy requests processed.
+
+---
+
+#### Step 6.7 — Wire into main loop + `/buffgroup` + `/tbmanager` + `CastBuffsSpellCheck`
+
+Final wiring pass to make the full buff system live (mirrors mac:398–407).
+
+- **`init.lua` main loop** — add in correct order after existing heal calls:
+  1. `if OOC and not DanNet: Buffs.writeBuffs(); Buffs.writeBuffsMerc(); Buffs.writeBuffsPet()`
+  2. `if state.buffs.buffsOn: Buffs.checkBuffs(state.buffs.forceBuffs); state.buffs.forceBuffs = false`
+  3. `if state.buffs.kaBegActive: Buffs.checkBegforBuffs()`
+  4. `if state.pet.on: Buffs.checkPetBuffs()`
+  5. `if state.pet.toysOn and state.buffs.kaPetBegActive: Buffs.checkBegforPetBuffs()`
+- **`/buffgroup` bind** (binds.lua): set `state.buffs.forceBuffs = 1`; reset `state.timers.iniNext = 0`; call `Buffs.checkBuffs(1)` directly
+- **`/tbmanager` bind** (binds.lua): add/remove entries from `state.buffs.extendedList` (too-buff list manager); persist to INI under `[Buffs]`
+- **`cast.lua` `castBuffsSpellCheck()`**: replace the stub that always returns `false` — check `mq.TLO.Me.Buff(spellName).ID()` and `mq.TLO.Me.Song(spellName).ID()` to skip redundant buff casts (same role as `.mac`'s `BuffsNotAnItem` pattern in CastWhat dispatcher, Step 3.5)
+- **`cast.lua` interrupt guards**: add `'Buffs'` and `'Buffs-nomem'` to the sentFrom values that bypass the invis check in `castSpell`, `castAA`, `castDisc`, `castItem`, `castMem` (same pattern as `'SingleHeal'`/`'GroupHeal'` from M5)
+
+**Deferred (not needed for M6):**
+- Full `massGroupBuff()` — MGB helper is low-frequency; stub returning nil
+- `SummonStuff` helper — niche use case; stub with printf
+- DanNet cross-query in single-target loop (mac:4469–4489) — the entire DanNet block is commented out in the `.mac` source; omit
+- ConOn condition evaluation — deferred to M10 (always passes for now)
+
+**Done when:** characters self-buff on startup, rebuff when worn off, group-buff all members, `/buffgroup` forces a full rebuff cycle.
+
+---
+
+**Suggested order:** 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Steps 6.2 and 6.6 can be worked in parallel with 6.3–6.5 once 6.1 is done. Steps 6.3 and 6.4 are one logical function split by complexity.
 
 ---
 

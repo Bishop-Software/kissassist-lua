@@ -1246,22 +1246,85 @@ end)
 
 ---
 
-## Section 6 — Integration Smoke Test
+## Section 6 — Buff System (Milestone 6)
+
+---
+
+### Section 6.1 — Buffs.init (Step 6.1)
+
+#### 6.1.1 INI loading — buffsOn / rebuffOn / checkBuffsTimer
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.1 | INI `[Buffs] BuffsOn=1` | `state.buffs.buffsOn == true` |
+| 6.1.2 | INI `[Buffs] BuffsOn=0` (or absent) | `state.buffs.buffsOn == false` |
+| 6.1.3 | INI `[Buffs] RebuffOn=1` | `state.buffs.rebuffOn == true` |
+| 6.1.4 | INI `[Buffs] RebuffOn=0` | `state.buffs.rebuffOn == false` |
+| 6.1.5 | INI `[Buffs] CheckBuffsTimer=30` | `state.buffs.checkBuffsTimer == 30` |
+| 6.1.6 | INI `CheckBuffsTimer` absent | `state.buffs.checkBuffsTimer == 15` (default) |
+| 6.1.7 | INI `[Buffs] PowerSource=Eldritch Rune` | `state.buffs.powerSource == 'Eldritch Rune'` |
+| 6.1.8 | INI `PowerSource` absent | `state.buffs.powerSource == ''` |
+
+#### 6.1.2 INI loading — buffsArray
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.9  | INI `Buffs1=Haste\|group`, `Buffs2=Clarity\|self` | `state.buffs.buffsArray[1] == 'Haste\|group'`; `[2] == 'Clarity\|self'` |
+| 6.1.10 | INI `Buffs1` absent | `state.buffs.buffsArray` is empty table `{}` |
+| 6.1.11 | INI `Buffs1=''` (blank entry) | Blank entries skipped; array remains empty |
+
+#### 6.1.3 INI loading — pet buffs
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.12 | INI `[Pet] PetBuffsOn=1` | `state.buffs.petBuffsOn == true` |
+| 6.1.13 | INI `[Pet] PetBuffsOn=0` (or absent) | `state.buffs.petBuffsOn == false` |
+| 6.1.14 | INI `PetBuffs1=Burnout\|self`, `PetBuffs2=Ferocity\|self` | `state.buffs.petBuffsArray[1] == 'Burnout\|self'`; `[2] == 'Ferocity\|self'` |
+| 6.1.15 | INI `PetBuffs1` absent | `state.buffs.petBuffsArray` is empty |
+
+#### 6.1.4 INI loading — mount fields
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.16 | INI `[General] MountOn=1` | `state.misc.mountOn == true` |
+| 6.1.17 | INI `[General] MountOn=0` | `state.misc.mountOn == false` |
+| 6.1.18 | INI `[General] MountOn` absent | `state.misc.mountOn` retains state.lua default (`true`) |
+| 6.1.19 | INI `[General] MountSpell=Black Stallion` | `state.buffs.mountSpell == 'Black Stallion'` |
+| 6.1.20 | INI `MountSpell` absent | `state.buffs.mountSpell == ''` |
+
+#### 6.1.5 State defaults — blockedBuffsCount + slotTimers
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.21 | No INI override | `state.buffs.blockedBuffsCount == 30` |
+| 6.1.22 | After `require('modules.state')` | `state.buffs.slotTimers[1][0] == 0`; `slotTimers[20][5] == 0` |
+| 6.1.23 | After `require('modules.state')` | `state.buffs.slotTimers[1]` is a table with keys 0–5 |
+
+#### 6.1.6 Module load
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.1.24 | `/lua run kissassist-lua` with `[Buffs] BuffsOn=1`, 3 buff entries | No Lua errors; debug line printed: `Buffs.init: buffsOn=true buffs#=3 ...` |
+| 6.1.25 | `/lua run kissassist-lua` with no `[Buffs]` section | Module loads cleanly; all defaults intact; no error |
+
+---
+
+## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 6.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 6.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 6.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 6.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 6.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 6.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 7.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 7.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 7.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 7.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 7.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 7.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.6)
+## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1320,7 +1383,11 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
 | CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
 | RezCheck / RezWithCheck | ✅ Step 5.5 |
-| CheckBuffs / WriteBuffs | M6 |
+| Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
+| CheckBuffs / WriteBuffs | M6 Steps 6.3–6.5 |
+| WriteBuffs / WriteBuffsPet / WriteBuffsMerc | M6 Step 6.2 |
+| CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
+| CheckPetBuffs | M6 Step 6.7 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
 | Stop-moving before cast | M7 |
@@ -1331,4 +1398,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-15. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.6 complete (Milestone 5 fully done). Section 5.7 added for loop wiring (18 test cases). SkipCombat healer path, combat-loop heal calls, and Healing/cures-triggered-by-events marked ✅ in Known Deferred.*
+*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Step 6.1 complete (Buffs.init scaffold). Section 6 added for Buff System (25 test cases); Integration Smoke Test renumbered to Section 7. Buffs.init wiring marked ✅ in Known Deferred.*
