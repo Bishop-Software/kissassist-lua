@@ -586,7 +586,7 @@ Port the three buff-state export functions (mac:17072, mac:12318, mac:12364). Th
 
 ---
 
-#### Step 6.3 — `CheckBuffs`: entry parsing + self / group-type dispatch
+#### Step 6.3 — `CheckBuffs`: entry parsing + self / group-type dispatch ✅
 
 Port the entry point, loop guards, and the two simplest target-type branches (mac:4170–4521).
 
@@ -603,6 +603,8 @@ Port the entry point, loop guards, and the two simplest target-type branches (ma
 - **`self` target type** (mac:4640–4647): check `Me.Buff[buffToCheck]` / `Me.Song[buffToCheck]`; `CastWhat` on Me.ID
 
 **Done when:** script self-buffs and casts group-type buffs on self when `BuffsOn=1`.
+
+**Implemented:** `Buffs.checkBuffs(forceGroup)` added to [modules/buffs.lua](../modules/buffs.lua). Local helpers `castMount()` and `refuelPowerSource()` handle the pre-loop actions. `DUAL_TAGS` set used for `buffToCheck` resolution. `Buffs.init()` extended to accept a 4th `heal` parameter (`_heal` stored for interleaved cure/heal/rez calls). `Buffs.checkBuffs()` wired into [init.lua](../init.lua) main loop after write functions. Steps 6.4/6.5 branches (single-target, special tags) fall through to `::continue::` stub.
 
 ---
 

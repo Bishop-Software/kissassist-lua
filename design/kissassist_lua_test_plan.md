@@ -1367,6 +1367,121 @@ end)
 
 ---
 
+### Step 6.3 — `Buffs.checkBuffs`: entry parsing + self / group-v dispatch
+
+#### 6.3.1 — Entry-function guards
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.1 | `buffsOn = false` | Returns immediately; no loop |
+| 6.3.2 | `misc.iAmDead = true` | Returns immediately |
+| 6.3.3 | `Me.Hovering() = true` | Returns immediately |
+| 6.3.4 | `Me.Invis() = true`, class = Rogue | Does NOT return (Rogues may buff while invis) |
+| 6.3.5 | `Me.Invis() = true`, class = Wizard | Returns immediately |
+| 6.3.6 | `chaseAssist = true`, `Me.Moving() = true` | Returns immediately |
+| 6.3.7 | `Me.Moving() = true`, `whoToChase == Me.Name()` | Returns immediately |
+| 6.3.8 | All guards pass | Proceeds to PowerSource / mount checks |
+
+#### 6.3.2 — PowerSource refuel
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.9  | `powerSource = ''` | refuelPowerSource skipped entirely |
+| 6.3.10 | PowerSource slot exists and has charges | No click; continues normally |
+| 6.3.11 | PowerSource slot exists, `Power() == 0` | Clicks item to cursor; destroys if name matches; waits for cursor clear |
+
+#### 6.3.3 — Mount cast
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.12 | `mountOn = false` | Mount cast skipped |
+| 6.3.13 | `mountOn = true`, `Me.Mount.ID()` non-zero (already mounted) | Mount cast skipped |
+| 6.3.14 | `mountOn = true`, not mounted, indoor zone (not Outdoor, not Type 1/2/5) | Mount cast skipped |
+| 6.3.15 | `mountOn = true`, not mounted, outdoor zone, OOC | `castMount()` called with `mountSpell` |
+| 6.3.16 | `mountOn = true`, not mounted, zone Type 1, OOC | `castMount()` called |
+| 6.3.17 | `mountOn = true`, not mounted, `CombatState() == 'COMBAT'` | Mount cast skipped |
+
+#### 6.3.4 — Per-entry loop: event drain and bail conditions
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.18 | `Me.Invis()` becomes true at top of iteration | `return` immediately |
+| 6.3.19 | `aggroTargetID` non-empty; aggro spawn Distance < 200 | `return` immediately |
+| 6.3.20 | `aggroTargetID` non-empty; aggro spawn Distance >= 200 | Loop continues |
+| 6.3.21 | Entry contains `\|0` | `goto continue` (skips this entry) |
+| 6.3.22 | Entry == `'NULL'` | `goto continue` |
+| 6.3.23 | `curesOn > 0` | `Heal.checkCures('Combat')` called each iteration |
+| 6.3.24 | `healsOn > 0`, `lastHealCheck` expired | `Heal.checkHealth('CheckBuffs')` called; `lastHealCheck` reset |
+| 6.3.25 | `healsOn > 0`, `lastHealCheck` not expired | `checkHealth` NOT called |
+| 6.3.26 | `autoRezOn > 0`, `healsOn == 0`, `curesOn == 0` | `Heal.rezCheck('group')` called |
+
+#### 6.3.5 — Entry parsing
+
+| # | Entry string | Expected `spellToCast` / `p2` / `p3` |
+|---|--------------|--------------------------------------|
+| 6.3.27 | `'Rune of Zebuxoruk'` (no pipe) | `spellToCast='Rune of Zebuxoruk'`, `p2=''` |
+| 6.3.28 | `'Adrenaline Surge\|Dual\|Adrenaline Surge'` (4thPart absent) | `p2='Dual'` (no sub-tag match; stays Dual) |
+| 6.3.29 | `'Spell\|Dual\|Spell\|MA'` | `p2='DualMA'` |
+| 6.3.30 | `'Spell\|Dual\|Spell\|melee'` | `p2='DualMelee'` |
+| 6.3.31 | `'Spell\|Dual\|Spell\|caster'` | `p2='DualCaster'` |
+| 6.3.32 | `'Spell\|Dual\|Spell\|class\|CLR,DRU'` | `p2='DualClass'` |
+| 6.3.33 | `'Spell\|class\|CLR,DRU'` | `p2='class'`, `p5='CLR,DRU'` (shifted from p3) |
+| 6.3.34 | `'Spell\|alias\|something'` | `goto continue` — entry skipped |
+| 6.3.35 | `'Spell\|condGT50MAN\|...'` (2ndPart starts with `cond`) | `p2` cleared to `''` |
+
+#### 6.3.6 — `buffToCheck` resolution
+
+| # | Scenario | Expected `buffToCheck` |
+|---|----------|------------------------|
+| 6.3.36 | `redguides=true` (gold), non-Dual, `spellToCast='Rune of Zebuxoruk Rk. II'` | `'Rune of Zebuxoruk Rk. II'` (no strip) |
+| 6.3.37 | `redguides=false` (non-gold), non-Dual, `spellToCast='Rune of Zebuxoruk Rk. II'` | `'Rune of Zebuxoruk'` (stripped) |
+| 6.3.38 | `redguides=false`, Dual tag, `p3='Focus Rk. II'` | `'Focus'` (stripped from p3) |
+| 6.3.39 | `redguides=true`, Dual tag, `p3='Focus Rk. II'` | `'Focus Rk. II'` (no strip) |
+
+#### 6.3.7 — `bookSpellTT` and `spellRange`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.40 | Spell not in spellbook | `bookSpellTT = '0'`; uses `Spell.TargetType()` directly |
+| 6.3.41 | Spell in spellbook | `bookSpellTT` set from `Spell[BookID].TargetType` |
+| 6.3.42 | `Spell.Range() > Spell.AERange()` | `spellRange = Spell.Range()` |
+| 6.3.43 | `Spell.AERange() > Spell.Range()` | `spellRange = Spell.AERange()` |
+| 6.3.44 | Both range values are 0 | `spellRange = 100` (default) |
+
+#### 6.3.8 — Mid-loop combat / timer bail
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.45 | `combatStart = true` | `return` immediately after parsing |
+| 6.3.46 | `aggroTargetID` non-empty (any distance) | `return` immediately after parsing |
+| 6.3.47 | `iAmDead = true` (became true mid-loop) | `return` |
+| 6.3.48 | `Me.Invis()` true mid-loop | `return` |
+| 6.3.49 | `timers.readBuffs > os.clock()` | `return` |
+
+#### 6.3.9 — `group v` target-type branch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.50 | Spell TargetType contains `'group v'`, `slotTimers[i][0]` not expired | Cast attempted |
+| 6.3.51 | `slotTimers[i][0] > os.clock()` (timer active) | `goto continue`; no cast |
+| 6.3.52 | Cast returns `CAST_SUCCESS` | `timers.writeBuffs` reset to 0; `writeBuffs()` called; echo printed |
+| 6.3.53 | Cast returns `CAST_TAKEHOLD` | `slotTimers[i][0] = os.clock() + Spell.MyDuration.TotalSeconds()` |
+| 6.3.54 | Cast returns `CAST_COMPONENTS` | `buffsArray[i]` set to `'NULL'`; echo printed; `goto continue` |
+| 6.3.55 | `forceGroup = true` after cast | Waits for `Me.SpellInCooldown()` to clear before next entry |
+
+#### 6.3.10 — `self` target-type branch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.56 | Spell TargetType contains `'self'`; `Me.Buff(buffToCheck).ID() ~= 0` | `goto continue`; no cast |
+| 6.3.57 | `Me.Song(buffToCheck).ID() ~= 0` | `goto continue`; no cast |
+| 6.3.58 | `Spell(buffToCheck).WillLand() == false` | `goto continue`; no cast |
+| 6.3.59 | Buff absent, WillLand true | `castWhat(spellToCast, Me.ID, 'buffs-nomem')` called |
+| 6.3.60 | Cast returns `CAST_COMPONENTS` | `buffsArray[i]` set to `'NULL'`; echo printed |
+| 6.3.61 | Cast returns `CAST_SUCCESS` | `goto continue`; no extra timer set (self spells re-check buff presence each loop) |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1442,7 +1557,9 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
 | RezCheck / RezWithCheck | ✅ Step 5.5 |
 | Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
-| CheckBuffs / WriteBuffs | M6 Steps 6.3–6.5 |
+| CheckBuffs guards + group-v + self dispatch | ✅ Step 6.3 |
+| CheckBuffs single-target group iteration + class filters | M6 Step 6.4 |
+| CheckBuffs special action tags + CheckBegforBuffs | M6 Step 6.5 |
 | WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
 | CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
 | CheckPetBuffs | M6 Step 6.7 |
@@ -1456,4 +1573,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.2 complete. Section 6.2 added (29 test cases for WriteBuffs/Pet/Merc + cleanBuffsFile). WriteBuffs family marked ✅ in Known Deferred.*
+*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.3 complete. Section 6.3 added (33 test cases for checkBuffs guards, PowerSource, mount, entry parsing, buffToCheck resolution, bookSpellTT, group-v, and self dispatch). CheckBuffs group-v + self marked ✅ in Known Deferred.*

@@ -61,7 +61,7 @@ Binds.register(State, Utils)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Combat.init(State, Utils, Cast, Heal)
-Buffs.init(State, Utils, Cast)
+Buffs.init(State, Utils, Cast, Heal)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -74,6 +74,7 @@ while not State.terminate do
     Buffs.writeBuffs()
     Buffs.writeBuffsPet()
     Buffs.writeBuffsMerc()
+    Buffs.checkBuffs()
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
