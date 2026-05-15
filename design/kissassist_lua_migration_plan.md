@@ -573,7 +573,7 @@ Create `modules/buffs.lua` with `Buffs.init(state, utils, cast)`. Load all buff 
 
 ---
 
-#### Step 6.2 — `WriteBuffs` + `WriteBuffsPet` + `WriteBuffsMerc`
+#### Step 6.2 — `WriteBuffs` + `WriteBuffsPet` + `WriteBuffsMerc` ✅
 
 Port the three buff-state export functions (mac:17072, mac:12318, mac:12364). These write each character's current buff/blocked-buff list to `KissAssist_Buffs.ini` so other characters can check what buffs are already present before casting.
 

@@ -1309,6 +1309,64 @@ end)
 
 ---
 
+### Section 6.2 — WriteBuffs / WriteBuffsPet / WriteBuffsMerc (Step 6.2)
+
+#### 6.2.1 Buffs.writeBuffs — guards
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.1 | `timers.writeBuffs` not expired | Returns immediately; no INI write |
+| 6.2.2 | `state.misc.redguides = false` | Returns immediately |
+| 6.2.3 | `aggroTargetID ~= ''` (in combat) | Returns immediately |
+| 6.2.4 | `state.session.danNetOn = true` | Returns immediately |
+| 6.2.5 | All guards pass, OOC | Proceeds to write |
+
+#### 6.2.2 Buffs.writeBuffs — INI output
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.2.6  | First write, no existing entry | `[Me.ID]` section created with Day/Hour/Zone/Buffs/Blockedbuffs keys |
+| 6.2.7  | `[Me.ID].Day` already exists | Day key NOT overwritten (only-if-absent guard) |
+| 6.2.8  | Character has 3 active buffs | `Buffs` key = `SpellA\|SpellB\|SpellC\|` |
+| 6.2.9  | Buff name contains `:Permanent` | `:Permanent` suffix stripped before writing |
+| 6.2.10 | No active buffs | `Buffs` key = `""` |
+| 6.2.11 | 2 blocked buffs present | `Blockedbuffs` key written with `SpellX\|SpellY\|` |
+| 6.2.12 | No blocked buffs | `Blockedbuffs` key not updated (empty list skipped) |
+| 6.2.13 | After successful write | `state.timers.writeBuffs = os.clock() + 30` |
+| 6.2.14 | `MyRole` key | Written with `state.session.role` value |
+
+#### 6.2.3 Buffs.writeBuffsPet — guards and output
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.15 | `Me.Pet.ID() == 0` (no pet) | Returns immediately |
+| 6.2.16 | Role is `assist` (not pettank) | Returns immediately |
+| 6.2.17 | Role is `pettank`, pet exists, OOC | Proceeds; writes `[Me.Pet.ID]` section |
+| 6.2.18 | Pet has 2 buffs | `Buffs` key = `PetSpellA\|PetSpellB\|` |
+| 6.2.19 | Blocked pet buffs present | `Blockedbuffs` key written (slots 0–39) |
+| 6.2.20 | After write | `state.timers.writeBuffsPet = os.clock() + 30` |
+
+#### 6.2.4 Buffs.writeBuffsMerc — guards and output
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.21 | `Mercenary.State() ~= 'Active'` | Returns immediately |
+| 6.2.22 | Merc active, OOC, all guards pass | Proceeds; writes `[Mercenary.ID]` section |
+| 6.2.23 | Merc has 2 buffs | `Buffs` key populated (slots 1–15) |
+| 6.2.24 | After write | `state.timers.writeBuffsMerc = os.clock() + 30` |
+
+#### 6.2.5 cleanBuffsFile — stale entry removal
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.2.25 | `timers.cleanBuffs` not expired | Returns immediately; no deletions |
+| 6.2.26 | Entry Day != today | Section deleted from KissAssist_Buffs.ini |
+| 6.2.27 | Entry Day == today, Hour != current hour | Section deleted |
+| 6.2.28 | Entry Day == today, Hour == current hour | Section retained |
+| 6.2.29 | After clean pass | `timers.cleanBuffs = os.clock() + 600` |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1385,7 +1443,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | RezCheck / RezWithCheck | ✅ Step 5.5 |
 | Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
 | CheckBuffs / WriteBuffs | M6 Steps 6.3–6.5 |
-| WriteBuffs / WriteBuffsPet / WriteBuffsMerc | M6 Step 6.2 |
+| WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
 | CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
 | CheckPetBuffs | M6 Step 6.7 |
 | Stuck-gem detection in castWhat | M6 |
@@ -1398,4 +1456,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Step 6.1 complete (Buffs.init scaffold). Section 6 added for Buff System (25 test cases); Integration Smoke Test renumbered to Section 7. Buffs.init wiring marked ✅ in Known Deferred.*
+*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.2 complete. Section 6.2 added (29 test cases for WriteBuffs/Pet/Merc + cleanBuffsFile). WriteBuffs family marked ✅ in Known Deferred.*

@@ -71,6 +71,9 @@ while not State.terminate do
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    Buffs.writeBuffs()
+    Buffs.writeBuffsPet()
+    Buffs.writeBuffsMerc()
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()

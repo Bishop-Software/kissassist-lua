@@ -28,6 +28,7 @@ local State = {
         loadFromIni     = false,
         forceAlias      = true,
         broadcastSay    = 'bc',
+        danNetOn        = false,
         bindActive      = false,
         mercInGroup     = false,
         mercAssisting   = false,
