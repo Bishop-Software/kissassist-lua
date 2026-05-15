@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast
+local _state, _utils, _cast, _heal
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
 local function dist2D(y1, x1, y2, x2)
@@ -233,10 +233,11 @@ end
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast)
+function Combat.init(state, utils, cast, heal)
     _state = state
     _utils = utils
     _cast  = cast
+    _heal  = heal
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -991,6 +992,12 @@ function Combat.fight(fromWhere)
                 Combat.aggroCheck()
             end
 
+            -- CheckCures / CheckHealth (mac:1166-1167)
+            if _heal then
+                _heal.checkCures()
+                _heal.checkHealth('Combat')
+            end
+
             -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
             if not _state.combat.namedCheck and _state.combat.burnOnNamed then
                 sp = mq.TLO.Spawn('id ' .. myID)
@@ -1060,7 +1067,12 @@ function Combat.fight(fromWhere)
                 end
             end
 
-            -- Deferred: CastMana (M5), WriteDebuffs, second heal/cure check (M5)
+            -- WriteDebuffs + second cure/heal check (mac:1200-1215)
+            if _heal then
+                _heal.writeDebuffs()
+                _heal.checkCures()
+                _heal.checkHealth('Combat2')
+            end
 
             -- Sync target state (mac:1216)
             Combat.combatTargetCheck(1)
@@ -1585,7 +1597,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                     break
                 end
 
-                -- CheckHealth (deferred — healing module Step M5)
+                if _heal then _heal.checkHealth('CheckForCombat') end
 
                 local myTID = _state.combat.myTargetID
                 local aID   = tonumber(_state.combat.aggroTargetID) or 0
@@ -1651,7 +1663,11 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
 
     -- MezCheck (deferred — mez module Step M4.x)
 
-    -- SkipCombat==1 healer loop (deferred — healing module Step M5)
+    -- SkipCombat==1 healer loop (mac:563-580)
+    if skipCombat == 1 and _heal then
+        _heal.checkCures()
+        _heal.checkHealth('SkipCombat')
+    end
 
     -- CheckForAdds: scan for new mobs that entered camp during combat (mac:586)
     Combat.checkForAdds(fromWhere)

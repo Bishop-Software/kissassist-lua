@@ -1194,6 +1194,58 @@ end)
 
 ---
 
+## Section 5.7 — Loop wiring (Step 5.6)
+
+#### 5.7.1 — Combat.init heal wiring
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.1 | `_heal` stored when Heal passed as 4th arg | `Combat.init(state, utils, cast, Heal)` | Internal `_heal` reference holds the Heal module |
+| 5.7.2 | No error when Heal not passed | `Combat.init(state, utils, cast)` — no 4th arg | All `if _heal then` guards handle nil cleanly; no runtime error |
+
+#### 5.7.2 — fight() inner loop: CheckCures/CheckHealth after AggroCheck
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.3 | `checkCures()` called after AggroCheck each iteration | `_heal` present; combat loop iterates | `checkCures` invoked before NamedWatch check each pass |
+| 5.7.4 | `checkHealth('Combat')` called after AggroCheck | `_heal` present | `checkHealth` called with `sentFrom='Combat'` |
+| 5.7.5 | No error when `_heal` nil | Heal not passed to `Combat.init` | `if _heal then` guard prevents nil call; loop continues normally |
+
+#### 5.7.3 — fight() inner loop: WriteDebuffs + second cure/heal after DPS casts
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.6 | `writeDebuffs()` called after DPS casts | `_heal` present; DPS cast block executes | `writeDebuffs` invoked post-DPS each inner-loop iteration |
+| 5.7.7 | Second `checkCures()` + `checkHealth('Combat2')` called | `_heal` present | Both called in order after `writeDebuffs` |
+
+#### 5.7.4 — checkForCombat() non-MA assist loop: CheckHealth
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.8 | `checkHealth('CheckForCombat')` called after assist | Non-MA, `_heal` present | `checkHealth` called each pass of the assist wait loop |
+| 5.7.9 | Fires even when assist yields no target | `assist()` returns with `myTargetID=0` | `checkHealth` still called before break-condition check |
+
+#### 5.7.5 — checkForCombat() skipCombat==1 healer path
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.10 | `skipCombat==1`: checkCures + checkHealth called | `skipCombat=1`, `_heal` present | `checkCures()` then `checkHealth('SkipCombat')` called; full combat block skipped |
+| 5.7.11 | `skipCombat==0`: healer-only block not entered | `skipCombat=0`, `_heal` present | `skipCombat == 1` guard prevents entry; block not executed |
+| 5.7.12 | `_heal` nil with `skipCombat==1` — no error | `_heal=nil`, `skipCombat=1` | `if _heal then` guard prevents nil call |
+
+#### 5.7.6 — init.lua main loop: heal calls every tick
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.13 | `Heal.writeDebuffs()` called every tick | Main loop running, any state | Called once per tick regardless of combat state |
+| 5.7.14 | `Heal.checkHealth('MainLoop')` called every tick | Main loop running | Called once per tick; `healsOn==0` guard causes immediate return when inactive |
+| 5.7.15 | `Heal.checkCures()` called every tick | Main loop running | Called once per tick; `curesOn==0` guard causes immediate return when inactive |
+| 5.7.16 | `Heal.doWeMed()` called every tick | Main loop running | Called once per tick; `medOn=false` guard causes immediate return when inactive |
+| 5.7.17 | Out-of-combat heals fire from main loop | `healsOn=1`, group member HP < threshold, `aggroTargetID=''` | `checkHealth('MainLoop')` fires a heal from main loop without a combat pass |
+| 5.7.18 | Combat heals fire from fight() inner loop, not only from main loop | `healsOn=1`, mob engaged in fight() | `checkHealth('Combat')` fires mid-combat loop independently of main-loop call |
+
+---
+
 ## Section 6 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1209,7 +1261,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.5)
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.6)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1221,12 +1273,12 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
 | BroadCast burn/add/tank-announce | M9 (cross-char comms) |
 | `CombatTargetCheckRaid` | M9 (raid/cross-char comms; M4 complete without it) |
-| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.6 |
+| CheckForCombat SkipCombat==1 healer loop | ✅ Step 5.6 |
 | CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
 | CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
 | CheckForCombat tank EnduranceCheck | M6 (buffs module) |
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
-| fight: CheckCures / CheckHealth during combat | M5 Step 5.6 |
+| fight: CheckCures / CheckHealth during combat | ✅ Step 5.6 |
 | fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
 | fight: CastMana / mana-sit logic | ✅ Step 5.3 (`Heal.doWeMed` implemented; wired into main loop at Step 5.6) |
 | fight: MercsDoWhat | M6 (merc module) |
@@ -1261,7 +1313,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `state.session.heals` wire (castMem guard) | ✅ Step 5.2 |
 | `/addimmune` bind | ✅ Step 5.1 |
 | Heal.init — INI loading + state wiring | ✅ Step 5.1 |
-| Healing/cures triggered by events | M5 Steps 5.2–5.6 |
+| Healing/cures triggered by events | ✅ Steps 5.2–5.6 |
 | Mez timer reset (MezBroke) | ✅ Step 5.4 (`checkCures` resets `state.mez.broke` at end) |
 | CheckHealth | ✅ Step 5.2 |
 | DoGroupHealStuff | ✅ Step 5.3 |
@@ -1279,4 +1331,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.5 complete. Section 5.6 added for Heal.rezCheck + rezWithCheck (39 test cases). RezCheck/RezWithCheck marked ✅ in Known Deferred.*
+*Last updated: 2026-05-15. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.6 complete (Milestone 5 fully done). Section 5.7 added for loop wiring (18 test cases). SkipCombat healer path, combat-loop heal calls, and Healing/cures-triggered-by-events marked ✅ in Known Deferred.*

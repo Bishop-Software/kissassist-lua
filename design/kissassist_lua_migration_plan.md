@@ -525,11 +525,21 @@ MQ2Rez integration. `RezCheck`: scan for dead group members needing rez, check `
 
 ---
 
-#### Step 5.6 — Wire into combat loop + main loop
+#### ✅ Step 5.6 — Wire into combat loop + main loop
 
 Add `Heal.checkHealth()` and `Heal.checkCures()` calls in `Combat.fight()` inner loop (currently commented as deferred). Add heal/rez/cure checks to the `init.lua` main loop for out-of-combat contexts. Verify heal interrupts in `castSpell` fire correctly when `sentFrom == 'SingleHeal'` or `'GroupHeal'` (cast interrupt guards for those sentFrom values are already stubbed in `cast.lua`).
 
 **Done when:** heals fire mid-combat and out-of-combat; rez fires after fights.
+
+**Implemented:**
+- `combat.lua`: Added `_heal` module-level local; `Combat.init(state, utils, cast, heal)` now stores the Heal module reference.
+- `combat.lua` `fight()` inner loop (after `AggroCheck`, mac:1166-1167): `_heal.checkCures()` then `_heal.checkHealth('Combat')`.
+- `combat.lua` `fight()` inner loop (after DPS casts, mac:1200-1215): `_heal.writeDebuffs()`, `_heal.checkCures()`, `_heal.checkHealth('Combat2')`.
+- `combat.lua` `checkForCombat()` non-MA assist loop: `_heal.checkHealth('CheckForCombat')` after each `Combat.assist()` call.
+- `combat.lua` `checkForCombat()` skipCombat==1 path (mac:563-580): `_heal.checkCures()` + `_heal.checkHealth('SkipCombat')` when skipCombat==1 and heal module present.
+- `init.lua`: `Heal.init()` now runs before `Combat.init()` so Heal can be passed as 4th arg; `Combat.init(State, Utils, Cast, Heal)`.
+- `init.lua` main loop: `Heal.writeDebuffs()`, `Heal.checkHealth('MainLoop')`, `Heal.checkCures()`, `Heal.doWeMed()` called every tick after combat pass (internal guards handle all no-op cases).
+- `cast.lua`: `SingleHeal`/`GroupHeal` invis guards already present in `castSpell`, `castAA`, `castDisc`, `castItem`, `castMem` — no changes needed.
 
 ---
 

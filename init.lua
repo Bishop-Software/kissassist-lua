@@ -58,8 +58,8 @@ Config.checkPlugins()
 Events.register(State, Utils)
 Binds.register(State, Utils)
 Cast.init(State, Utils)
-Combat.init(State, Utils, Cast)
 Heal.init(State, Utils, Cast)
+Combat.init(State, Utils, Cast, Heal)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -69,6 +69,10 @@ while not State.terminate do
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    Heal.writeDebuffs()
+    Heal.checkHealth('MainLoop')
+    Heal.checkCures()
+    Heal.doWeMed()
     mq.delay(50)
 end
 
