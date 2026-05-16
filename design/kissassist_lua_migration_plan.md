@@ -440,7 +440,7 @@ Mirrors `Burn` (kissassist.mac:11770).
 
 ---
 
-### Milestone 5 — Healing & Recovery
+### Milestone 5 — Healing & Recovery ✅ COMPLETE
 **Goal:** Character keeps self and group alive; dead players get rezzed; debuffs get cured.
 
 - `healing.lua` — `CheckHealth`, `DoGroupHealStuff`, `CheckCures`, `RezCheck`, `RezWithCheck`
@@ -547,7 +547,7 @@ Add `Heal.checkHealth()` and `Heal.checkCures()` calls in `Combat.fight()` inner
 
 ---
 
-### Milestone 6 — Buff System
+### Milestone 6 — Buff System ✅ COMPLETE
 **Goal:** Self-buffing and group buffing work.
 
 - `buffs.lua` — `CheckBuffs`, `WriteBuffs`, `WriteBuffsPet`, `WriteBuffsMerc`, `CheckBegforBuffs`, `CheckPetBuffs`, `CheckBegforPetBuffs`

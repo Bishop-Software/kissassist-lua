@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal
+local _state, _utils, _cast, _heal, _movement
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
 local function dist2D(y1, x1, y2, x2)
@@ -233,11 +233,12 @@ end
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal)
-    _state = state
-    _utils = utils
-    _cast  = cast
-    _heal  = heal
+function Combat.init(state, utils, cast, heal, movement)
+    _state    = state
+    _utils    = utils
+    _cast     = cast
+    _heal     = heal
+    _movement = movement
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -254,10 +255,6 @@ function Combat.init(state, utils, cast, heal)
     _state.combat.burnOnNamed = Config.get('Burn', 'BurnAllNamed', '0') == '1'
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
     -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
-
-    -- Camp radius
-    _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius', '50')) or 50
-    _state.movement.campRadiusExceed = Config.get('General', 'CampRadiusExceed', '0') == '1'
 
     -- DPS spell/AA/disc array — entries may carry type suffixes (e.g. "Roar|disc")
     -- castWhat() reads from this array and dispatches by type.
