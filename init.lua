@@ -57,7 +57,7 @@ end
 Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
-Events.register(State, Utils)
+Events.register(State, Utils, Movement)
 Binds.register(State, Utils, Buffs)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
@@ -89,6 +89,10 @@ while not State.terminate do
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
     Heal.doWeMed()
+    if not State.combat.combatStart and State.movement.returnToCamp then
+        Movement.doWeMove(0, 'mainloop')
+    end
+    if State.session.chaseAssist then Movement.doWeChase() end
     mq.delay(50)
 end
 

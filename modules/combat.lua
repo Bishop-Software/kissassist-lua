@@ -945,10 +945,11 @@ function Combat.fight(fromWhere)
                         combatPet()
                     end
                 end
-                -- CheckStick (deferred M7), ZAxisCheck (deferred M7)
+                if _movement then _movement.checkStick(0, 1) end
+                if _movement then _movement.zAxisCheck() end
             else
                 -- MeleeOn off: pet-only combat (mac:1119-1127)
-                -- stick off (deferred M7)
+                if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
                 if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
                     sp = mq.TLO.Spawn('id ' .. myID)
                     if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt

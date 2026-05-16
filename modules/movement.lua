@@ -440,9 +440,103 @@ function Movement.zAxisCheck()
     return math.abs(dz) > (mv.campRadius + 10)
 end
 
--- Step 7.4: manage MQ2MoveUtils stick to melee target (mac:1879)
+-- Port of CheckStick (kissassist.mac:1879-1969).
+-- Closes melee gap, issues /attack on, and sticks to myTargetID.
+-- flag=0: use MaxRangeTo distance; flag=1: stick without distance (TargetOfTarget guard).
+-- useAttack=1: issue /attack on if not already in combat.
 function Movement.checkStick(flag, useAttack)
-    -- TODO: implement in Step 7.4
+    local mv   = _state.movement
+    local comb = _state.combat
+    local sess = _state.session
+
+    -- When chasing or not anchored, use MA position as the camp reference
+    local refY, refX = mv.campY, mv.campX
+    if sess.chaseAssist or not mv.returnToCamp then
+        local ma = mq.TLO.Spawn('=' .. sess.mainAssist)
+        if (ma.ID() or 0) > 0 then
+            refY = ma.Y() or refY
+            refX = ma.X() or refX
+        end
+    end
+
+    local myID = comb.myTargetID
+    if myID == 0 then return end
+    local mob  = mq.TLO.Spawn('id ' .. myID)
+    local maDist = comb.meleeDistance
+    local cr     = mv.campRadius
+
+    if maDist > cr then
+        local mobY = mob.Y() or 0
+        local mobX = mob.X() or 0
+
+        if dist2D(refY, refX, mobY, mobX) > maDist then
+            local ma    = mq.TLO.Spawn('=' .. sess.mainAssist)
+            local maY   = ma.Y() or 0
+            local maX   = ma.X() or 0
+            if dist2D(refY, refX, maY, maX) > maDist then return end
+            if dist2D(mobY, mobX, maY, maX) > cr then return end
+        end
+
+        -- Close to melee range if mob is farther than MaxRangeTo
+        local maxRange = mob.MaxRangeTo() or 0
+        local _dist    = math.max(1, maxRange - 2)
+        if maxRange > 0 and maxRange < (mob.Distance() or 999) then
+            if _state.pull.moveUse == 'nav' then
+                local navExp = os.clock() + 30
+                while os.clock() < navExp do
+                    if not mq.TLO.Navigation.Active() then
+                        mq.cmdf('/squelch /nav id %d dist=%d', myID, _dist)
+                    end
+                    if (mob.MaxRangeTo() or 0) >= (mob.Distance() or 999) then break end
+                    mq.delay(50)
+                end
+                if mq.TLO.Navigation.Active() then mq.cmd('/nav stop') end
+            end
+            if mob.LineOfSight() then
+                mq.cmdf('/moveto id %d dist %d', myID, _dist)
+            end
+        end
+    end
+
+    -- Attack: enable auto-attack if not already in combat
+    if (useAttack or 0) ~= 0 then
+        if not mq.TLO.Me.Combat() and (mq.TLO.Target.ID() or 0) ~= 0 then
+            local st = mq.TLO.Me.State() or ''
+            if st == 'stand' or st == 'mount' then
+                mq.cmd('/squelch /attack on')
+            end
+        end
+    end
+
+    -- Stick to target (only when combat radius extends beyond camp radius)
+    if maDist <= cr then return end
+    local stickHow = mv.dStickHow
+    if stickHow == 'I' then return end
+
+    local maxRange = mob.MaxRangeTo() or maDist
+    local uw       = mq.TLO.Me.FeetWet() and ' uw' or ''
+
+    if stickHow ~= '0' then
+        -- Directional stick modifier (d=behind, mp=moveback)
+        if (flag or 0) == 0 then
+            mq.cmdf('/stick %d id %d %s%s', maxRange - 3, myID, stickHow, uw)
+        elseif (flag or 0) == 1 then
+            if (mq.TLO.Target.ID() or 0) ~= 0
+               and (mq.TLO.Me.TargetOfTarget.ID() or 0) ~= mq.TLO.Me.ID() then
+                mq.cmdf('/stick id %d %s%s', myID, stickHow, uw)
+            end
+        end
+    else
+        -- Plain stick (no directional modifier)
+        if (flag or 0) == 0 then
+            mq.cmdf('/stick %d id %d%s', maxRange, myID, uw)
+        elseif (flag or 0) == 1 then
+            if (mq.TLO.Target.ID() or 0) ~= 0
+               and (mq.TLO.Me.TargetOfTarget.ID() or 0) ~= mq.TLO.Me.ID() then
+                mq.cmdf('/stick id %d%s', myID, uw)
+            end
+        end
+    end
 end
 
 return Movement
