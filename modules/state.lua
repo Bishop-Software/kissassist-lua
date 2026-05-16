@@ -28,6 +28,7 @@ local State = {
         loadFromIni     = false,
         forceAlias      = true,
         broadcastSay    = 'bc',
+        danNetOn        = false,
         bindActive      = false,
         mercInGroup     = false,
         mercAssisting   = false,
@@ -236,16 +237,27 @@ local State = {
     },
 
     buffs = {
-        blockedCount      = 0,
-        durationMod       = 1.0,
-        extendedList      = '',
-        forceBuffs        = false,
+        blockedCount       = 0,
+        durationMod        = 1.0,
+        extendedList       = '',
+        forceBuffs         = false,
         globalExtendedList = '',
-        hasBuffDuration   = false,
-        kaBegActive       = false,
-        kaBegForList      = '',
-        kaPetBegActive    = false,
-        kaBegForPetList   = '',
+        hasBuffDuration    = false,
+        kaBegActive        = false,
+        kaBegForList       = '',
+        kaPetBegActive     = false,
+        kaBegForPetList    = '',
+        -- Step 6.1
+        buffsOn            = false,
+        buffsArray         = {},
+        rebuffOn           = false,
+        checkBuffsTimer    = 15,   -- seconds between buff check passes (INI CheckBuffsTimer)
+        powerSource        = '',
+        mountSpell         = '',   -- mountOn lives in state.misc
+        petBuffsOn         = false,
+        petBuffsArray      = {},
+        blockedBuffsCount  = 30,   -- 30 emu / 40 live
+        slotTimers         = {},   -- [i][j]: per-slot per-member os.clock() expiry; replaces mac Buff${i}GM${j}
     },
 
     pet = {
@@ -255,11 +267,16 @@ local State = {
         combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
         focusOn       = false,
         globalToysGave = '',
+        on            = false, -- PetOn: pet features enabled (set from INI)
+        shrinkOn      = false, -- PetShrinkOn (set from INI)
+        shrinkSpell   = '',    -- PetShrinkSpell (set from INI)
         suspendState  = false,
         tanking       = false,
         targetSwitch  = false,
         totCount      = 0,
         toyList       = '',
+        toysArray     = {},    -- PetToys array (set from INI)
+        toysOn        = false, -- PetToysOn (set from INI)
     },
 
     mez = {
@@ -392,6 +409,13 @@ for i = 1, 999 do
     State.arrays.pullPathX[i] = 0.0
     State.arrays.pullPathY[i] = 0.0
     State.arrays.pullPathZ[i] = 0.0
+end
+
+-- slotTimers[i][j]: per-spell-slot (1..20) per-group-member (0..5) rebuff expiry.
+-- Replaces .mac's dynamic Buff${i}GM${j} variable pattern.
+for i = 1, 20 do
+    State.buffs.slotTimers[i] = {}
+    for j = 0, 5 do State.buffs.slotTimers[i][j] = 0 end
 end
 
 return State

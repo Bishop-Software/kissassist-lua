@@ -1246,22 +1246,696 @@ end)
 
 ---
 
-## Section 6 — Integration Smoke Test
+## Section 6 — Buff System (Milestone 6)
+
+---
+
+### Section 6.1 — Buffs.init (Step 6.1)
+
+#### 6.1.1 INI loading — buffsOn / rebuffOn / checkBuffsTimer
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.1 | INI `[Buffs] BuffsOn=1` | `state.buffs.buffsOn == true` |
+| 6.1.2 | INI `[Buffs] BuffsOn=0` (or absent) | `state.buffs.buffsOn == false` |
+| 6.1.3 | INI `[Buffs] RebuffOn=1` | `state.buffs.rebuffOn == true` |
+| 6.1.4 | INI `[Buffs] RebuffOn=0` | `state.buffs.rebuffOn == false` |
+| 6.1.5 | INI `[Buffs] CheckBuffsTimer=30` | `state.buffs.checkBuffsTimer == 30` |
+| 6.1.6 | INI `CheckBuffsTimer` absent | `state.buffs.checkBuffsTimer == 15` (default) |
+| 6.1.7 | INI `[Buffs] PowerSource=Eldritch Rune` | `state.buffs.powerSource == 'Eldritch Rune'` |
+| 6.1.8 | INI `PowerSource` absent | `state.buffs.powerSource == ''` |
+
+#### 6.1.2 INI loading — buffsArray
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.9  | INI `Buffs1=Haste\|group`, `Buffs2=Clarity\|self` | `state.buffs.buffsArray[1] == 'Haste\|group'`; `[2] == 'Clarity\|self'` |
+| 6.1.10 | INI `Buffs1` absent | `state.buffs.buffsArray` is empty table `{}` |
+| 6.1.11 | INI `Buffs1=''` (blank entry) | Blank entries skipped; array remains empty |
+
+#### 6.1.3 INI loading — pet buffs
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.12 | INI `[Pet] PetBuffsOn=1` | `state.buffs.petBuffsOn == true` |
+| 6.1.13 | INI `[Pet] PetBuffsOn=0` (or absent) | `state.buffs.petBuffsOn == false` |
+| 6.1.14 | INI `PetBuffs1=Burnout\|self`, `PetBuffs2=Ferocity\|self` | `state.buffs.petBuffsArray[1] == 'Burnout\|self'`; `[2] == 'Ferocity\|self'` |
+| 6.1.15 | INI `PetBuffs1` absent | `state.buffs.petBuffsArray` is empty |
+
+#### 6.1.4 INI loading — mount fields
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.16 | INI `[General] MountOn=1` | `state.misc.mountOn == true` |
+| 6.1.17 | INI `[General] MountOn=0` | `state.misc.mountOn == false` |
+| 6.1.18 | INI `[General] MountOn` absent | `state.misc.mountOn` retains state.lua default (`true`) |
+| 6.1.19 | INI `[General] MountSpell=Black Stallion` | `state.buffs.mountSpell == 'Black Stallion'` |
+| 6.1.20 | INI `MountSpell` absent | `state.buffs.mountSpell == ''` |
+
+#### 6.1.5 State defaults — blockedBuffsCount + slotTimers
+
+| # | Input | Expected |
+|---|-------|----------|
+| 6.1.21 | No INI override | `state.buffs.blockedBuffsCount == 30` |
+| 6.1.22 | After `require('modules.state')` | `state.buffs.slotTimers[1][0] == 0`; `slotTimers[20][5] == 0` |
+| 6.1.23 | After `require('modules.state')` | `state.buffs.slotTimers[1]` is a table with keys 0–5 |
+
+#### 6.1.6 Module load
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.1.24 | `/lua run kissassist-lua` with `[Buffs] BuffsOn=1`, 3 buff entries | No Lua errors; debug line printed: `Buffs.init: buffsOn=true buffs#=3 ...` |
+| 6.1.25 | `/lua run kissassist-lua` with no `[Buffs]` section | Module loads cleanly; all defaults intact; no error |
+
+---
+
+### Section 6.2 — WriteBuffs / WriteBuffsPet / WriteBuffsMerc (Step 6.2)
+
+#### 6.2.1 Buffs.writeBuffs — guards
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.1 | `timers.writeBuffs` not expired | Returns immediately; no INI write |
+| 6.2.2 | `state.misc.redguides = false` | Returns immediately |
+| 6.2.3 | `aggroTargetID ~= ''` (in combat) | Returns immediately |
+| 6.2.4 | `state.session.danNetOn = true` | Returns immediately |
+| 6.2.5 | All guards pass, OOC | Proceeds to write |
+
+#### 6.2.2 Buffs.writeBuffs — INI output
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.2.6  | First write, no existing entry | `[Me.ID]` section created with Day/Hour/Zone/Buffs/Blockedbuffs keys |
+| 6.2.7  | `[Me.ID].Day` already exists | Day key NOT overwritten (only-if-absent guard) |
+| 6.2.8  | Character has 3 active buffs | `Buffs` key = `SpellA\|SpellB\|SpellC\|` |
+| 6.2.9  | Buff name contains `:Permanent` | `:Permanent` suffix stripped before writing |
+| 6.2.10 | No active buffs | `Buffs` key = `""` |
+| 6.2.11 | 2 blocked buffs present | `Blockedbuffs` key written with `SpellX\|SpellY\|` |
+| 6.2.12 | No blocked buffs | `Blockedbuffs` key not updated (empty list skipped) |
+| 6.2.13 | After successful write | `state.timers.writeBuffs = os.clock() + 30` |
+| 6.2.14 | `MyRole` key | Written with `state.session.role` value |
+
+#### 6.2.3 Buffs.writeBuffsPet — guards and output
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.15 | `Me.Pet.ID() == 0` (no pet) | Returns immediately |
+| 6.2.16 | Role is `assist` (not pettank) | Returns immediately |
+| 6.2.17 | Role is `pettank`, pet exists, OOC | Proceeds; writes `[Me.Pet.ID]` section |
+| 6.2.18 | Pet has 2 buffs | `Buffs` key = `PetSpellA\|PetSpellB\|` |
+| 6.2.19 | Blocked pet buffs present | `Blockedbuffs` key written (slots 0–39) |
+| 6.2.20 | After write | `state.timers.writeBuffsPet = os.clock() + 30` |
+
+#### 6.2.4 Buffs.writeBuffsMerc — guards and output
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.2.21 | `Mercenary.State() ~= 'Active'` | Returns immediately |
+| 6.2.22 | Merc active, OOC, all guards pass | Proceeds; writes `[Mercenary.ID]` section |
+| 6.2.23 | Merc has 2 buffs | `Buffs` key populated (slots 1–15) |
+| 6.2.24 | After write | `state.timers.writeBuffsMerc = os.clock() + 30` |
+
+#### 6.2.5 cleanBuffsFile — stale entry removal
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.2.25 | `timers.cleanBuffs` not expired | Returns immediately; no deletions |
+| 6.2.26 | Entry Day != today | Section deleted from KissAssist_Buffs.ini |
+| 6.2.27 | Entry Day == today, Hour != current hour | Section deleted |
+| 6.2.28 | Entry Day == today, Hour == current hour | Section retained |
+| 6.2.29 | After clean pass | `timers.cleanBuffs = os.clock() + 600` |
+
+---
+
+### Step 6.3 — `Buffs.checkBuffs`: entry parsing + self / group-v dispatch
+
+#### 6.3.1 — Entry-function guards
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.1 | `buffsOn = false` | Returns immediately; no loop |
+| 6.3.2 | `misc.iAmDead = true` | Returns immediately |
+| 6.3.3 | `Me.Hovering() = true` | Returns immediately |
+| 6.3.4 | `Me.Invis() = true`, class = Rogue | Does NOT return (Rogues may buff while invis) |
+| 6.3.5 | `Me.Invis() = true`, class = Wizard | Returns immediately |
+| 6.3.6 | `chaseAssist = true`, `Me.Moving() = true` | Returns immediately |
+| 6.3.7 | `Me.Moving() = true`, `whoToChase == Me.Name()` | Returns immediately |
+| 6.3.8 | All guards pass | Proceeds to PowerSource / mount checks |
+
+#### 6.3.2 — PowerSource refuel
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.9  | `powerSource = ''` | refuelPowerSource skipped entirely |
+| 6.3.10 | PowerSource slot exists and has charges | No click; continues normally |
+| 6.3.11 | PowerSource slot exists, `Power() == 0` | Clicks item to cursor; destroys if name matches; waits for cursor clear |
+
+#### 6.3.3 — Mount cast
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.12 | `mountOn = false` | Mount cast skipped |
+| 6.3.13 | `mountOn = true`, `Me.Mount.ID()` non-zero (already mounted) | Mount cast skipped |
+| 6.3.14 | `mountOn = true`, not mounted, indoor zone (not Outdoor, not Type 1/2/5) | Mount cast skipped |
+| 6.3.15 | `mountOn = true`, not mounted, outdoor zone, OOC | `castMount()` called with `mountSpell` |
+| 6.3.16 | `mountOn = true`, not mounted, zone Type 1, OOC | `castMount()` called |
+| 6.3.17 | `mountOn = true`, not mounted, `CombatState() == 'COMBAT'` | Mount cast skipped |
+
+#### 6.3.4 — Per-entry loop: event drain and bail conditions
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.18 | `Me.Invis()` becomes true at top of iteration | `return` immediately |
+| 6.3.19 | `aggroTargetID` non-empty; aggro spawn Distance < 200 | `return` immediately |
+| 6.3.20 | `aggroTargetID` non-empty; aggro spawn Distance >= 200 | Loop continues |
+| 6.3.21 | Entry contains `\|0` | `goto continue` (skips this entry) |
+| 6.3.22 | Entry == `'NULL'` | `goto continue` |
+| 6.3.23 | `curesOn > 0` | `Heal.checkCures('Combat')` called each iteration |
+| 6.3.24 | `healsOn > 0`, `lastHealCheck` expired | `Heal.checkHealth('CheckBuffs')` called; `lastHealCheck` reset |
+| 6.3.25 | `healsOn > 0`, `lastHealCheck` not expired | `checkHealth` NOT called |
+| 6.3.26 | `autoRezOn > 0`, `healsOn == 0`, `curesOn == 0` | `Heal.rezCheck('group')` called |
+
+#### 6.3.5 — Entry parsing
+
+| # | Entry string | Expected `spellToCast` / `p2` / `p3` |
+|---|--------------|--------------------------------------|
+| 6.3.27 | `'Rune of Zebuxoruk'` (no pipe) | `spellToCast='Rune of Zebuxoruk'`, `p2=''` |
+| 6.3.28 | `'Adrenaline Surge\|Dual\|Adrenaline Surge'` (4thPart absent) | `p2='Dual'` (no sub-tag match; stays Dual) |
+| 6.3.29 | `'Spell\|Dual\|Spell\|MA'` | `p2='DualMA'` |
+| 6.3.30 | `'Spell\|Dual\|Spell\|melee'` | `p2='DualMelee'` |
+| 6.3.31 | `'Spell\|Dual\|Spell\|caster'` | `p2='DualCaster'` |
+| 6.3.32 | `'Spell\|Dual\|Spell\|class\|CLR,DRU'` | `p2='DualClass'` |
+| 6.3.33 | `'Spell\|class\|CLR,DRU'` | `p2='class'`, `p5='CLR,DRU'` (shifted from p3) |
+| 6.3.34 | `'Spell\|alias\|something'` | `goto continue` — entry skipped |
+| 6.3.35 | `'Spell\|condGT50MAN\|...'` (2ndPart starts with `cond`) | `p2` cleared to `''` |
+
+#### 6.3.6 — `buffToCheck` resolution
+
+| # | Scenario | Expected `buffToCheck` |
+|---|----------|------------------------|
+| 6.3.36 | `redguides=true` (gold), non-Dual, `spellToCast='Rune of Zebuxoruk Rk. II'` | `'Rune of Zebuxoruk Rk. II'` (no strip) |
+| 6.3.37 | `redguides=false` (non-gold), non-Dual, `spellToCast='Rune of Zebuxoruk Rk. II'` | `'Rune of Zebuxoruk'` (stripped) |
+| 6.3.38 | `redguides=false`, Dual tag, `p3='Focus Rk. II'` | `'Focus'` (stripped from p3) |
+| 6.3.39 | `redguides=true`, Dual tag, `p3='Focus Rk. II'` | `'Focus Rk. II'` (no strip) |
+
+#### 6.3.7 — `bookSpellTT` and `spellRange`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.40 | Spell not in spellbook | `bookSpellTT = '0'`; uses `Spell.TargetType()` directly |
+| 6.3.41 | Spell in spellbook | `bookSpellTT` set from `Spell[BookID].TargetType` |
+| 6.3.42 | `Spell.Range() > Spell.AERange()` | `spellRange = Spell.Range()` |
+| 6.3.43 | `Spell.AERange() > Spell.Range()` | `spellRange = Spell.AERange()` |
+| 6.3.44 | Both range values are 0 | `spellRange = 100` (default) |
+
+#### 6.3.8 — Mid-loop combat / timer bail
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 6.3.45 | `combatStart = true` | `return` immediately after parsing |
+| 6.3.46 | `aggroTargetID` non-empty (any distance) | `return` immediately after parsing |
+| 6.3.47 | `iAmDead = true` (became true mid-loop) | `return` |
+| 6.3.48 | `Me.Invis()` true mid-loop | `return` |
+| 6.3.49 | `timers.readBuffs > os.clock()` | `return` |
+
+#### 6.3.9 — `group v` target-type branch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.50 | Spell TargetType contains `'group v'`, `slotTimers[i][0]` not expired | Cast attempted |
+| 6.3.51 | `slotTimers[i][0] > os.clock()` (timer active) | `goto continue`; no cast |
+| 6.3.52 | Cast returns `CAST_SUCCESS` | `timers.writeBuffs` reset to 0; `writeBuffs()` called; echo printed |
+| 6.3.53 | Cast returns `CAST_TAKEHOLD` | `slotTimers[i][0] = os.clock() + Spell.MyDuration.TotalSeconds()` |
+| 6.3.54 | Cast returns `CAST_COMPONENTS` | `buffsArray[i]` set to `'NULL'`; echo printed; `goto continue` |
+| 6.3.55 | `forceGroup = true` after cast | Waits for `Me.SpellInCooldown()` to clear before next entry |
+
+#### 6.3.10 — `self` target-type branch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.3.56 | Spell TargetType contains `'self'`; `Me.Buff(buffToCheck).ID() ~= 0` | `goto continue`; no cast |
+| 6.3.57 | `Me.Song(buffToCheck).ID() ~= 0` | `goto continue`; no cast |
+| 6.3.58 | `Spell(buffToCheck).WillLand() == false` | `goto continue`; no cast |
+| 6.3.59 | Buff absent, WillLand true | `castWhat(spellToCast, Me.ID, 'buffs-nomem')` called |
+| 6.3.60 | Cast returns `CAST_COMPONENTS` | `buffsArray[i]` set to `'NULL'`; echo printed |
+| 6.3.61 | Cast returns `CAST_SUCCESS` | `goto continue`; no extra timer set (self spells re-check buff presence each loop) |
+
+#### 6.4 — `CheckBuffs`: single-target group iteration + class filters
+
+##### 6.4.1 — `isSingle` detection
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.1 | `bookSpellTT == '0'` and `Spell.TargetType` contains `'single'` | `isSingle = true`; group loop entered |
+| 6.4.2 | `bookSpellTT` contains `'single'` (book lookup succeeded) | `isSingle = true` |
+| 6.4.3 | Neither TT contains `'single'` | `isSingle = false`; special action tag chain checked next |
+
+##### 6.4.2 — Group member skip conditions
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.4 | `Group.Member(j).ID() == 0` (slot empty) | `goto jcontinue`; member skipped |
+| 6.4.5 | `Spawn(memberID).Distance() >= spellRange` | `goto jcontinue` |
+| 6.4.6 | `slotTimers[i][j] > os.clock()` (timer active) | `goto jcontinue` |
+| 6.4.7 | All members skipped due to distance | Loop completes without casting |
+
+##### 6.4.3 — `|me` / `|Dualme` filter
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.8 | `p2 == 'me'`, `j == 0` (self) | Member not skipped; cast attempted |
+| 6.4.9 | `p2 == 'me'`, `j > 0` (group member) | `goto jcontinue`; member skipped |
+| 6.4.10 | `p2 == 'Dualme'`, `j > 0` | `goto jcontinue` |
+
+##### 6.4.4 — Per-cast mana check
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.11 | `Me.CurrentMana() >= Spell.Mana()` | Cast proceeds |
+| 6.4.12 | `Me.CurrentMana() < Spell.Mana()` | `break` entire j loop; no more members buffed |
+
+##### 6.4.5 — Class filter tags
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.13 | `p2 == 'caster'`; member class is `WIZ` (in CASTER_CLASSES) | Not skipped; cast attempted |
+| 6.4.14 | `p2 == 'caster'`; member class is `WAR` (not in CASTER_CLASSES) | `goto jcontinue` |
+| 6.4.15 | `p2 == 'DualCaster'`; member class is `CLR` | Not skipped |
+| 6.4.16 | `p2 == 'Melee'`; member class is `WAR` (in MELEE_CLASSES) | Not skipped |
+| 6.4.17 | `p2 == 'Melee'`; member class is `WIZ` (not in MELEE_CLASSES) | `goto jcontinue` |
+| 6.4.18 | `p2 == 'DualMelee'`; member class is `MNK` | Not skipped |
+| 6.4.19 | `p2 == 'class'`; member class in `p5` list (`CLR,DRU`) | Not skipped |
+| 6.4.20 | `p2 == 'class'`; member class not in `p5` list | `goto jcontinue` |
+| 6.4.21 | `p2 == 'DualClass'`; member class in `p5` | Not skipped |
+| 6.4.22 | `p2 == '!class'`; member class IS in `p5` list | `goto jcontinue` |
+| 6.4.23 | `p2 == '!class'`; member class not in `p5` | Not skipped |
+| 6.4.24 | `p2 == 'Dual!Class'`; member class IS in `p5` | `goto jcontinue` |
+
+##### 6.4.6 — `|MA` / `|!MA` filter
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.25 | `p2 == 'MA'`; member ID matches `Spawn('PC mainAssist').ID()` | Not skipped |
+| 6.4.26 | `p2 == 'MA'`; member ID does not match MA | `goto jcontinue` |
+| 6.4.27 | `p2 == 'DualMA'`; member matches MA | Not skipped |
+| 6.4.28 | `p2 == '!MA'`; member IS the MA | `goto jcontinue` |
+| 6.4.29 | `p2 == '!MA'`; member is not the MA | Not skipped |
+
+##### 6.4.7 — Mid-loop aggro bail + gem timer wait
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.30 | `aggroTargetID` set and aggro spawn distance < 200 | `return` from `checkBuffs` |
+| 6.4.31 | `aggroTargetID` set but distance ≥ 200 | Loop continues |
+| 6.4.32 | Spell memed; `GemTimer > 6s` | `goto jcontinue`; member skipped |
+| 6.4.33 | Spell memed; `GemTimer ≤ 6s`; spell becomes ready | Cast proceeds after wait |
+| 6.4.34 | Aggro fires during gem timer wait | `return` |
+
+##### 6.4.8 — Cast results (per member)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.35 | `CAST_SUCCESS`; `j > 0` | `slotTimers[i][j] = os.clock() + Spell.MyDuration.TotalSeconds()`; no writeBuffs |
+| 6.4.36 | `CAST_SUCCESS`; `j == 0` (self) | `timers.writeBuffs = 0`; `writeBuffs()` called |
+| 6.4.37 | `CAST_HASBUFF` | `slotTimers[i][j]` set from spell duration |
+| 6.4.38 | `CAST_TAKEHOLD` | `slotTimers[i][j]` set from spell duration |
+| 6.4.39 | `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed; `goto jcontinue` |
+
+##### 6.4.9 — Invis during j loop
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.40 | `Me.Invis()` becomes true at top of j loop | `break`; remaining members not buffed |
+
+##### 6.4.10 — No-group fallback
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.41 | `Group.Members() == 0`; `p2` not in CLASS_FILTER_TAGS | Cast on `Me.ID`; `CAST_SUCCESS` sets `slotTimers[i][0]` + `writeBuffs()` |
+| 6.4.42 | `Group.Members() == 0`; `p2 == 'MA'` (CLASS_FILTER_TAGS) | No cast; `goto continue` |
+| 6.4.43 | `Group.Members() == 0`; `p2 == 'caster'` | No cast |
+| 6.4.44 | No-group fallback; `CAST_HASBUFF` | `slotTimers[i][0]` set |
+| 6.4.45 | No-group fallback; `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed |
+
+---
+
+### Section 6.5 — `CheckBuffs`: special action tags + `CheckBegforBuffs`
+
+#### 6.5.1 — Structural ordering: special tags checked before target-type dispatch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.1 | Entry `SpellName\|Aura`; spell has single-target TT | `checkAura()` fires; group loop NOT entered |
+| 6.5.2 | Entry `SpellName\|Once`; spell has single-target TT | `buffOnce()` fires; group loop NOT entered |
+| 6.5.3 | Entry `SpellName\|mana\|80\|50` | `|mana` branch fires; group loop NOT entered |
+
+##### 6.5.2 — `|Endgroup` / `|Managroup`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.4 | `p2 == 'Endgroup'`; group member BER at 30% endurance (below p3=50) | `regenOther()` casts on BER; `slotTimers[i][0]` set to `os.clock() + dur*10` |
+| 6.5.5 | `p2 == 'Managroup'`; group member CLR at 20% mana (below p3=40) | `regenOther()` casts on CLR |
+| 6.5.6 | `p2 == 'Endgroup'`; all members above threshold | `regenOther()` returns false; no cast; `goto continue` |
+| 6.5.7 | `p2 == 'Endgroup'`; no group members | Outer `if groupCount > 0` fails; `goto continue` with no cast |
+| 6.5.8 | `p2 == 'Endgroup'`; MA in group; spell name contains `'Rallying Call'` | MA skipped; next qualifying member targeted |
+| 6.5.9 | `p2 == 'Managroup'`; BRD member; spell `'Dichotomic Psalm'` | BRD skipped; next qualifying member targeted |
+
+##### 6.5.3 — `|mana`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.10 | `PctMana == 60`, `p3 == 80` (mana below thresh); `PctHPs == 100`, `p4 == 50` | Cast attempted |
+| 6.5.11 | `PctMana == 90`, `p3 == 80` (mana already high) | Skip cast; `goto continue` |
+| 6.5.12 | `PctMana == 50`, `p3 == 80`; `PctHPs == 30`, `p4 == 50` (HP low) | Skip cast (HP below p4 threshold) |
+| 6.5.13 | Cast returns `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed; `goto continue` |
+| 6.5.14 | `p4` empty string | `hpThresh = 0`; HP condition always passes; only mana threshold checked |
+
+##### 6.5.4 — `|End`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.15 | `PctEndurance == 40`, `p3 == 50`; `CombatAbilityReady == true` | `checkEndurance()` called; cast attempted |
+| 6.5.16 | `PctEndurance == 40`, `p3 == 50`; neither CA nor AA ready | `checkEndurance()` not called; `goto continue` |
+| 6.5.17 | `PctEndurance == 80`, `p3 == 50` (above threshold) | `checkEndurance()` not called; `goto continue` |
+| 6.5.18 | `checkEndurance()` fires; `Me.Sitting() == true` | `/stand` issued before cast |
+
+##### 6.5.5 — `|Remove`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.19 | `Me.Buff(spellToCast).ID() != 0` (buff active) | `/echo Removing Buff: ...` + `/removebuff` issued; `goto continue` |
+| 6.5.20 | `Me.Song(spellToCast).ID() != 0` (song active) | `/removebuff` issued; `goto continue` |
+| 6.5.21 | Neither buff nor song active | No remove issued; still `goto continue` (doesn't fall to group loop) |
+
+##### 6.5.6 — Global mana bail (inside elseif chain)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.22 | `p2 == ''`; `Spell.Mana() > Me.CurrentMana()` | `goto continue`; no cast |
+| 6.5.23 | `p2 == 'begfor'`; `Spell.Mana() > Me.CurrentMana()` | Mana bail skipped; `begfor` branch fires instead |
+| 6.5.24 | `Spell.Mana() == 0` (non-mana spell) | Mana bail not triggered; falls through to Aura/Once/etc. |
+
+##### 6.5.7 — `|Aura`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.25 | Aura slot 1 already matches aura name | `checkAura()` returns early; no cast |
+| 6.5.26 | Aura not present; class is WAR (DISC_AURA class); endurance > 500 | `/disc "spellName"` issued; delay+wait for cast |
+| 6.5.27 | Aura not present; class is CLR (non-disc); aura slots 1+2 checked | `castWhat('CheckAura')` issued |
+| 6.5.28 | ENC with two active auras; second slot matches | `checkAura()` returns early |
+| 6.5.29 | MAG; pet buff scan finds `TempAura` match | `checkAura()` returns early; no cast |
+
+##### 6.5.8 — `|Once`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.30 | `buffOnce()` returns `CAST_SUCCESS` | `buffsArray[i]` set to `spellName\|0`; echo `'Buffing Once with ...'`; `goto continue` |
+| 6.5.31 | `buffOnce()` returns non-SUCCESS (resist, etc.) | `buffsArray[i]` unchanged; `goto continue` |
+| 6.5.32 | `Me.Invis()` when `buffOnce()` called | `buffOnce()` returns false immediately |
+
+##### 6.5.9 — `|summon` stub
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.33 | `p2:lower() == 'summon'` | Printf stub printed; `goto continue`; no cast |
+
+##### 6.5.10 — `|mgb` / `|DualMgb` stub
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.34 | `p2 == 'mgb'`; `Buff(buffToCheck).ID() == 0` | `castWhat` called on `Me.ID` with `'buffs-nomem'`; `goto continue` |
+| 6.5.35 | `p2 == 'DualMgb'`; buff already active | No cast; `goto continue` |
+| 6.5.36 | `p2:lower() == 'dualmgb'` (raw lowercase) | Handled same as `'DualMgb'` |
+
+##### 6.5.11 — `|begfor`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.37 | `timers_i[0] > os.clock()` (timer active) | Skip beg logic; `goto continue` |
+| 6.5.38 | `p5 == 'BEGFORITEMS'`; `FindItemCount < p3` | `/bc KABeg for <name> BEGFORITEMS 0`; `timers_i[0] = os.clock() + 900` |
+| 6.5.39 | `p5 == 'BEGFORITEMS'`; item count already sufficient | No broadcast; `goto continue` |
+| 6.5.40 | `p5 == 'BEGFORBUFFS'`; `Buff(spellToCast).ID() == 0` | `/bc KABeg for <name> BEGFORBUFFS 0`; timer set |
+| 6.5.41 | `p5 == 'BEGFORBUFFS'`; buff already present | No broadcast |
+| 6.5.42 | `p5` is invalid (not BEGFORITEMS or BEGFORBUFFS) | Echo invalid option; `buffsArray[i] = 'NULL'` |
+
+##### 6.5.12 — `|command:`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.43 | `spellToCast` contains `'command:'`; target exists | `castWhat` called with `Target.ID`; `goto continue` |
+| 6.5.44 | `spellToCast` contains `'command:'`; no target | `castWhat` called with `Me.ID` fallback |
+
+##### 6.5.13 — `Buffs.checkBegforBuffs()`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.45 | `Me.Invis()` at entry | Returns immediately |
+| 6.5.46 | `kaBegForList == ''` | Returns immediately |
+| 6.5.47 | Single entry `'BEGFORBUFFS:PlayerA:2'`; buffToCast is single-target spell | `castWhat(buffToCast, Spawn('PC PlayerA').ID(), 'Buffs')` called |
+| 6.5.48 | Cast returns `CAST_SUCCESS` | `removeFromBegList()` called; entry removed from list |
+| 6.5.49 | Cast returns `CAST_RECOVER` | Same as SUCCESS — entry removed |
+| 6.5.50 | Cast returns `CAST_CANCELLED` | Loop breaks immediately |
+| 6.5.51 | Cast returns other result | `idx` incremented; next entry tried |
+| 6.5.52 | Entry spell type resolves to `'self'` | `removeFromBegList(entry, 'self')` without casting |
+| 6.5.53 | List becomes empty after removal | `kaBegActive = false` |
+
+##### 6.5.14 — `removeFromBegList()`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.54 | Single entry removed; `spellType == 'single'` | No dedup loop; list becomes empty |
+| 6.5.55 | `part1 == 'BEGFORAEITEMS'`; two entries share part1+part3 | Both entries removed (AE dedup) |
+| 6.5.56 | `spellType == 'self'`; duplicate entries with same part1+part3 | All matching entries removed |
+| 6.5.57 | `spellType == 'single'`; duplicate of same entry string | All duplicate entries removed |
+
+---
+
+### Section 6.6 — `CheckPetBuffs` + `CheckBegforPetBuffs`
+
+#### 6.6.1 — `checkPetBuffs` guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.1 | No pet summoned | `Me.Pet.ID() == 0` | Returns immediately; no iteration |
+| 6.6.2 | `pet.on == false` | Pet exists; `state.pet.on = false` | Returns immediately |
+| 6.6.3 | `petBuffsOn == false` | Pet exists; `state.buffs.petBuffsOn = false` | Returns immediately |
+| 6.6.4 | `combatStart == true` | `state.session.combatStart = true` | Returns immediately |
+| 6.6.5 | `pulling == true` | `state.combat.pulling = true` | Returns immediately |
+| 6.6.6 | Timer not expired | `state.timers.petBuffCheck = os.clock() + 30` | Returns immediately; no cast |
+| 6.6.7 | Invis active | `Me.Invis() == true` | Returns immediately |
+| 6.6.8 | All guards pass | Pet present; all flags clear; timer expired | Enters loop; sets `petBuffCheck = os.clock() + 60` |
+
+#### 6.6.2 — NULL entry skipping
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.9 | Entry is `NULL` | `petBuffsArray[1] = 'NULL'` | Entry skipped via `goto petcontinue`; no cast |
+| 6.6.10 | Entry is `null` (lowercase) | `petBuffsArray[1] = 'null'` | Same skip behavior via `.upper()` check |
+
+#### 6.6.3 — Aggro bail
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.11 | Aggro detected mid-loop | `aggroTargetID` becomes non-zero after first iteration | Returns from function immediately |
+
+#### 6.6.4 — Spell/AA path (book or AltAbility)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.12 | Spell in book; buff already on pet | `Me.PetBuff(j).Name` partial-matches `pTempBuff` | `foundPetBuff = true`; cast skipped |
+| 6.6.13 | Spell in book; buff not on pet | No PetBuff slot matches | `castWhat(part1, Pet.ID, 'Pet-nomem')` called |
+| 6.6.14 | CAST_SUCCESS | `castWhat` returns `'CAST_SUCCESS'` | `/echo Buffing <petName>, my pet, with <spell>` |
+| 6.6.15 | CAST_COMPONENTS | `castWhat` returns `'CAST_COMPONENTS'` | `/echo` missing-components message; `petBuffsArray[i] = 'NULL'` |
+| 6.6.16 | AltAbility entry | `Me.AltAbility(part1).ID()` non-zero | Same 50-slot scan and cast path as book spell |
+| 6.6.17 | Spell with ` Rk. II` suffix | `part1 = 'Example Rk. II'` | `pTempBuff` stripped to `'Example'`; slot scan uses stripped name |
+
+#### 6.6.5 — Item path (FindItem)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.18 | Item found; buff already on pet | Slot scan matches `pTempBuff` | Cast skipped |
+| 6.6.19 | Item found; buff not on pet | No slot match | `castWhat(part1, Pet.ID, 'Pet')` called |
+| 6.6.20 | CAST_SUCCESS (item) | `castWhat` returns `'CAST_SUCCESS'` | `/echo Buffing <petName>, my pet, with (<part3>)` |
+| 6.6.21 | CAST_COMPONENTS (item) | `castWhat` returns `'CAST_COMPONENTS'` | Entry nulled; echo emitted |
+
+#### 6.6.6 — `|dual` tag
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.22 | Entry has `dual` as part2 | `entry = 'CastSpell\|dual\|CheckBuff'` | `pTempBuff` derived from `part3` (`CheckBuff`); `part1` used to cast |
+| 6.6.23 | No dual tag | `entry = 'MySpell\|something\|foo'` | `part3 = part1`; buff check and cast name are identical |
+
+#### 6.6.7 — `pettoys|begfor` path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.24 | Timer expired; pet present | `entry = 'pettoys\|begfor'`; `_petBegTimers[i] <= os.clock()` | `/bc PetToysPlease <petName>` sent; `_petBegTimers[i] = os.clock() + 90`; `kaPetBegActive = true` |
+| 6.6.25 | Timer not yet expired | `_petBegTimers[i] > os.clock()` | Broadcast suppressed |
+
+#### 6.6.8 — Post-loop: shrink + target clear
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.26 | Pet too tall; shrink enabled | `Pet.Height() > 1.35`; `shrinkOn = true`; `shrinkSpell` set | `castWhat(shrinkSpell, Pet.ID, 'Pet')` called |
+| 6.6.27 | Pet height OK | `Pet.Height() <= 1.35` | No shrink cast |
+| 6.6.28 | `shrinkOn = false` | Height > 1.35 but flag off | No shrink cast |
+| 6.6.29 | Target is pet after loop | `Target.ID() == Me.Pet.ID()` | `/squelch /target clear` sent |
+| 6.6.30 | Target is not pet | `Target.ID()` differs | Target not cleared |
+
+#### 6.6.9 — `checkBegforPetBuffs` guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.31 | `toysOn == false` | `state.pet.toysOn = false` | Returns immediately |
+| 6.6.32 | Me.Invis | `Me.Invis() == true` | Returns immediately |
+| 6.6.33 | `kaBegForPetList == ''` | Empty list | Returns immediately |
+
+#### 6.6.10 — `checkBegforPetBuffs` list processing
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.34 | Entry `'group'` | `kaBegForPetList = 'group'` | Iterates members 1–5; casts toy on each pet-class member with active pet |
+| 6.6.35 | Group entry: member not pet class | `cls = 'war'` | Member skipped |
+| 6.6.36 | Group entry: member has no pet | `Pet.ID() == 0` | Member skipped |
+| 6.6.37 | Individual entry; pet found | `entry = 'Fluffy'`; `Spawn('pet Fluffy').ID() ~= 0` | `/echo Giving pet toys to (Fluffy).`; `castWhat` called |
+| 6.6.38 | Individual entry; pet not found | `Spawn('pet Fluffy').ID() == 0` | No cast; advances index |
+| 6.6.39 | CAST_SUCCESS | `castWhat` returns `'CAST_SUCCESS'` | Entry removed from `kaBegForPetList` |
+| 6.6.40 | List empty after removal | Only one entry; CAST_SUCCESS | `kaPetBegActive = false`; loop breaks |
+| 6.6.41 | CAST_CANCELLED | `castWhat` returns `'CAST_CANCELLED'` | Loop breaks immediately |
+| 6.6.42 | Other cast result | `castWhat` returns `'CAST_FIZZLE'` | Index advanced; next entry processed |
+| 6.6.43 | Invis becomes true mid-loop | `Me.Invis()` mid-iteration during group pass | Inner loop breaks; outer loop breaks |
+
+#### 6.6.11 — Main loop wiring
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.44 | `pet.on == false` | `state.pet.on = false` | `checkPetBuffs` not called from main loop |
+| 6.6.45 | `pet.toysOn == false` | `state.pet.toysOn = false` | `checkBegforPetBuffs` not called |
+| 6.6.46 | `kaPetBegActive == false` | `toysOn = true`; `kaPetBegActive = false` | `checkBegforPetBuffs` not called |
+
+---
+
+## Section 6.7 — Wire into main loop + `/buffgroup` + `/tbmanager` + `castBuffsSpellCheck`
+
+### 6.7.1 — init.lua main loop: writeBuffs OOC guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.1 | OOC + no DanNet → writeBuffs called | `combatStart=false`; `danNetOn=false` | `writeBuffs`, `writeBuffsPet`, `writeBuffsMerc` all execute |
+| 6.7.2 | In combat → writeBuffs skipped | `combatStart=true`; `danNetOn=false` | None of the three write calls execute |
+| 6.7.3 | DanNet active → writeBuffs skipped | `combatStart=false`; `danNetOn=true` | None of the three write calls execute |
+| 6.7.4 | Both combat + DanNet → writeBuffs skipped | `combatStart=true`; `danNetOn=true` | None of the three write calls execute |
+
+### 6.7.2 — init.lua main loop: checkBuffs buffsOn guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.5 | `buffsOn=true` → checkBuffs called | `buffsOn=true`; `forceBuffs=false` | `Buffs.checkBuffs(false)` called; `forceBuffs` set to `false` after |
+| 6.7.6 | `buffsOn=false` → checkBuffs skipped | `buffsOn=false` | `checkBuffs` never called |
+| 6.7.7 | `forceBuffs=true` passed through | `buffsOn=true`; `forceBuffs=true` | `checkBuffs(true)` called; `forceBuffs` reset to `false` |
+| 6.7.8 | forceBuffs reset after one cycle | `forceBuffs=true`; loop runs twice | Second iteration calls `checkBuffs(false)` |
+
+### 6.7.3 — init.lua main loop: checkBegforBuffs guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.9 | `kaBegActive=true` → checkBegforBuffs called | `buffs.kaBegActive=true` | `Buffs.checkBegforBuffs()` called |
+| 6.7.10 | `kaBegActive=false` → not called | `buffs.kaBegActive=false` | `checkBegforBuffs` not called |
+| 6.7.11 | Call order: checkBegforBuffs after checkBuffs | Verify execution order | checkBuffs executes before checkBegforBuffs in same loop tick |
+
+### 6.7.4 — `/buffgroup` bind
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.12 | `/buffgroup` sets forceBuffs | Fire `/buffgroup` | `state.buffs.forceBuffs == true` |
+| 6.7.13 | `/buffgroup` resets iniNext | Fire `/buffgroup` | `state.timers.iniNext == 0` |
+| 6.7.14 | `/buffgroup` calls checkBuffs(true) directly | Fire `/buffgroup` | `Buffs.checkBuffs(true)` called immediately (not deferred to main loop) |
+| 6.7.15 | `/buffgroup` works with no active target | No target selected | No crash; buff cycle runs normally |
+
+### 6.7.5 — `/tbmanager` bind — add
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.16 | Add to empty list | `extendedList=''`; `/tbmanager add Shield of Fate` | `extendedList == 'Shield of Fate'` |
+| 6.7.17 | Add to existing list | `extendedList='SpellA'`; `/tbmanager add SpellB` | `extendedList == 'SpellA,SpellB'` |
+| 6.7.18 | Add duplicate | `extendedList='SpellA'`; `/tbmanager add SpellA` | List unchanged; "already in" message printed |
+| 6.7.19 | Add persists to INI | `/tbmanager add SpellA` | INI `[Buffs] ExtendedList` updated via `/ini` command |
+| 6.7.20 | Add prints confirmation | `/tbmanager add SpellA` | Console prints "Added SpellA to Too-Buff list" |
+
+### 6.7.6 — `/tbmanager` bind — remove
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.21 | Remove only entry | `extendedList='SpellA'`; `/tbmanager remove SpellA` | `extendedList == ''` |
+| 6.7.22 | Remove from middle of list | `extendedList='A,B,C'`; `/tbmanager remove B` | `extendedList == 'A,C'` |
+| 6.7.23 | Remove non-existent entry | `extendedList='SpellA'`; `/tbmanager remove SpellX` | List unchanged |
+| 6.7.24 | Remove persists to INI | `/tbmanager remove SpellA` | INI `[Buffs] ExtendedList` updated |
+| 6.7.25 | Remove prints confirmation | `/tbmanager remove SpellA` | Console prints "Removed SpellA from Too-Buff list" |
+
+### 6.7.7 — `/tbmanager` bind — invalid usage
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.26 | No arguments | `/tbmanager` | Usage message printed; no crash |
+| 6.7.27 | One argument only | `/tbmanager add` | Usage message printed |
+| 6.7.28 | Unknown action | `/tbmanager set SpellA` | Usage message printed |
+
+### 6.7.8 — `castBuffsSpellCheck` function
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.29 | Buff already on self → returns true | `Me.Buff('Shield of Fate').ID() ~= 0` | `castBuffsSpellCheck` returns `true` |
+| 6.7.30 | Song already on self → returns true | `Me.Song('Aria of Asceticism').ID() ~= 0` | Returns `true` |
+| 6.7.31 | Buff not active → returns false | Both `Me.Buff` and `Me.Song` return 0 | Returns `false` |
+| 6.7.32 | Unknown spell name → returns false | `Me.Buff('Nonexistent').ID()` returns 0 | Returns `false` |
+
+### 6.7.9 — `castWhat` buff stacking gate
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.33 | sentFrom='Buffs' + buff active → CAST_HASBUFF | `sentFrom='Buffs'`; buff already on self | `castWhat` returns `'CAST_HASBUFF'` without casting |
+| 6.7.34 | sentFrom='buffs-nomem' + buff active → CAST_HASBUFF | `sentFrom='buffs-nomem'`; buff on self | Returns `'CAST_HASBUFF'` |
+| 6.7.35 | sentFrom='Buffs' + buff not active → proceeds | Buff not active | `castWhat` continues to cast normally |
+| 6.7.36 | sentFrom='dps' + buff active → not gated | `sentFrom='dps'` | Buff stacking check NOT applied; cast proceeds |
+| 6.7.37 | sentFrom='SingleHeal' → not gated | `sentFrom='SingleHeal'` | Buff stacking check NOT applied |
+
+### 6.7.10 — Invis guard bypass for buff sentFrom values
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.38 | `castSpell` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | Cast NOT cancelled by invis guard |
+| 6.7.39 | `castSpell` + invis + sentFrom='buffs-nomem' → proceeds | `Me.Invis()=true`; `sentFrom='buffs-nomem'` | Cast NOT cancelled |
+| 6.7.40 | `castAA` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castAA` NOT cancelled |
+| 6.7.41 | `castDisc` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castDisc` NOT cancelled |
+| 6.7.42 | `castItem` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castItem` NOT cancelled |
+| 6.7.43 | `castMem` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castMem` NOT cancelled |
+| 6.7.44 | `castSpell` + invis + sentFrom='dps' → cancelled | `Me.Invis()=true`; `sentFrom='dps'` | Returns `CAST_CANCELLED` |
+
+### 6.7.11 — Binds.register Buffs wiring
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.45 | Buffs passed to Binds.register | `Binds.register(State, Utils, Buffs)` in init.lua | `/buffgroup` can call `Buffs.checkBuffs` without nil error |
+| 6.7.46 | onBuffGroup with buffsOn=false | `buffsOn=false`; fire `/buffgroup` | `checkBuffs(true)` still called directly; no crash |
+
+---
+
+## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 6.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 6.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 6.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 6.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 6.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 6.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 7.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 7.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 7.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 7.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 7.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 7.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
 
 ---
 
-## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.6)
+## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -1320,7 +1994,13 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
 | CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
 | RezCheck / RezWithCheck | ✅ Step 5.5 |
-| CheckBuffs / WriteBuffs | M6 |
+| Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
+| CheckBuffs guards + group-v + self dispatch | ✅ Step 6.3 |
+| CheckBuffs single-target group iteration + class filters | ✅ Step 6.4 |
+| CheckBuffs special action tags + CheckBegforBuffs | ✅ Step 6.5 |
+| WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
+| CheckPetBuffs + CheckBegforPetBuffs | ✅ Step 6.6 |
+| CastBuffsSpellCheck + /buffgroup + /tbmanager | ✅ Step 6.7 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
 | Stop-moving before cast | M7 |
@@ -1331,4 +2011,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-15. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.6 complete (Milestone 5 fully done). Section 5.7 added for loop wiring (18 test cases). SkipCombat healer path, combat-loop heal calls, and Healing/cures-triggered-by-events marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.7 complete. Section 6.7 added (46 test cases for writeBuffs OOC guard, checkBuffs buffsOn gate + forceBuffs pass-through, checkBegforBuffs main-loop wiring, /buffgroup bind, /tbmanager add/remove/invalid, castBuffsSpellCheck self-buff check, castWhat CAST_HASBUFF gate, invis-guard bypass for Buffs/buffs-nomem in all five cast primitives, and Binds.register Buffs wiring). CastBuffsSpellCheck + /buffgroup + /tbmanager marked ✅ in Known Deferred.*

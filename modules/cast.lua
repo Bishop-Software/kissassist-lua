@@ -71,7 +71,8 @@ end
 -- Interrupt sub-calls stubbed → M4 (DPS/burn), M5 (Cure/Mez), M6 (Buffs).
 local function castSpell(spellName, sentFrom)
     -- Invis guard
-    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
+            and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
         utils.debug('cast', 'CastSpell cancelled — invisible')
         return 'CAST_CANCELLED'
     end
@@ -190,7 +191,8 @@ local function castAA(whatAA, sentFrom)
         end
     end
 
-    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
+            and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
         return 'CAST_CANCELLED'
     end
 
@@ -249,7 +251,8 @@ end
 -- Skips if a self-targeted duration disc is already active. Uses /disc ID on live
 -- MQ (MacroQuest.Build != 4) or /disc name on emu.
 local function castDisc(whatDisc, sentFrom)
-    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
+            and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
         return 'CAST_CANCELLED'
     end
 
@@ -330,7 +333,8 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_NO_RESULT'
     end
 
-    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
+            and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
         return 'CAST_CANCELLED'
     end
 
@@ -478,7 +482,8 @@ local function castMem(whatMemSpell, sentFrom)
         end
     end
 
-    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal' then
+    if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
+            and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
         state.cast.castResult = 'CAST_CANCELLED'
         return false
     end
@@ -628,6 +633,17 @@ Cast.castMemSpell = castMemSpell
 Cast.castMem      = castMem
 Cast.castReMem    = castReMem
 
+-- ─── Buff Stacking Check ──────────────────────────────────────────────────────
+
+-- Mirrors CastBuffsSpellCheck (kissassist.mac:2946) — simplified.
+-- Returns true if spellName is already active on self (Me.Buff or Me.Song).
+-- Full WillStack / SPA-374/340 group-target check deferred to M10.
+local function castBuffsSpellCheck(spellName)
+    if (mq.TLO.Me.Buff(spellName).ID() or 0) ~= 0 then return true end
+    if (mq.TLO.Me.Song(spellName).ID() or 0) ~= 0 then return true end
+    return false
+end
+
 -- CastWhat dispatcher — mirrors CastWhat (kissassist.mac:2467-2614).
 -- Determines what type of ability castWhat is, checks readiness, acquires target,
 -- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
@@ -714,7 +730,12 @@ function Cast.castWhat(castWhat, whatID, sentFrom)
     end
 
     -- DPS stacking check stub → M4
-    -- Buff stacking check stub → M6
+
+    -- Buff stacking check: skip if spell is already active on self
+    if (sentFrom == 'Buffs' or sentFrom == 'buffs-nomem') and castBuffsSpellCheck(castWhat) then
+        utils.debug('cast', 'CastWhat: %s CAST_HASBUFF (already active on self)', castWhat)
+        return 'CAST_HASBUFF'
+    end
 
     -- Pull short-circuit pre-cast
     if sentFrom:find('pull', 1, true) and state.pull.aggroTargetID ~= '' then
