@@ -94,6 +94,7 @@ local State = {
         gemSlots         = 8,
         miscGem          = 0,
         miscGemLW        = 0,
+        miscGemRemem     = 0,   -- 0=off, 1=both, 2=short only, 3=LW only
         iamCastingID     = 0,
         lastResisted     = false,
         reMemCast        = false,

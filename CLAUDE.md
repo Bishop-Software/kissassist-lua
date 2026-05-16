@@ -143,3 +143,17 @@ kissassist-lua/     ← repo root (deployed into MQ2's lua/ directory)
 ├── init.lua        ← entry point
 └── modules/        ← all domain modules (config, state, combat, etc.)
 ```
+
+## Before spawning any subagent
+Only spawn subagents for complex, multistep tasks.
+For simple tasks, handle directly without calling route_task.
+When you do need a subagent:
+Call route_task(task, files, directory) first. Always.
+- REUSE → call get_context(agent_id), check stale_files, re-read any that changed
+- CREATE_NEW → check existing_agents in response before spawning
+## For code search
+Prefer cocoindex.search() over Grep for semantic/exploratory queries.
+Use Grep only for exact string matches.
+## Memory
+claude-mem auto-captures observations. Use search() → get_observations()
+for progressive retrieval (don't load everything).
