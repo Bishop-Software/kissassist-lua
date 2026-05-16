@@ -28,6 +28,119 @@ local function classInList(shortName, classList)
     return false
 end
 
+-- Class sets for |Endgroup / |Managroup stat-regen dispatch (mac:5160-5165).
+local REGEN_END_CLASSES  = {BER=true,BST=true,MNK=true,PAL=true,RNG=true,ROG=true,SHD=true,WAR=true}
+local REGEN_MANA_CLASSES = {BRD=true,BST=true,CLR=true,DRU=true,ENC=true,MAG=true,NEC=true,PAL=true,RNG=true,SHD=true,SHM=true,WIZ=true}
+
+-- Parse pipe-delimited string by 1-based index (mac Arg[n,|] equivalent).
+local function getListArg(list, idx)
+    local count = 0
+    for part in (list .. '|'):gmatch('([^|]*)|') do
+        count = count + 1
+        if count == idx then return part end
+    end
+    return ''
+end
+
+-- Mirrors Sub RegenOther (mac:5153): find lowest-stat group member and cast regen spell.
+-- stat: 'Endurance' or 'Mana'. statPct: skip members above this threshold.
+-- Returns true on CAST_SUCCESS.
+local function regenOther(spellName, stat, statPct)
+    if mq.TLO.Me.Invis() then return false end
+    local classSet = (stat == 'Endurance') and REGEN_END_CLASSES or REGEN_MANA_CLASSES
+    local groupCount = mq.TLO.Group.Members() or 0
+    for j = 1, groupCount do
+        local memberID = mq.TLO.Group.Member(j).ID() or 0
+        if memberID == 0 then goto rgcontinue end
+        local cls = mq.TLO.Group.Member(j).Class.ShortName() or ''
+        if not classSet[cls] then goto rgcontinue end
+        if (_state.combat.aggroTargetID or '') ~= '' then return false end
+        if spellName:find('Rallying Call', 1, true) then
+            local maID = (_state.session.mainAssist ~= '')
+                     and (mq.TLO.Spawn('PC ' .. _state.session.mainAssist).ID() or 0) or 0
+            if memberID == maID then goto rgcontinue end
+        end
+        if cls == 'BRD' and (spellName == 'Dichotomic Psalm' or spellName == 'Quiet Miracle') then
+            goto rgcontinue
+        end
+        local curStat = (stat == 'Endurance')
+            and (tonumber(mq.TLO.Group.Member(j).CurrentEndurance()) or 0)
+            or  (tonumber(mq.TLO.Group.Member(j).CurrentMana())      or 0)
+        if curStat <= statPct and curStat >= 1 then
+            local result = _cast.castWhat(spellName, memberID, 'Regenother')
+            if result == 'CAST_SUCCESS' then
+                printf('\awCasting \at%s\aw on \at%s\aw for %s.',
+                    spellName, mq.TLO.Group.Member(j).CleanName() or '', stat)
+                return true
+            end
+        end
+        ::rgcontinue::
+    end
+    return false
+end
+
+-- Mirrors Sub CheckAura (mac:4742): cast aura spell if the aura slot doesn't match.
+local function checkAura(spellName)
+    if mq.TLO.Me.Invis() then return end
+    local auraName = spellName
+    local rkPos = spellName:find(' Rk.', 1, true)
+    if rkPos then auraName = spellName:sub(1, rkPos - 1) end
+    local tempAura = ''
+    if     spellName:find("Disciple's Aura",       1, true) then auraName  = 'Disciples Aura'
+    elseif mq.TLO.Me.Class.Name() == 'Cleric'
+       and spellName:find('Reverent',               1, true) then auraName  = 'Reverent Aura'
+    elseif spellName:find('Mana Reiteration',       1, true) then auraName  = 'Mana Recursion Aura'
+    elseif spellName:find('Mana Reiterate',         1, true) then auraName  = 'Mana Reiterate Aura'
+    elseif spellName:find('Mana Reverberation',     1, true) then auraName  = 'Mana Rev.'
+    elseif spellName:find('Mana Resurgence',        1, true) then auraName  = 'Mana Resurgence Aura'
+    elseif spellName:find('Mana Repercussion Aura', 1, true) then auraName  = 'Mana Rep. Aura'
+    elseif spellName:find('Runic Radiance Aura',    1, true) then auraName  = 'Runic Rad. Aura'
+    elseif spellName:find('Arcane Distillect',      1, true) then tempAura  = 'Arcane Distillect'
+    elseif spellName:find('Earthen Strength',       1, true) then tempAura  = 'Earthen Strength Effect'
+    elseif spellName:find("Rathe's Strength",       1, true) then tempAura  = "Rathe's Strength Effect"
+    end
+    local cls   = mq.TLO.Me.Class.ShortName() or ''
+    local aura1 = mq.TLO.Me.Aura(1).Name() or ''
+    local aura2 = mq.TLO.Me.Aura(2).Name() or ''
+    if cls == 'MAG' and tempAura ~= '' then
+        if aura1:find(tempAura, 1, true) then return end
+        if (mq.TLO.Me.Pet.ID() or 0) ~= 0 and (mq.TLO.Me.Pet.Distance() or 999) < 175 then
+            for k = 1, 50 do
+                if (mq.TLO.Me.PetBuff(k).Name() or ''):find(tempAura, 1, true) then return end
+            end
+        end
+    elseif cls == 'CLR' or cls == 'ENC' then
+        if aura1:find(auraName, 1, true) or aura2:find(auraName, 1, true) then return end
+    else
+        if aura1:find(auraName, 1, true) then return end
+    end
+    local DISC_AURA = {BER=true, MNK=true, ROG=true, WAR=true}
+    if DISC_AURA[cls] and (mq.TLO.Me.CurrentEndurance() or 0) > 500 then
+        mq.cmd(string.format('/disc "%s"', spellName))
+        mq.delay(1000)
+        while (mq.TLO.Me.Casting.ID() or 0) ~= 0 do mq.delay(250) end
+    else
+        _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CheckAura')
+    end
+end
+
+-- Mirrors Sub BuffOnce (mac:4727): cast once; returns true on CAST_SUCCESS so caller
+-- can set the entry to spellName|0.
+local function buffOnce(spellName)
+    if mq.TLO.Me.Invis() then return false end
+    return _cast.castWhat(spellName, mq.TLO.Me.ID(), 'BuffOnce') == 'CAST_SUCCESS'
+end
+
+-- Mirrors Sub CheckEndurance (mac:4820): cast endurance disc/AA on self.
+local function checkEndurance(spellName)
+    if mq.TLO.Me.Invis() then return end
+    if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then mq.cmd('/stand') end
+    local result = _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CheckEndurance')
+    if result == 'CAST_SUCCESS' then
+        printf('\awCasting \at%s\aw for endurance.', spellName)
+    end
+end
+
 local BUFFS_FILE  = 'KissAssist_Buffs.ini'
 local PET_ROLES   = { pettank=true, pullerpettank=true, hunterpettank=true }
 
@@ -380,6 +493,113 @@ function Buffs.checkBuffs(forceGroup)
         end
         local timers_i = _state.buffs.slotTimers[i]
 
+        -- Special action tag chain (mac:4319-4403).
+        -- Mirrors the mac's big if-elseif in CheckBuffs; each branch ends with goto continue
+        -- so special-tag entries never fall through to the group/self/single cast loops.
+        if p2 == 'Endgroup' or p2 == 'Managroup' then
+            -- |Endgroup / |Managroup: regen on lowest-stat group member (mac:4319-4328)
+            if (mq.TLO.Group.Members() or 0) > 0 then
+                local stat    = (p2 == 'Endgroup') and 'Endurance' or 'Mana'
+                local didCast = regenOther(spellToCast, stat, tonumber(p3) or 0)
+                if didCast then
+                    local dur = tonumber(mq.TLO.Spell(spellToCast).Duration.TotalSeconds()) or 0
+                    timers_i[0] = os.clock() + dur * 10
+                end
+            end
+            goto continue
+        elseif p2 == 'mana' then
+            -- |mana: cast mana-regen on self when thresholds met (mac:4329-4338)
+            local pctMana    = tonumber(mq.TLO.Me.PctMana()) or 100
+            local pctHPs     = tonumber(mq.TLO.Me.PctHPs())  or 100
+            local manaThresh = tonumber(p3) or 0
+            local hpThresh   = tonumber(p4) or 0
+            if not (pctMana > manaThresh or pctHPs < hpThresh) then
+                local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'Mana')
+                if result == 'CAST_COMPONENTS' then
+                    mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                    _state.buffs.buffsArray[i] = 'NULL'
+                end
+            end
+            goto continue
+        elseif p2 == 'End' then
+            -- |End: endurance disc/AA when below threshold (mac:4341-4342)
+            local pctEnd = tonumber(mq.TLO.Me.PctEndurance()) or 100
+            local thresh = tonumber(p3) or 0
+            if pctEnd <= thresh then
+                local caReady = mq.TLO.Me.CombatAbilityReady(spellToCast)()
+                local aaReady = mq.TLO.Me.AltAbilityReady(spellToCast)()
+                if caReady or aaReady then checkEndurance(spellToCast) end
+            end
+            goto continue
+        elseif p2 == 'Remove' then
+            -- |Remove: /removebuff if buff/song slot active (mac:4344-4348)
+            local buffID = mq.TLO.Me.Buff(spellToCast).ID() or 0
+            local songID = mq.TLO.Me.Song(spellToCast).ID() or 0
+            if buffID ~= 0 or songID ~= 0 then
+                mq.cmd(string.format('/echo Removing Buff: %s', spellToCast))
+                mq.cmd(string.format('/removebuff "%s"', spellToCast))
+            end
+            goto continue
+        elseif p2 ~= 'begfor'
+            and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > 0
+            and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > (mq.TLO.Me.CurrentMana() or 0) then
+            -- Global mana bail: inside elseif chain so it only fires for entries not caught
+            -- by the branches above (Endgroup, mana, End, Remove) (mac:4350).
+            goto continue
+        elseif p2 == 'Aura' then
+            -- |Aura: cast aura if slot not already matching (mac:4353-4354)
+            checkAura(spellToCast)
+            goto continue
+        elseif p2 == 'Once' then
+            -- |Once: cast once; disable entry on success (mac:4356-4361)
+            if buffOnce(spellToCast) then
+                _state.buffs.buffsArray[i] = spellToCast .. '|0'
+                mq.cmd(string.format('/echo Buffing Once with %s.', spellToCast))
+            end
+            goto continue
+        elseif p2:lower() == 'summon' then
+            -- |summon: stub — SummonStuff deferred to M8 (mac:4363-4369)
+            printf('\aw[KA] Summon tag not implemented for %s', spellToCast)
+            goto continue
+        elseif p2 == 'mgb' or p2 == 'DualMgb' or p2:lower() == 'dualmgb' then
+            -- |mgb / |dualmgb: stub cast without MGB flag; massGroupBuff deferred (mac:4370-4371)
+            if (mq.TLO.Me.Buff(buffToCheck).ID() or 0) == 0 then
+                _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+            end
+            goto continue
+        elseif p2 == 'begfor' then
+            -- |begfor: broadcast beg request if item/buff count below threshold (mac:4372-4393)
+            if (timers_i[0] or 0) <= os.clock() then
+                local count = tonumber(p3) or 0
+                if count > 0 and p4 == 'alias' then
+                    if p5 == 'BEGFORITEMS' then
+                        if (mq.TLO.FindItemCount('=' .. spellToCast)() or 0) < count then
+                            mq.cmd(string.format('/bc KABeg for %s %s 0',
+                                mq.TLO.Me.CleanName() or '', p5))
+                            timers_i[0] = os.clock() + 900
+                        end
+                    elseif p5 == 'BEGFORBUFFS' then
+                        if (mq.TLO.Me.Buff(spellToCast).ID() or 0) == 0 then
+                            mq.cmd(string.format('/bc KABeg for %s %s 0',
+                                mq.TLO.Me.CleanName() or '', p5))
+                            timers_i[0] = os.clock() + 900
+                        end
+                    else
+                        mq.cmd(string.format('/echo Invalid Option %s for Alias. Turning Option off.', p5))
+                        _state.buffs.buffsArray[i] = 'NULL'
+                    end
+                end
+            end
+            goto continue
+        elseif spellToCast:find('command:', 1, true) then
+            -- |command:: simplified target resolution then cast (mac:4395-4399)
+            -- Full TargetTag resolver (tag-to-spawn lookup) deferred to M7.
+            local targetID = (mq.TLO.Target.ID() or 0) ~= 0
+                         and mq.TLO.Target.ID() or mq.TLO.Me.ID()
+            _cast.castWhat(spellToCast, targetID, 'Buffs')
+            goto continue
+        end
+
         -- group v branch: cast group buff on self (mac:4491-4521)
         if isGroupV then
             mq.doevents()  -- drain WornOff
@@ -538,9 +758,90 @@ function Buffs.checkBuffs(forceGroup)
             end
         end
 
-        -- special action tags (Endgroup, Managroup, Aura, Once, mana, command:, mgb): deferred to Step 6.5
-
         ::continue::
+    end
+end
+
+-- Mirrors Sub RemoveFromBegList (mac:13249): remove entry from kaBegForList string;
+-- dedup AE-item entries (same alias+slot) and single-type duplicates.
+local function removeFromBegList(entry, spellType)
+    local entries = {}
+    for e in (_state.buffs.kaBegForList .. '|'):gmatch('([^|]+)|') do
+        entries[#entries + 1] = e
+    end
+    local part1 = entry:match('^([^:]*):') or ''
+    local part3 = entry:match(':([^:]*)$') or ''
+    -- Remove primary entry
+    for k = 1, #entries do
+        if entries[k] == entry then table.remove(entries, k) break end
+    end
+    -- AE-items or self: remove all entries with same alias+slot
+    if part1 == 'BEGFORAEITEMS' or spellType == 'self' then
+        local k = 1
+        while k <= #entries do
+            local ep1 = entries[k]:match('^([^:]*):') or ''
+            local ep3 = entries[k]:match(':([^:]*)$') or ''
+            if ep1 == part1 and ep3 == part3 then table.remove(entries, k)
+            else k = k + 1 end
+        end
+    elseif spellType == 'single' then
+        local k = 1
+        while k <= #entries do
+            if entries[k] == entry then table.remove(entries, k)
+            else k = k + 1 end
+        end
+    end
+    _state.buffs.kaBegForList = table.concat(entries, '|')
+    if _state.buffs.kaBegForList == '' then _state.buffs.kaBegActive = false end
+end
+
+-- Mirrors Sub CheckBegforBuffs (mac:13199): process the cross-character buff-request queue.
+-- Each entry format: alias:charName:buffArrayIdx (pipe-delimited list in kaBegForList).
+function Buffs.checkBegforBuffs()
+    if mq.TLO.Me.Invis() then return end
+    if _state.buffs.kaBegForList == '' then return end
+
+    local idx = 1
+    while true do
+        local entry = getListArg(_state.buffs.kaBegForList, idx)
+        if entry == '' or entry == 'null' then
+            if _state.buffs.kaBegForList == '' then _state.buffs.kaBegActive = false end
+            break
+        end
+        if mq.TLO.Me.Invis() then break end
+
+        local part2 = entry:match('^[^:]*:([^:]*):') or ''
+        local part3 = entry:match(':([^:]*)$')        or ''
+
+        -- Resolve buffToCast from buffsArray[part3]
+        local buffIdx   = tonumber(part3) or 0
+        local buffEntry = (buffIdx > 0 and _state.buffs.buffsArray[buffIdx]) or ''
+        local buffToCast = buffEntry:match('^([^|]*)') or buffEntry
+
+        -- Determine spell type (mac:13222-13228)
+        local spellType = 'self'
+        if buffToCast ~= '' then
+            if mq.TLO.Me.Book(buffToCast)() then
+                spellType = mq.TLO.Spell(buffToCast).TargetType() or 'self'
+            elseif (mq.TLO.Me.AltAbility(buffToCast).ID() or 0) ~= 0 then
+                local aaSpell = mq.TLO.Me.AltAbility(buffToCast).Spell
+                spellType = (aaSpell and aaSpell.TargetType() or 'self')
+            end
+        end
+
+        if spellType ~= 'self' then
+            local targetID = mq.TLO.Spawn('PC ' .. part2).ID() or 0
+            local result   = _cast.castWhat(buffToCast, targetID, 'Buffs')
+            if result == 'CAST_SUCCESS' or result == 'CAST_RECOVER' then
+                removeFromBegList(entry, spellType)
+            elseif result == 'CAST_CANCELLED' then
+                break
+            else
+                idx = idx + 1
+            end
+        else
+            removeFromBegList(entry, 'self')
+        end
     end
 end
 

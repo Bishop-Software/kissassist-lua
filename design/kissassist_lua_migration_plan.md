@@ -630,7 +630,7 @@ Port the single-target path that iterates each group member and all class-filter
 
 ---
 
-#### Step 6.5 — `CheckBuffs`: special action tags + `CheckBegforBuffs`
+#### Step 6.5 ✅ — `CheckBuffs`: special action tags + `CheckBegforBuffs`
 
 Port the remaining `2ndPart` action branches and the beg-for-buffs subsystem (mac:4319–4403, mac:13199–13303).
 
@@ -648,6 +648,8 @@ Port the remaining `2ndPart` action branches and the beg-for-buffs subsystem (ma
 - **`removeFromBegList()`** (mac:13249): local helper — removes entry from `kaBegForList`; handles AE-item dedup (same alias+slot entries) and single-type dedup
 
 **Done when:** beg-for-buff queue processes correctly; special action tags (Aura, Once, Remove, mana, End) fire.
+
+**Implemented:** Special action tag chain inserted in `Buffs.checkBuffs()` in modules/buffs.lua BEFORE the group-v/self/single target-type dispatch (matching the mac's structural ordering). Module-level helpers added: `regenOther()` iterates group members by stat class sets (REGEN_END_CLASSES / REGEN_MANA_CLASSES), casts on lowest-stat qualifying member, skips MA for Rallying Call and BRD for Dichotomic/Quiet Miracle; `checkAura()` strips ` Rk.` suffix, applies class-specific name corrections (Disciples Aura, Reverent Aura, Mana Rev., etc.), checks aura slots 1+2 for CLR/ENC, handles Mage TempAura via PetBuff scan, casts via `/disc` for BER/MNK/ROG/WAR endurance classes or via `castWhat('CheckAura')`; `buffOnce()` casts on Me.ID with sentFrom `'BuffOnce'`, returns bool; `checkEndurance()` stands if sitting, casts with sentFrom `'CheckEndurance'`; `getListArg()` parses pipe-delimited strings by 1-based index. Elseif chain: `|Endgroup`/`|Managroup` → regenOther + timer set (dur×10); `|mana` → cast if PctMana ≤ p3 AND PctHPs ≥ p4; `|End` → checkEndurance if PctEndurance ≤ p3 AND CA/AA ready; `|Remove` → removebuff if buff/song active; global mana bail elseif (non-begfor entries, spell.Mana > currentMana); `|Aura` → checkAura; `|Once` → buffOnce + entry set to `spellName|0`; `|summon` → printf stub; `|mgb`/`|DualMgb` → castWhat stub (MGB deferred); `|begfor` → `/bc KABeg for ...` + 900s timer; `command:` → simplified target (Target.ID or Me.ID) + castWhat. `Buffs.checkBegforBuffs()` added: iterates kaBegForList pipe-delimited queue, parses alias:charName:buffIdx entries, resolves buffToCast from buffsArray, determines spellType from Book/AltAbility TLO, casts on PC by name; calls `removeFromBegList()` on SUCCESS/RECOVER or self-type; increments idx on other failures; clears kaBegActive when list empty. `removeFromBegList()` local helper: parses list to table, removes primary entry, AE-item/self dedup (same part1+part3), single-type dedup. Stub comment removed. `/bc` used for begfor broadcast (DanNet/Comms M9). TargetTag full resolver deferred to M7.
 
 ---
 

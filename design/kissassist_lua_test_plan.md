@@ -1488,7 +1488,7 @@ end)
 |---|----------|----------|
 | 6.4.1 | `bookSpellTT == '0'` and `Spell.TargetType` contains `'single'` | `isSingle = true`; group loop entered |
 | 6.4.2 | `bookSpellTT` contains `'single'` (book lookup succeeded) | `isSingle = true` |
-| 6.4.3 | Neither TT contains `'single'` | `isSingle = false`; falls through to Step 6.5 stub |
+| 6.4.3 | Neither TT contains `'single'` | `isSingle = false`; special action tag chain checked next |
 
 ##### 6.4.2 — Group member skip conditions
 
@@ -1579,6 +1579,137 @@ end)
 
 ---
 
+### Section 6.5 — `CheckBuffs`: special action tags + `CheckBegforBuffs`
+
+#### 6.5.1 — Structural ordering: special tags checked before target-type dispatch
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.1 | Entry `SpellName\|Aura`; spell has single-target TT | `checkAura()` fires; group loop NOT entered |
+| 6.5.2 | Entry `SpellName\|Once`; spell has single-target TT | `buffOnce()` fires; group loop NOT entered |
+| 6.5.3 | Entry `SpellName\|mana\|80\|50` | `|mana` branch fires; group loop NOT entered |
+
+##### 6.5.2 — `|Endgroup` / `|Managroup`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.4 | `p2 == 'Endgroup'`; group member BER at 30% endurance (below p3=50) | `regenOther()` casts on BER; `slotTimers[i][0]` set to `os.clock() + dur*10` |
+| 6.5.5 | `p2 == 'Managroup'`; group member CLR at 20% mana (below p3=40) | `regenOther()` casts on CLR |
+| 6.5.6 | `p2 == 'Endgroup'`; all members above threshold | `regenOther()` returns false; no cast; `goto continue` |
+| 6.5.7 | `p2 == 'Endgroup'`; no group members | Outer `if groupCount > 0` fails; `goto continue` with no cast |
+| 6.5.8 | `p2 == 'Endgroup'`; MA in group; spell name contains `'Rallying Call'` | MA skipped; next qualifying member targeted |
+| 6.5.9 | `p2 == 'Managroup'`; BRD member; spell `'Dichotomic Psalm'` | BRD skipped; next qualifying member targeted |
+
+##### 6.5.3 — `|mana`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.10 | `PctMana == 60`, `p3 == 80` (mana below thresh); `PctHPs == 100`, `p4 == 50` | Cast attempted |
+| 6.5.11 | `PctMana == 90`, `p3 == 80` (mana already high) | Skip cast; `goto continue` |
+| 6.5.12 | `PctMana == 50`, `p3 == 80`; `PctHPs == 30`, `p4 == 50` (HP low) | Skip cast (HP below p4 threshold) |
+| 6.5.13 | Cast returns `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed; `goto continue` |
+| 6.5.14 | `p4` empty string | `hpThresh = 0`; HP condition always passes; only mana threshold checked |
+
+##### 6.5.4 — `|End`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.15 | `PctEndurance == 40`, `p3 == 50`; `CombatAbilityReady == true` | `checkEndurance()` called; cast attempted |
+| 6.5.16 | `PctEndurance == 40`, `p3 == 50`; neither CA nor AA ready | `checkEndurance()` not called; `goto continue` |
+| 6.5.17 | `PctEndurance == 80`, `p3 == 50` (above threshold) | `checkEndurance()` not called; `goto continue` |
+| 6.5.18 | `checkEndurance()` fires; `Me.Sitting() == true` | `/stand` issued before cast |
+
+##### 6.5.5 — `|Remove`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.19 | `Me.Buff(spellToCast).ID() != 0` (buff active) | `/echo Removing Buff: ...` + `/removebuff` issued; `goto continue` |
+| 6.5.20 | `Me.Song(spellToCast).ID() != 0` (song active) | `/removebuff` issued; `goto continue` |
+| 6.5.21 | Neither buff nor song active | No remove issued; still `goto continue` (doesn't fall to group loop) |
+
+##### 6.5.6 — Global mana bail (inside elseif chain)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.22 | `p2 == ''`; `Spell.Mana() > Me.CurrentMana()` | `goto continue`; no cast |
+| 6.5.23 | `p2 == 'begfor'`; `Spell.Mana() > Me.CurrentMana()` | Mana bail skipped; `begfor` branch fires instead |
+| 6.5.24 | `Spell.Mana() == 0` (non-mana spell) | Mana bail not triggered; falls through to Aura/Once/etc. |
+
+##### 6.5.7 — `|Aura`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.25 | Aura slot 1 already matches aura name | `checkAura()` returns early; no cast |
+| 6.5.26 | Aura not present; class is WAR (DISC_AURA class); endurance > 500 | `/disc "spellName"` issued; delay+wait for cast |
+| 6.5.27 | Aura not present; class is CLR (non-disc); aura slots 1+2 checked | `castWhat('CheckAura')` issued |
+| 6.5.28 | ENC with two active auras; second slot matches | `checkAura()` returns early |
+| 6.5.29 | MAG; pet buff scan finds `TempAura` match | `checkAura()` returns early; no cast |
+
+##### 6.5.8 — `|Once`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.30 | `buffOnce()` returns `CAST_SUCCESS` | `buffsArray[i]` set to `spellName\|0`; echo `'Buffing Once with ...'`; `goto continue` |
+| 6.5.31 | `buffOnce()` returns non-SUCCESS (resist, etc.) | `buffsArray[i]` unchanged; `goto continue` |
+| 6.5.32 | `Me.Invis()` when `buffOnce()` called | `buffOnce()` returns false immediately |
+
+##### 6.5.9 — `|summon` stub
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.33 | `p2:lower() == 'summon'` | Printf stub printed; `goto continue`; no cast |
+
+##### 6.5.10 — `|mgb` / `|DualMgb` stub
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.34 | `p2 == 'mgb'`; `Buff(buffToCheck).ID() == 0` | `castWhat` called on `Me.ID` with `'buffs-nomem'`; `goto continue` |
+| 6.5.35 | `p2 == 'DualMgb'`; buff already active | No cast; `goto continue` |
+| 6.5.36 | `p2:lower() == 'dualmgb'` (raw lowercase) | Handled same as `'DualMgb'` |
+
+##### 6.5.11 — `|begfor`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.37 | `timers_i[0] > os.clock()` (timer active) | Skip beg logic; `goto continue` |
+| 6.5.38 | `p5 == 'BEGFORITEMS'`; `FindItemCount < p3` | `/bc KABeg for <name> BEGFORITEMS 0`; `timers_i[0] = os.clock() + 900` |
+| 6.5.39 | `p5 == 'BEGFORITEMS'`; item count already sufficient | No broadcast; `goto continue` |
+| 6.5.40 | `p5 == 'BEGFORBUFFS'`; `Buff(spellToCast).ID() == 0` | `/bc KABeg for <name> BEGFORBUFFS 0`; timer set |
+| 6.5.41 | `p5 == 'BEGFORBUFFS'`; buff already present | No broadcast |
+| 6.5.42 | `p5` is invalid (not BEGFORITEMS or BEGFORBUFFS) | Echo invalid option; `buffsArray[i] = 'NULL'` |
+
+##### 6.5.12 — `|command:`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.43 | `spellToCast` contains `'command:'`; target exists | `castWhat` called with `Target.ID`; `goto continue` |
+| 6.5.44 | `spellToCast` contains `'command:'`; no target | `castWhat` called with `Me.ID` fallback |
+
+##### 6.5.13 — `Buffs.checkBegforBuffs()`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.45 | `Me.Invis()` at entry | Returns immediately |
+| 6.5.46 | `kaBegForList == ''` | Returns immediately |
+| 6.5.47 | Single entry `'BEGFORBUFFS:PlayerA:2'`; buffToCast is single-target spell | `castWhat(buffToCast, Spawn('PC PlayerA').ID(), 'Buffs')` called |
+| 6.5.48 | Cast returns `CAST_SUCCESS` | `removeFromBegList()` called; entry removed from list |
+| 6.5.49 | Cast returns `CAST_RECOVER` | Same as SUCCESS — entry removed |
+| 6.5.50 | Cast returns `CAST_CANCELLED` | Loop breaks immediately |
+| 6.5.51 | Cast returns other result | `idx` incremented; next entry tried |
+| 6.5.52 | Entry spell type resolves to `'self'` | `removeFromBegList(entry, 'self')` without casting |
+| 6.5.53 | List becomes empty after removal | `kaBegActive = false` |
+
+##### 6.5.14 — `removeFromBegList()`
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.5.54 | Single entry removed; `spellType == 'single'` | No dedup loop; list becomes empty |
+| 6.5.55 | `part1 == 'BEGFORAEITEMS'`; two entries share part1+part3 | Both entries removed (AE dedup) |
+| 6.5.56 | `spellType == 'self'`; duplicate entries with same part1+part3 | All matching entries removed |
+| 6.5.57 | `spellType == 'single'`; duplicate of same entry string | All duplicate entries removed |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1656,7 +1787,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
 | CheckBuffs guards + group-v + self dispatch | ✅ Step 6.3 |
 | CheckBuffs single-target group iteration + class filters | ✅ Step 6.4 |
-| CheckBuffs special action tags + CheckBegforBuffs | M6 Step 6.5 |
+| CheckBuffs special action tags + CheckBegforBuffs | ✅ Step 6.5 |
 | WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
 | CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
 | CheckPetBuffs | M6 Step 6.7 |
@@ -1670,4 +1801,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.4 complete. Section 6.4 added (45 test cases for isSingle detection, group member skip conditions, me/MA/!MA/class/caster/Melee filters, mana check, gem timer wait, per-member cast results, invis break, and no-group fallback). CheckBuffs single-target group iteration marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.5 complete. Section 6.5 added (57 test cases for structural ordering, Endgroup/Managroup regenOther, |mana thresholds, |End endurance disc, |Remove, global mana bail, |Aura checkAura, |Once buffOnce, |summon stub, |mgb stub, |begfor broadcast, |command: simplified target, checkBegforBuffs queue processing, and removeFromBegList dedup). CheckBuffs special action tags marked ✅ in Known Deferred.*
