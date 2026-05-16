@@ -2187,10 +2187,10 @@ Run after all individual tests pass to verify modules interact correctly.
 | 8.1.3 | `PetSpell=Frenzied Burnout` | present | `state.pet.spell == 'Frenzied Burnout'` |
 | 8.1.4 | `PetSpell` absent | absent | `state.pet.spell == ''` |
 | 8.1.5 | `PetFocus=Summoner's Boon\|22\|Focus Buff` | present | `state.pet.focus == 'Summoner\'s Boon\|22\|Focus Buff'` |
-| 8.1.6 | `PetFocusOn=1` | present | `state.pet.focusOn == true` |
-| 8.1.7 | `PetFocusOn=0` | present | `state.pet.focusOn == false` |
-| 8.1.8 | `PetHoldOn=1` | present | `state.pet.holdOn == true` |
-| 8.1.9 | `PetHoldOn=0` | present | `state.pet.holdOn == false` |
+| 8.1.6 | `PetFocusOn=1` | present | `state.pet.focusOn == 1` (pending; numeric 0/1/2) |
+| 8.1.7 | `PetFocusOn=0` | present | `state.pet.focusOn == 0` |
+| 8.1.8 | `PetHoldOn=1` | present | `state.pet.holdOn == 1` (pending; numeric 0/1/2) |
+| 8.1.9 | `PetHoldOn=0` | present | `state.pet.holdOn == 0` |
 | 8.1.10 | `PetSuspend=1` | present | `state.pet.suspend == true` |
 | 8.1.11 | `PetSuspend=0` | present | `state.pet.suspend == false` |
 
@@ -2201,6 +2201,82 @@ Run after all individual tests pass to verify modules interact correctly.
 | 8.1.12 | `PetOn=1` in INI — loaded by Buffs.init | `state.pet.on == true`; Pet.init does not overwrite it |
 | 8.1.13 | `PetShrinkOn=1` in INI — loaded by Buffs.init | `state.pet.shrinkOn == true`; Pet.init does not touch it |
 | 8.1.14 | `PetToysOn=1` in INI — loaded by Buffs.init | `state.pet.toysOn == true`; Pet.init does not touch it |
+
+---
+
+### Section 8.2 — Pet.doPetStuff (Step 8.2)
+
+#### 8.2.1 — Entry guards
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.1 | `state.pet.on = false` | PetOn=0 in INI | `Pet.doPetStuff` returns immediately; no cast, no echo |
+| 8.2.2 | `campZone` differs from current zone | Character zoned since startup | Returns immediately; no summon attempt |
+| 8.2.3 | `state.combat.aggroTargetID ~= 0` | In combat with aggro | Returns immediately |
+| 8.2.4 | `Me.Invis()` is true | Invis buff active | Returns immediately |
+| 8.2.5 | `Me.Hovering()` is true | Character is a ghost | Returns immediately |
+| 8.2.6 | `state.pet.spell == ''` | PetSpell absent from INI | Returns after event drain; no cast |
+
+#### 8.2.2 — Normal summon (no suspend)
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.7 | No pet; spell in book; mana sufficient | Pet class, no pet present | Prints `ARISE <spellname>`; `castWhat` called with petSpell; on pet appear: prints `My pet is now: ...`; `state.pet.activeState = 1` |
+| 8.2.8 | Summon returns `CAST_COMPONENTS` | Mage missing reagents | Prints "missing components"; function returns without setting `activeState` |
+| 8.2.9 | No pet; spell not in spellbook | Pet spell unscribed | No summon attempted (book guard fails) |
+| 8.2.10 | Summon timer expires (60 s) with no pet | `castWhat` never results in a pet | Loop exits cleanly; `activeState` remains 0 |
+
+#### 8.2.3 — Focus item swap
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.11 | `PetFocus=ItemName\|22\|` (item slot path); focus item not in slot | focusSlot is a bag slot | `/exchange "ItemName" 22` sent before summon; swap-back `/exchange "<original>" 22` sent after pet appears |
+| 8.2.12 | `PetFocus=SpellName\|buff\|BuffName`; buff not active | focusSlot=buff path | `castWhat(focusPet, Me.ID)` called to apply focus buff |
+| 8.2.13 | `PetFocus=''` (empty) | No focus configured | No exchange commands sent; no buff cast |
+| 8.2.14 | Focus item already equipped (`focusPet == focusCurrent`) | Correct item already in slot | No exchange sent; `focusSwitch` stays false; no swap-back |
+
+#### 8.2.4 — Suspend path
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.15 | `suspend=true`; `totCount=1`; `activeState=0`; `suspendState=1` | Suspended pet exists | Prints "I have a suspended pet, summoning it now!"; `petStateCheck` called to fire AA |
+| 8.2.16 | `suspend=true`; `totCount<2`; `suspendState=0`; `activeState=0` | No pet, no suspended pet | Summon loop runs; pet summoned via `castWhat` |
+| 8.2.17 | `petStateCheck`: `Companion's Suspension` AA known + ready | Suspend path active | `/alt act <ID>` fired; waits for `CastingWindow` to close; `activeState=1` if pet present after |
+| 8.2.18 | `petStateCheck`: `Companion's Suspension` AA not known | Suspend path active | Prints AA-not-found message; `state.pet.suspend` set to `false` |
+
+#### 8.2.5 — Pet stance management
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.19 | Pet present; `role=puller`; `petDist <= campRadius`; pet not guarding | Has-pet path | `/pet guard` sent |
+| 8.2.20 | Pet present; `role=puller`; `petDist > campRadius` | Has-pet path | `/pet follow` sent |
+| 8.2.21 | Pet present; `chaseAssist=true`; role in PULL_ROLES | Has-pet path | `/pet follow` sent regardless of distance |
+| 8.2.22 | `role=assist` (not in PULL_ROLES) | Has-pet path | No stance command sent |
+
+#### 8.2.6 — holdOn / focusOn one-shot send
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.23 | `state.pet.holdOn == 1` | PetHoldOn=1 in INI, first call with pet | `/pet hold on` sent; `state.pet.holdOn` set to `2` |
+| 8.2.24 | `state.pet.holdOn == 2` | Already sent this pet | `/pet hold on` NOT sent again |
+| 8.2.25 | `state.pet.focusOn == 1` | PetFocusOn=1 in INI, first call with pet | `/pet focus on` sent; `state.pet.focusOn` set to `2` |
+| 8.2.26 | Pet dies and no-pet path re-entered | `activeState` reset to 0 | `holdOn`/`focusOn` reset from `2` → `1`; commands fire again on next summon |
+
+#### 8.2.7 — Taunt management
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.27 | `role=pettank`; `Pet.Taunt()=false` | pettank with taunt off | `/pet taunt on` sent |
+| 8.2.28 | `role=assist`; `Pet.Taunt()=true` | assist with taunt on | `/pet taunt off` sent |
+| 8.2.29 | `state.pet.tauntOverride=true` | PetTauntOverride=1 in INI | No taunt command sent regardless of current state |
+
+#### 8.2.8 — checkPetBuffs + petToys
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.30 | Pet present | Any call with pet present | `_buffs.checkPetBuffs()` always called at end of function |
+| 8.2.31 | `toysOn=true`; `toysGave=''` | Pet present, toys not yet given | `Pet.petToys(petName)` called; `state.pet.toysGave` set to pet's CleanName |
+| 8.2.32 | `toysOn=true`; `toysGave` already contains pet's CleanName | Same pet still present | `Pet.petToys` NOT called again |
 
 ---
 
@@ -2280,4 +2356,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Step 8.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication.*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.2. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3).*

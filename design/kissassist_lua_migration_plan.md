@@ -1022,7 +1022,7 @@ Audit `state.pet` in `state.lua` for any missing fields and add them. Wire `Pet.
 
 **Done when:** module loads cleanly; `state.pet.spell`, `state.pet.focus`, `state.pet.holdOn` populated from INI.
 
-✅ **Implemented (2026-05-16):** `modules/pet.lua` created with `Pet.init(state, utils, cast)`. Loads `PetSpell`, `PetFocus`, `PetFocusOn`, `PetHoldOn`, `PetSuspend` from `[Pet]` INI section. `state.pet` audited — added `spell`, `focus`, `holdOn`, `suspend` fields (runtime fields `activeState`, `suspendState`, `totCount`, `focusOn` were already present). `Pet.init` wired into `init.lua` after `Buffs.init`. Stub comments for Steps 8.2–8.4 in place.
+✅ **Implemented (2026-05-16):** `modules/pet.lua` created with `Pet.init(state, utils, cast)`. Loads `PetSpell`, `PetFocus`, `PetFocusOn`, `PetHoldOn`, `PetSuspend` from `[Pet]` INI section. `state.pet` audited — added `spell`, `focus`, `holdOn`, `suspend` fields (runtime fields `activeState`, `suspendState`, `totCount`, `focusOn` were already present). `Pet.init` wired into `init.lua` after `Buffs.init`. Stub comments for Steps 8.2–8.4 in place. **Note:** `holdOn`/`focusOn` were initially loaded as booleans here; Step 8.2 changed them to numeric 0/1/2 and added `tauntOverride` load.
 
 ---
 
@@ -1047,6 +1047,8 @@ Port `DoPetStuff` (kissassist.mac:5210–5401, ~191 lines) and the local helper 
   - Focus swap-back (mac:5324–5327): if `focusSwitch` and cursor clear → exchange back to original item
 
 **Done when:** pet class with no pet casts `PetSpell`, pet appears, focus item swaps correctly.
+
+✅ **Implemented (2026-05-16):** `petStateCheck()` local helper and `Pet.doPetStuff()` implemented in `modules/pet.lua`. Covers: entry guards (petOn, campZone, aggroTargetID, Invis, Hovering); focus string parsing (`FocusPet|FocusSlot|FocusBuff`); familiar banish; no-pet path with focus item equip + suspend unsuspend/summon + normal summon loop (`CastWhat` → wait 1s → 60s deadline); focus swap-back; pet stance guard/follow for PULL_ROLES; `holdOn`/`focusOn` sent once (state 0→1→2); has-pet path stance/hold/focus maintenance; taunt on/off for PETTANK_ROLES with `tauntOverride` guard; `_buffs.checkPetBuffs()` always called; `Pet.petToys()` called when `toysOn` and pet name not in `toysGave`; pettank/hunterpettank owner-away-from-camp follow logic; `castMemSpell` guarded with existence check. `Pet.init` updated: `buffs` added as 4th arg; `holdOn`/`focusOn` stored as numeric 0/1/2 instead of boolean; `tauntOverride` loaded from INI. `Pet.petToys` and `Pet.checkRampPets` remain stubs.
 
 ---
 

@@ -66,7 +66,7 @@ Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement)
 Buffs.init(State, Utils, Cast, Heal)
-Pet.init(State, Utils, Cast)
+Pet.init(State, Utils, Cast, Buffs)
 Pull.init(State, Utils, Cast, Movement, Combat)
 
 printf('\agKissAssist ready. \awEntering main loop.')
