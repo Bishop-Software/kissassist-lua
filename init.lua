@@ -6,8 +6,10 @@ local Events = require('modules.events')
 local Binds  = require('modules.binds')
 local Cast   = require('modules.cast')
 local Combat = require('modules.combat')
-local Heal   = require('modules.healing')
-local Buffs  = require('modules.buffs')
+local Heal     = require('modules.healing')
+local Buffs    = require('modules.buffs')
+local Movement = require('modules.movement')
+local Pull     = require('modules.pull')
 
 local VERSION = '1.0.0'
 
@@ -56,14 +58,18 @@ end
 Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
-Events.register(State, Utils)
+Events.register(State, Utils, Movement)
 Binds.register(State, Utils, Buffs)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
-Combat.init(State, Utils, Cast, Heal)
+Movement.init(State, Utils)
+Combat.init(State, Utils, Cast, Heal, Movement)
 Buffs.init(State, Utils, Cast, Heal)
+Pull.init(State, Utils, Cast, Movement, Combat)
 
 printf('\agKissAssist ready. \awEntering main loop.')
+
+local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
 
 -- Main loop — mq.delay() processes events internally in MQ2Lua
 while not State.terminate do
@@ -87,6 +93,17 @@ while not State.terminate do
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
     Heal.doWeMed()
+    if not State.combat.combatStart and State.movement.returnToCamp then
+        Movement.doWeMove(0, 'mainloop')
+    end
+    if State.session.chaseAssist then Movement.doWeChase() end
+    if PULLER_ROLES[State.session.role] then
+        if not State.pull.hold then
+            if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
+            if State.pull.mob ~= 0 then Pull.pullCheck() end
+            State.pull.mob = 0
+        end
+    end
     mq.delay(50)
 end
 

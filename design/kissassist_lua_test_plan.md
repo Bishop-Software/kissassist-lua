@@ -1920,6 +1920,240 @@ end)
 
 ---
 
+## Section 7 — Movement & Pull (Milestone 7)
+
+### Section 7.1 — Movement.init + INI wiring (Step 7.1)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.1.1 | Module loads cleanly | `/lua run kissassist-lua` | No errors; `Movement.init` called without crash |
+| 7.1.2 | campRadius from INI | `[General] CampRadius=75` | `state.movement.campRadius == 75` |
+| 7.1.3 | returnToCamp from INI | `[General] ReturnToCamp=1` | `state.movement.returnToCamp == true` |
+| 7.1.4 | chaseAssist from INI | `[General] ChaseAssist=1` | `state.session.chaseAssist == true` |
+| 7.1.5 | stickDist defaults | No INI key | `state.movement.stickDist == 13` |
+| 7.1.6 | pullMoveUse from INI | `[Pull] PullMoveUse=nav` | `state.pull.moveUse == 'nav'` |
+| 7.1.7 | faceMobOn / scatterOn | Both set to `1` in INI | `state.movement.faceMobOn == true`; `state.movement.scatterOn == true` |
+| 7.1.8 | Combat.init accepts Movement | Start with any role | No error on Combat.init; `_movement` wired in combat.lua |
+
+---
+
+### Section 7.2 — Movement.doWeMove (Step 7.2)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.2.1 | Guard: dontMoveMe | `state.movement.dontMoveMe = true` | Returns immediately; no movement commands |
+| 7.2.2 | Guard: chaseAssist | `state.session.chaseAssist = true` | Returns immediately |
+| 7.2.3 | Guard: zone mismatch | `state.movement.campZone ~= Zone.ID()` | Returns immediately |
+| 7.2.4 | Guard: combat + aggro | In combat; `aggroTargetID ~= ''` | Returns immediately (non-forced call) |
+| 7.2.5 | Already in camp radius | Char within campRadius | Returns without moving; `checkOnReturn` logic runs if set |
+| 7.2.6 | campRadiusExceed leash | `campRadiusExceed = 200`; char at 150u from camp | Does not trigger return (within leash) |
+| 7.2.7 | los mode — moves to camp | `pullMoveUse = 'los'`; char outside campRadius | `/moveto loc campY campX` issued; char arrives at camp |
+| 7.2.8 | nav mode — uses MQ2Nav | `pullMoveUse = 'nav'` | `/nav locyxz campY campX campZ` issued; `Navigation.Active` polled |
+| 7.2.9 | checkOnReturn set on arrival | Puller role; arrives at camp | `state.movement.checkOnReturn = true` |
+| 7.2.10 | Walk/run toggle | Char within `stickDist+5` of camp | `/squelch /walk` issued; `/squelch /run` on departure |
+
+---
+
+### Section 7.3 — Movement.doWeChase + stuck + zAxisCheck (Step 7.3)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.3.1 | Guard: chaseAssist off | `chaseAssist = false` | Returns immediately |
+| 7.3.2 | Guard: whoToChase not in zone | Target not found | Returns immediately |
+| 7.3.3 | Guard: iAmDead | `Me.Hovering == true` | Returns immediately |
+| 7.3.4 | Chase: within stop distance | Char within `chaseOnValue * meleeDistance` of target | `/squelch /moveto loc stop` issued |
+| 7.3.5 | Chase: moves toward target | Char far from whoToChase | `/moveto loc Y X` toward target |
+| 7.3.6 | scatterOn displacement | `scatterOn = true` | Aim point offset by `scatterDistance`; chars spread out |
+| 7.3.7 | stuck — frees from geometry | `Me.X/Y` unchanged for stuck threshold | `/keypress back hold` → strafe issued |
+| 7.3.8 | zAxisCheck — levi correction | `Me.Z - campZ >= 3.1`; not FeetWet | `CMD_MOVE_DOWN` held until Z gap ≤ 3.1 |
+| 7.3.9 | zAxisCheck — returns true | Z gap > `campRadius + 10` | Returns `true`; `doWeMove` skips move |
+
+---
+
+### Section 7.4 — Movement.checkStick + event completions + loop wiring (Step 7.4)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.4.1 | No target — no stick | `state.combat.myTargetID = 0` | Returns immediately |
+| 7.4.2 | Mob within range — stick issued | Mob within `meleeDistance` | `/stick id <mobID>` issued |
+| 7.4.3 | stickHow = 'd' | `state.movement.dStickHow = 'd'` | `/stick id X behind` issued |
+| 7.4.4 | stickHow = 'mp' | `state.movement.dStickHow = 'mp'` | `/stick id X moveback` issued |
+| 7.4.5 | Nav close-gap | `pullMoveUse = 'nav'`; mob beyond MaxRangeTo | `/nav id X dist=N` until in range |
+| 7.4.6 | useAttack=1 — attack on | Not in combat; `useAttack = 1` | `/attack on` issued |
+| 7.4.7 | CantHit event | Game text "You cannot see your target" fires | `state.movement.cantHit = true`; `/attack off` |
+| 7.4.8 | TooClose event | Game text "You are too close" fires | `state.movement.toClose = true`; back keypress |
+| 7.4.9 | TooFar event | Game text fires | `state.pull.tooFar = true`; `doWeMove(1, 'tooFar')` called |
+| 7.4.10 | Main loop: doWeMove wired | `returnToCamp = true`; char outside camp | `doWeMove(0, 'mainloop')` called each tick |
+| 7.4.11 | Main loop: doWeChase wired | `chaseAssist = true` | `doWeChase()` called each tick |
+
+---
+
+### Section 7.5 — Pull.init + INI wiring (Step 7.5)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.5.1 | Module loads cleanly | `/lua run kissassist-lua` puller role | No errors; `Pull.init` called |
+| 7.5.2 | pullOn from INI | `[Pull] PullOn=1` | `state.pull.on == true` |
+| 7.5.3 | pullWith from INI | `[Pull] PullWith=Ranged` | `state.pull.withAlt == 'Ranged'` |
+| 7.5.4 | maxRadius from INI | `[Pull] MaxRadius=300` | `state.pull.maxRadius == 300` |
+| 7.5.5 | Arc width derivation | `PullArcWidth=90`; no LSide/RSide | `lSide = -45`; `rSide = 45` |
+| 7.5.6 | chainPull integer | `[Pull] ChainPull=1` | `state.pull.chainPull == 1` (integer, not bool) |
+| 7.5.7 | PullAdvanced waypoints | `PullWpCount=3`; three PullLocX/Y/Z entries | `state.pull.pullLocX[1..3]` populated |
+| 7.5.8 | waypointZRange mirrors MaxZRange | `MaxZRange=50` | `state.pull.waypointZRange == 50` |
+
+---
+
+### Section 7.6 — Pull.pullValidate (Step 7.6)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.6.1 | Non-NPC spawn | Target is a PC or object | Returns `false` |
+| 7.6.2 | Non-targetable | `Spawn.Targetable == false` | Returns `false` |
+| 7.6.3 | Name in ignore list | Mob name in `mobsToIgnore` | Returns `false` |
+| 7.6.4 | Name not in allowed list | `mobsToPullFirst ~= 'all'`; name not in list | Returns `false` |
+| 7.6.5 | Level below pullMin | `pullMin=50`; mob level 40 | Returns `false` |
+| 7.6.6 | Level above pullMax | `pullMax=60`; mob level 65 | Returns `false` |
+| 7.6.7 | LOS mode — no LOS | `moveUse='los'`; mob behind wall | Returns `false` |
+| 7.6.8 | Nav mode — no path | `moveUse='nav'`; `Navigation.PathLength <= 0` | Returns `false` |
+| 7.6.9 | Pull arc — outside | `pullArcWidth=90`; mob heading outside arc | Returns `false` |
+| 7.6.10 | HP% already in combat | `Spawn.PctHPs <= 99`; mob within melee range | Returns `false` |
+| 7.6.11 | HP% recheck — server lag | `flag > 0`; mob dist ≤ 360; HP% still > 99 after target+wait | Returns `true` |
+| 7.6.12 | Eye of Zomm | Name contains "Eye of"; PC with matching name nearby | Returns `false` |
+| 7.6.13 | Named mob — no flag | Named mob; `flag = 0` | Returns `false` |
+| 7.6.14 | Valid mob — all checks pass | NPC, targetable, in range, LOS, level OK, HP 100% | Returns `true` |
+
+---
+
+### Section 7.7 — Pull.findMobToPull (Step 7.7)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.7.1 | Guard: pulling flag | `state.pull.pulling = true` | Returns `0` immediately |
+| 7.7.2 | Guard: combatStart | `state.combat.combatStart = true` | Returns `0` immediately |
+| 7.7.3 | Guard: zone mismatch | `campZone ~= Zone.ID()` | Returns `0` immediately |
+| 7.7.4 | Guard: rez sickness | Rez Sickness buff active | Returns `0` immediately |
+| 7.7.5 | Guard: aggroTargetID set | `aggroTargetID ~= ''` | Returns `0` immediately |
+| 7.7.6 | advpath deferred | `moveUse = 'advpath'` | Prints deferred message; returns `0` |
+| 7.7.7 | No mobs in range | `SpawnCount = 0` for search filter | Returns `0`; `state.pull.mob = 0` |
+| 7.7.8 | Valid mob found — LOS mode | NPC in range; passes `pullValidate` | `state.pull.mob = <spawnID>`; returns `1` |
+| 7.7.9 | Valid mob found — NAV mode | `moveUse='nav'`; mob has nav path | Picks mob with shortest `Navigation.PathLength` |
+| 7.7.10 | Priority list respected | `mobsToPullFirst = 'Goblin'`; Goblin and Orc in range | `state.pull.mob` = Goblin ID |
+| 7.7.11 | Progressive radius — 3 attempts | Radius subdivided until SpawnCount fits `modCheck` | Outer loop runs up to 3 passes |
+| 7.7.12 | chainPull guard | `chainPull=1`; last pulled mob still outside melee | Returns `0` (wait for mob to arrive) |
+| 7.7.13 | lastMobPullID set | Valid mob found | `state.pull.lastMobPullID = mob ID` |
+
+---
+
+## Section 7.8 — Pull.pullCheck + executePull + bind completions (Step 7.8)
+
+### 7.8.1 — Pull.pullCheck guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.1.1 | `pull.hold = true` | Set `state.pull.hold = true`; call `pullCheck()` | Returns immediately; no targeting or movement |
+| 7.8.1.2 | `dps.paused = true` | Set `state.dps.paused = true` | Returns immediately |
+| 7.8.1.3 | Rez sickness — Resurrection | `Me.Buff('Resurrection Sickness').ID() > 0` | Returns immediately |
+| 7.8.1.4 | Rez sickness — Revival | `Me.Buff('Revival Sickness').ID() > 0` | Returns immediately |
+| 7.8.1.5 | Zone mismatch | `state.movement.campZone` ≠ `Zone.ID()` | Returns immediately |
+| 7.8.1.6 | Me.Invis | `Me.Invis() == true` | Returns immediately |
+| 7.8.1.7 | chainPull==2 reset | Set `state.pull.chainPull = 2`; call `pullCheck()` | `chainPull` reset to `1` before guards run |
+| 7.8.1.8 | pullOnReturn + checkOnReturn | Both flags true; call `pullCheck()` | `checkOnReturn` set to `false` |
+
+### 7.8.2 — No-mob path (failCounter + hunter return)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.2.1 | failCounter increments | `state.pull.mob = 0`; call `pullCheck()` | `state.cast.failCounter` incremented by 1 |
+| 7.8.2.2 | failCounter below failMax | `failCounter = 1`, `failMax = 3` | No hunter-return or pullWait triggered |
+| 7.8.2.3 | failCounter reaches failMax | `failCounter = failMax - 1`; call `pullCheck()` | `failCounter` reset to 0 |
+| 7.8.2.4 | Hunter role + far from camp | `role = 'hunter'`; `failMax` reached; camp dist > 15 | `doWeMove(1, 'pullcheck')` called; "Returning to camp" printed |
+| 7.8.2.5 | Hunter role + stayPut | `role = 'hunter'`; `stayPut = true` | "Waiting here for respawn" printed; `doWeMove` not called |
+| 7.8.2.6 | Hunter near camp | `role = 'hunter'`; camp dist ≤ 15 | `doWeMove` not called |
+| 7.8.2.7 | Non-hunter role | `role = 'puller'`; `failMax` reached | No `doWeMove`; only failCounter reset |
+| 7.8.2.8 | pullWait > 0, no aggro | `state.pull.pullWait = 5` | Prints "Waiting 5 seconds…"; `mq.delay(5000)` called |
+| 7.8.2.9 | pullWait ignored with aggro | `pullWait = 5`; `aggroTargetID ~= ''` | pullWait delay skipped |
+
+### 7.8.3 — Target acquisition + advpath guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.3.1 | los mode — mob in range | `moveUse = 'los'`; mob dist ≤ 360 | `/target id <mob>` issued; delay until `Target.ID == pullMob` |
+| 7.8.3.2 | nav mode — mob has LOS | `moveUse = 'nav'`; mob has LOS | `/target id <mob>` issued |
+| 7.8.3.3 | los mode — mob out of range, no LOS | Mob dist > 360, no LOS | `/target` not issued |
+| 7.8.3.4 | advpath guard | `moveUse = 'advpath'` | Prints deferred message; `pulling` not set; returns |
+
+### 7.8.4 — validateTarget + camp-distance gate
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.4.1 | validateTarget fails | Mob is a corpse or badType | `target clear`; `pulling = false`; returns |
+| 7.8.4.2 | PC near mob while pulling | Non-group PC within 30 units of mob | `validateTarget` returns false; pull aborted |
+| 7.8.4.3 | Mob level below pullMin | `state.pull.min = 50`; mob level = 40 | `validateTarget` returns false |
+| 7.8.4.4 | Mob level above pullMax | `state.pull.max = 60`; mob level = 65 | `validateTarget` returns false |
+| 7.8.4.5 | Mob too far from camp | Mob camp dist > `maxRadius`; los/nav mode | `target clear`; `pulling = false`; returns |
+| 7.8.4.6 | Mob at camp edge — valid | Mob camp dist == `maxRadius - 1` | Pull proceeds to announce + executePull |
+
+### 7.8.5 — Pull announce + executePull entry
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.5.1 | Announce printed | Valid mob; all gates pass | `PULLING-> <name> <- ID:<n> at <n> feet.` printed |
+| 7.8.5.2 | myTargetID/Name set | Valid mob | `state.combat.myTargetID = pullMob`; `myTargetName = mobName` |
+| 7.8.5.3 | pulling flag set | Valid mob enters executePull | `state.pull.pulling = true` while executing |
+| 7.8.5.4 | pulling flag cleared on exit | executePull returns | `state.pull.pulling = false` |
+
+### 7.8.6 — executePull — movement and abort conditions
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.6.1 | Early aggro break | `aggroTargetID` set by event during loop | `pulled = true`; stopMoving called; loop exits |
+| 7.8.6.2 | Mobs-in-camp abort | `aggroTargetID ~= ''` + `chainPull==0` + inside campRadius | "mobs in camp" printed; pullReset called |
+| 7.8.6.3 | Mob timeout | `os.clock() > pullTimer` | `returnStat = 'btcr'`; loop exits |
+| 7.8.6.4 | Mob too far from camp | Mob camp dist3D > maxRadius + range | `pullStatusFlag = 4`; loop exits |
+| 7.8.6.5 | Stuck detection | Me.X/Y unchanged for 2+ iterations | `_movement.stuck('pull')` called |
+| 7.8.6.6 | Stuck abort | Stuck for 7+ iterations, no aggro | "I am stuck" printed; stopMoving; returnStat='btcr' |
+| 7.8.6.7 | PullDist creep — no LOS | 7+ attempts; dist ≤ pullDist, no LOS | `pullDist *= 0.6` |
+| 7.8.6.8 | PullDist creep — moving mob | ≥3 attempts; mob speed > 25; wasInRange | `pullDist *= 0.6`; `wasInRange = false` |
+| 7.8.6.9 | BTC + no LOS | `returnStat = 'btcr'`; mob has no LOS | Loop exits without dispatching |
+| 7.8.6.10 | Return to camp after pull | `returnToCamp = true`; `pulled = true` | `doWeMove(1, 'pull')` called |
+| 7.8.6.11 | BTC return to camp | `returnStat = 'btcr'`; `pullOnReturn = false` | `doWeMove(1, 'pullcheck')` called |
+
+### 7.8.7 — Pull method dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.7.1 | Melee dispatch | `withAlt = 'Melee'`; mob in range | `/moveto id <mob> mdist 15`; `/attack on`; then `/attack off` + clear target |
+| 7.8.7.2 | Ranged dispatch | `withAlt = 'Ranged'`; mob dist ≥ 30, LOS | `/range` issued; wait for aggroTargetID |
+| 7.8.7.3 | Pet dispatch | `withAlt = 'Pet'` | `/pet follow`; `/pet attack`; `/pet back off` on exit |
+| 7.8.7.4 | Cast dispatch (spell/AA/item) | `withAlt = 'Bolt of Fire'` | `castWhat('Bolt of Fire', mobID, 'Pull', 0, 0)` called |
+| 7.8.7.5 | pulled = true after melee aggro | Melee pull; `aggroTargetID` set during attack | `state.pull.pulled = true` |
+| 7.8.7.6 | Final validateTarget before dispatch | Mob dies between approach and dispatch | Abort; returnStat='btcr' |
+
+### 7.8.8 — Bind completions
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.8.1 | `/trackmedown TankName` | Issue command | `movement.whoToChase = 'TankName'`; `session.chaseAssist = true`; confirmation printed |
+| 7.8.8.2 | `/trackmedown` (no arg) | Issue command | `chaseAssist = false`; `whoToChase = ''`; "Chase assist disabled" printed |
+| 7.8.8.3 | `/SetPullArc 90` | Issue command | `pullArcWidth = 90`; `lSide = -45`; `rSide = 45`; INI updated |
+| 7.8.8.4 | `/SetPullArc 0` | Issue command | `pullArcWidth = 0`; `lSide = 0`; `rSide = 0`; INI updated |
+| 7.8.8.5 | `/setpullranking 3` | Issue command | `state.pull.ranking = 3`; INI updated; confirmation printed |
+| 7.8.8.6 | `/addpull Goblin` | Issue command (mobsToPullFirst = 'all') | `mobsToPullFirst = 'Goblin'`; INI updated |
+| 7.8.8.7 | `/addpull Orc` | Issue command (existing list) | `mobsToPullFirst` gets `\|Orc` appended; INI updated |
+| 7.8.8.8 | `/addignore SpectralKnight` | Issue command | `mobsToIgnore` gets name appended; INI updated |
+| 7.8.8.9 | `/addpull` (no arg) | Issue command with no argument | Usage hint printed; state unchanged |
+
+### 7.8.9 — Main loop wiring
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 7.8.9.1 | Non-puller role skips pull block | `role = 'assist'` | `findMobToPull` and `pullCheck` never called |
+| 7.8.9.2 | Puller role + hold | `role = 'puller'`; `pull.hold = true` | Loop block enters but `pullCheck` not called |
+| 7.8.9.3 | Puller role + no mob | `role = 'puller'`; `pull.mob = 0` | `findMobToPull(1,1,0)` called first |
+| 7.8.9.4 | mob reset each tick | After `pullCheck()` returns | `State.pull.mob = 0` |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1944,32 +2178,32 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
 | `namedWatchList` population from INI | M5 (needs KissAssist_Info.ini loader; M4 complete without it) |
 | `autoBurnTimer` auto-burn trigger | N/A — not present in kissassist.mac source; auto-burn uses `/kaburn` bind only |
-| `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
+| `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | ✅ Step 7.8 |
 | BroadCast burn/add/tank-announce | M9 (cross-char comms) |
 | `CombatTargetCheckRaid` | M9 (raid/cross-char comms; M4 complete without it) |
 | CheckForCombat SkipCombat==1 healer loop | ✅ Step 5.6 |
 | CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
-| CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
+| CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | ✅ Step 7.4 |
 | CheckForCombat tank EnduranceCheck | M6 (buffs module) |
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
 | fight: CheckCures / CheckHealth during combat | ✅ Step 5.6 |
-| fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
+| fight: CheckStick / ZAxisCheck (melee positioning) | ✅ Step 7.4 |
 | fight: CastMana / mana-sit logic | ✅ Step 5.3 (`Heal.doWeMed` implemented; wired into main loop at Step 5.6) |
 | fight: MercsDoWhat | M6 (merc module) |
 | fight: MezCheck / AECheck | M5 Step 5.x (mez sub-step) |
 | fight: AggroCheck in inner loop | ✅ Step 4.8 |
 | fight: WriteDebuffs / DebuffStuff | ✅ Step 4.8 (`doDebuffStuff`) |
 | fight: DoBardStuff | M8 (bard module) |
-| fight: ChainPullNextMob puller path | M5 Step 5.x |
+| fight: ChainPullNextMob puller path | ✅ Step 7.7 (findMobToPull chainPull guard) |
 | fight: AutoFireOn branches | M7 or later |
-| fight: FaceMobOn | M7 (movement module) |
+| fight: FaceMobOn | ✅ Step 7.4 (movement.checkStick + doWeChase) |
 | fight: BreakMez for pettank | M6 (pet module) |
 | fight: `beforeAttack` ConOn condition evaluation | M10 (conditions module) |
 | fight: `combatPet` Summon Companion AA cast | M6 (pet/cast module) |
 | combatReset: DPS meter output | M9 (MQ2DPSAdv) |
 | combatReset: loot after kill | M8 (loot module) |
 | combatReset: bard twist restart | M8 (bard module) |
-| combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
+| combatReset: MQ2Melee re-enable / stick release | ✅ Step 7.4 |
 | combatReset: PetHold re-enable | M6 (pet module) |
 | doBurn: condNo / abortFlag per-entry | M10 (conditions module) |
 | combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M5 stretch |
@@ -2011,4 +2245,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.7 complete. Section 6.7 added (46 test cases for writeBuffs OOC guard, checkBuffs buffsOn gate + forceBuffs pass-through, checkBegforBuffs main-loop wiring, /buffgroup bind, /tbmanager add/remove/invalid, castBuffsSpellCheck self-buff check, castWhat CAST_HASBUFF gate, invis-guard bypass for Buffs/buffs-nomem in all five cast primitives, and Binds.register Buffs wiring). CastBuffsSpellCheck + /buffgroup + /tbmanager marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete. Sections 7.1–7.8 added (103 test cases total): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Known Deferred updated: DoWeMove/CheckStick/FaceMobOn/ChainPull/validateTarget pull checks all marked ✅.*
