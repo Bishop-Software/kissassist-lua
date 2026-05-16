@@ -9,7 +9,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
-local state, utils
+local state, utils, _buffs
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -199,10 +199,9 @@ end
 -- ─── Buffs / group ────────────────────────────────────────────────────────────
 
 local function onBuffGroup(_flag)
-    state.timers.readBuffs = 0
+    state.buffs.forceBuffs = true
     state.timers.iniNext   = 0
-    printf('\ay>> BuffGroup — full run in M6 (buffs.lua)')
-    -- CheckBuffs in M6
+    _buffs.checkBuffs(true)
 end
 
 local function onCampfire()
@@ -214,8 +213,32 @@ local function onCampfire()
     -- Fellowship window UI interaction in M6
 end
 
-local function onTbManager(_action, _actionID)
-    printf('\ay>> TooBuffList manager — M6 (buffs.lua)')
+local function onTbManager(action, spell)
+    if not action or action == '' or not spell or spell == '' then
+        printf('\ay/tbmanager [add|remove] SpellName')
+        return
+    end
+    local a    = action:lower()
+    local list = state.buffs.extendedList or ''
+    if a == 'add' then
+        if list:find(spell, 1, true) then
+            printf('\ay%s is already in the Too-Buff list.', spell)
+        else
+            state.buffs.extendedList = list == '' and spell or (list .. ',' .. spell)
+            mq.cmdf('/ini "%s" "Buffs" "ExtendedList" "%s"', state.session.iniFileName, state.buffs.extendedList)
+            printf('\ayAdded %s to Too-Buff list.', spell)
+        end
+    elseif a == 'remove' then
+        local parts = {}
+        for entry in (list .. ','):gmatch('([^,]+),') do
+            if entry ~= spell then parts[#parts + 1] = entry end
+        end
+        state.buffs.extendedList = table.concat(parts, ',')
+        mq.cmdf('/ini "%s" "Buffs" "ExtendedList" "%s"', state.session.iniFileName, state.buffs.extendedList)
+        printf('\ayRemoved %s from Too-Buff list.', spell)
+    else
+        printf('\ay/tbmanager [add|remove] SpellName')
+    end
 end
 
 -- ─── Pull management ──────────────────────────────────────────────────────────
@@ -436,9 +459,10 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, u)
-    state = s
-    utils = u
+function Binds.register(s, u, b)
+    state  = s
+    utils  = u
+    _buffs = b
 
     -- Debug / utility
     bind('/debug',          onDebug)

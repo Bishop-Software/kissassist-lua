@@ -7,6 +7,7 @@ local Binds  = require('modules.binds')
 local Cast   = require('modules.cast')
 local Combat = require('modules.combat')
 local Heal   = require('modules.healing')
+local Buffs  = require('modules.buffs')
 
 local VERSION = '1.0.0'
 
@@ -56,10 +57,11 @@ Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils)
-Binds.register(State, Utils)
+Binds.register(State, Utils, Buffs)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Combat.init(State, Utils, Cast, Heal)
+Buffs.init(State, Utils, Cast, Heal)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -69,6 +71,18 @@ while not State.terminate do
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    if not State.combat.combatStart and not State.session.danNetOn then
+        Buffs.writeBuffs()
+        Buffs.writeBuffsPet()
+        Buffs.writeBuffsMerc()
+    end
+    if State.buffs.buffsOn then
+        Buffs.checkBuffs(State.buffs.forceBuffs)
+        State.buffs.forceBuffs = false
+    end
+    if State.buffs.kaBegActive then Buffs.checkBegforBuffs() end
+    if State.pet.on then Buffs.checkPetBuffs() end
+    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
