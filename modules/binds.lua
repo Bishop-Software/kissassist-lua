@@ -229,8 +229,43 @@ local function onAddIgnore(_mti, _byID)
     printf('\ay>> AddToIgnore — M7 (pull.lua)')
 end
 
+-- Mirrors Sub Bind_AddMezImmune (kissassist.mac:8226).
+-- Adds current target (or named mob) to the mez-immune ID list at runtime
+-- and to the persistent MezImmune name list in InfoFileName INI.
 local function onAddMezImmune(_mti)
-    printf('\ay>> AddMezImmune — M5 (mez handling in healing.lua)')
+    local tID   = mq.TLO.Target.ID() or 0
+    local tType = (mq.TLO.Target.Type() or ''):lower()
+    if tID == 0 or tType ~= 'npc' then
+        printf('--AddMezImmune: Target an NPC to add to the mez immune list.')
+        return
+    end
+    local name = mq.TLO.Target.CleanName() or ''
+    -- Strip named-mob '#' prefix
+    if name:sub(1, 1) == '#' then name = name:sub(2) end
+    -- Strip corpse suffix
+    name = name:match("^(.+)'s corpse$") or name:match("^(.+) corpse$") or name
+    if name == '' then
+        printf('--AddMezImmune: Could not resolve mob name for target.')
+        return
+    end
+    local sID = tostring(tID)
+    local ids = state.mez.immuneIDs or ''
+    if ids:find('|' .. sID, 1, true) then
+        printf('>> %s (ID:%d) is already on the mez immune list.', name, tID)
+        return
+    end
+    state.mez.immuneIDs = ids .. '|' .. sID
+    -- Persist name to InfoFileName INI under the current zone key
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if iniFile and iniFile ~= '' and zone and zone ~= '' then
+        local existing = mq.TLO.Ini(iniFile, zone, 'MezImmune')() or ''
+        if not existing:find(name, 1, true) then
+            local updated = (existing == '' or existing == 'null') and name or (existing .. ',' .. name)
+            mq.cmdf('/ini "%s" "%s" "MezImmune" "%s"', iniFile, zone, updated)
+        end
+    end
+    printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 
 -- ─── Info display ─────────────────────────────────────────────────────────────

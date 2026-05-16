@@ -34,6 +34,7 @@ local State = {
         chaseAssist     = false,
         pullPath        = 'null',
         parseDPSTimer   = 0,
+        heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
     },
 
     debug = {
@@ -194,7 +195,11 @@ local State = {
 
     heal = {
         autoRezAll          = false,
+        autoRezArray        = {},
+        autoRezOn           = 0,   -- 0=off 1=normal 2=OOC-only (mac AutoRezOn)
+        battleRezTimers     = {0,0,0,0,0},  -- per group slot 1-5; os.clock() expiry
         corpseRezCheck      = 'null',
+        oocRezTimers        = {},            -- [corpseID] = os.clock() expiry
         groupWatchPct       = 20,
         healAgain           = false,
         healRemChk1         = 'Divine Barrier',
@@ -206,9 +211,28 @@ local State = {
         medStat2            = 'Endurance',
         needCuring          = false,
         sHealPct            = 0,
-        singleHealPoint     = false,
-        singleHealPointMA   = false,
-        singleHealPointRange = false,
+        singleHealPoint     = 0,
+        singleHealPointMA   = 0,
+        singleHealPointRange = 0,
+        -- Step 5.1 — INI-loaded fields (defaults mirror Bind_Settings mac defaults)
+        healsOn         = 0,   -- integer: 0=off 1=self+group+MA 2=self+group 3=MA-OOG+self 4=self-only
+        healsArray      = {},
+        -- Step 5.3 — group heal dispatch (built from healsArray at init by FindGroupHeals logic)
+        groupHealArray  = {},  -- group-target spells only (TargetType contains 'group' or 'Targeted AE')
+        groupHealTimers = {},  -- per-slot os.clock() expiry; 0=expired (mirrors SpellGH${j} mac timers)
+        curesOn         = 0,    -- 0=off 1=everyone 2=self-only 3=group-only
+        curesArray      = {},
+        healInterval    = 0,
+        xTarHeal        = false,
+        xTarHealList    = '',
+        healGroupPetsOn = false,
+        rezMeLast       = false,
+        medOn           = true,   -- mac default: 1
+        medStart        = 20,
+        medStop         = 100,
+        medCombat       = false,
+        groupWatchOn    = false,
+        corpsRecoveryOn = false,
     },
 
     buffs = {

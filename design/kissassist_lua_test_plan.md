@@ -1,4 +1,4 @@
-# KissAssist Lua — In-Game Test Plan (Milestones 1–4)
+# KissAssist Lua — In-Game Test Plan (Milestones 1–5)
 
 All tests are manual and in-game. No automated test framework exists.
 Tests are ordered from cheapest (startup/config) to most interactive (casting).
@@ -221,7 +221,7 @@ These fire from game text. Trigger each by causing the condition in-game or by l
 | 2.5.8 | `/campfire` | `>> Campfire disabled` (when `campfireOn=false`) |
 | 2.5.9 | `/addpull` | `>> AddToPull — M7` |
 | 2.5.10 | `/addignore` | `>> AddToIgnore — M7` |
-| 2.5.11 | `/addimmune` | `>> AddMezImmune — M5` |
+| 2.5.11 | `/addimmune` | ~~stub~~ — implemented Step 5.1; see Section 5.2 |
 | 2.5.12 | `/writespells` | `>> WriteMySpells — M10` |
 | 2.5.13 | `/kisscheck` | `>> KissCheck (INI scan) — M10` |
 | 2.5.14 | `/kasettings` | `>> KaSettings — M11` |
@@ -592,21 +592,6 @@ end)
 
 ---
 
-## Section 5 — Integration Smoke Test
-
-Run after all individual tests pass to verify modules interact correctly.
-
-| # | Scenario | Steps | Expected |
-|---|----------|-------|----------|
-| 5.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 5.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 5.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 5.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 5.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 5.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
-
----
-
 ### 4.5 Combat.fight — melee engagement loop (Step 4.5)
 
 **Setup:** Script running in an area with attackable NPCs. MA designated. `meleeOn=1`, `dpsOn=1` in INI. Stand near an NPC that the MA will target.
@@ -871,28 +856,433 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.8)
+## Section 5 — Healing & Recovery (Milestone 5)
+
+---
+
+### 5.1 Heal.init — module load and state wiring (Step 5.1)
+
+**Setup:** Valid pickle config with `[Heals]`, `[Cures]`, and `[General]` sections populated. Start with `/lua run kissassist-lua assist TankName debug`.
+
+#### 5.1.1 — Config loading
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.1.1 | Start script with `[Heals] HealsOn=1` | `state.heal.healsOn = 1`; `state.session.heals = true` |
+| 5.1.2 | `[Heals] HealsOn=0` (default) | `state.heal.healsOn = 0`; `state.session.heals = false` |
+| 5.1.3 | `[Heals] Heals1=Devout Light Rk. II\|50` through `Heals3=...` | `state.heal.healsArray` has 3 entries; `healsArray[1] = 'Devout Light Rk. II\|50'` |
+| 5.1.4 | `[Heals]` section absent or empty | `state.heal.healsArray = {}`; no crash |
+| 5.1.5 | `[Cures] CuresOn=1` | `state.heal.curesOn = true` |
+| 5.1.6 | `[Cures] Cures1=Expurgation Rk. II\|poison` through `Cures3=...` | `state.heal.curesArray` has 3 entries |
+| 5.1.7 | `[General] MedOn=1` (default) | `state.heal.medOn = true` |
+| 5.1.8 | `[General] MedOn=0` | `state.heal.medOn = false` |
+| 5.1.9 | `[General] MedStart=30`, `MedStop=95` | `state.heal.medStart = 30`; `state.heal.medStop = 95` |
+| 5.1.10 | `[General] MedStart` absent | `state.heal.medStart = 20` (mac default) |
+| 5.1.11 | `[General] GroupWatchOn=1\|25` (pipe format) | `state.heal.groupWatchOn = true`; `state.heal.groupWatchPct = 25` |
+| 5.1.12 | `[General] GroupWatchOn=0` (plain) | `state.heal.groupWatchOn = false`; `groupWatchPct` unchanged (default 20) |
+| 5.1.13 | `[Heals] AutoRezOn=1` | `state.heal.autoRezOn = true` |
+| 5.1.14 | `[Heals] XTarHeal=1` | `state.heal.xTarHeal = true` |
+| 5.1.15 | `[Heals] RezMeLast=1` | `state.heal.rezMeLast = true` |
+| 5.1.16 | `[Heals] HealGroupPetsOn=1` | `state.heal.healGroupPetsOn = true` |
+| 5.1.17 | `[General] CorpseRecoveryOn=1` | `state.heal.corpsRecoveryOn = true` |
+| 5.1.18 | `[General] MedCombat=1` | `state.heal.medCombat = true` |
+
+#### 5.1.2 — Debug output
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.1.19 | Start with `debug` flag | Chat shows `[heals] Heal.init done — healsOn=1(N spells) curesOn=true(N) medOn=true medStart=20 medStop=100 sHP=<n> sHPma=<n> sHPrange=<n>` (values from INI) |
+| 5.1.20 | No INI / defaults only | No crash; all `state.heal` fields have their default values |
+
+---
+
+### 5.2 /addimmune bind (Step 5.1)
+
+**Setup:** Script running. Various targets available.
+
+| # | Action | Expected |
+|---|--------|----------|
+| 5.2.1 | `/addimmune` with NPC targeted | `state.mez.immuneIDs` gains `\|<ID>`; prints `>> Mez Immune -> <name> <- ID:<id> Added to immune list.`; INI updated |
+| 5.2.2 | `/addimmune` with no target | Prints `--AddMezImmune: Target an NPC to add to the mez immune list.`; no state change |
+| 5.2.3 | `/addimmune` targeting a PC | Prints same error message; no state change |
+| 5.2.4 | `/addimmune` same NPC twice | Second call prints `>> <name> (ID:<id>) is already on the mez immune list.`; no duplicate in `immuneIDs` |
+| 5.2.5 | `/addimmune` with named mob (`CleanName` starts with `#`) | `#` stripped; `immuneIDs` has ID; INI has name without `#` |
+| 5.2.6 | `/addimmune` targeting a corpse (`CleanName` ends with `'s corpse'`) | Corpse suffix stripped; base name stored |
+| 5.2.7 | INI write path — valid `infoFileName` and `zoneName` | `Ini[infoFileName][zoneName][MezImmune]` contains the mob name after call |
+| 5.2.8 | INI write path — second mob added | Existing entry appended with comma separator; no overwrite of first name |
+
+---
+
+### 5.3 Heal.checkHealth — self-triage + single-heal dispatch (Step 5.2)
+
+**Setup:** Script running with `[Heals] HealsOn=1` and at least one entry in healsArray. Use `/debug heals on` to observe dispatch.
+
+#### 5.3.1 — Guard conditions
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.1 | `healsOn=0` — no healing | `state.heal.healsOn = 0` | `checkHealth` returns immediately; no cast attempted |
+| 5.3.2 | Invis without aggro — no healing | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.3.3 | Invis with aggro — heals fire | `Me.Invis()=true`, `aggroTargetID='<id>'` | Heals proceed normally |
+| 5.3.4 | Medding without `medCombat` — no healing | `state.heal.medding=true`, `medCombat=false` | Returns immediately |
+| 5.3.5 | Medding with `medCombat=true` — heals fire | `state.heal.medding=true`, `medCombat=true` | Heals proceed normally |
+
+#### 5.3.2 — Self-heal path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.6 | Self HP below `singleHealPoint` | `Me.PctHPs()=40`, `singleHealPoint=80` | `singleHeal` called; spell from healsArray with threshold ≥ 40 cast on self |
+| 5.3.7 | Self HP above threshold — no self-heal | `Me.PctHPs()=90`, `singleHealPoint=80` | No self-cast |
+| 5.3.8 | `healsOn=4` (self-only) — returns after self check | `healsOn=4`, `Me.PctHPs()=50` | Self healed; group/MA checks skipped |
+| 5.3.9 | Non-healer class — stops after self | `Me.Class.ShortName()='WAR'` | Self-heal check runs; MA and group scans skipped |
+
+#### 5.3.3 — MA out-of-group heal path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.10 | `healsOn=1`, MA below `singleHealPointMA` | MA HP 45%, threshold 80 | `singleHeal` called on MA |
+| 5.3.11 | `healsOn=2` — MA OOG heal skipped | `healsOn=2` | MA heal path skipped; group scan runs |
+| 5.3.12 | `healsOn=3` — MA healed, no group scan | `healsOn=3` | MA healed if needed; group member loop skipped |
+| 5.3.13 | MA is self — no double-heal | `mainAssist = Me.CleanName()` | MA path skipped (`maID == Me.ID()`) |
+| 5.3.14 | MA is corpse — skipped | `MA.Type() = 'corpse'` | MA path skipped |
+
+#### 5.3.4 — Group member scan
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.15 | Group member below threshold | `Member[1].PctHPs()=30`, `singleHealPoint=80` | That member healed |
+| 5.3.16 | Most hurt member chosen | Members at 70%, 40%, 60% | Member at 40% healed |
+| 5.3.17 | Member out of range — skipped | `Member.Distance() > singleHealPointRange` | Out-of-range member not considered |
+| 5.3.18 | Corpse member — skipped | `Member.Type()='corpse'` | Corpse not considered |
+| 5.3.19 | Berserker ≥ level 95 above 70% — skipped | BER member at 75% HP, level 95 | Not healed (BER special rule) |
+| 5.3.20 | Berserker ≥ level 95 below 70% — healed | BER member at 65% HP, level 95 | Healed normally |
+| 5.3.21 | `healGroupPetsOn=true` — pet considered | `Member[0].Pet.PctHPs()=20`, `singleHealPoint=80` | Pet healed if most hurt |
+| 5.3.22 | `healGroupPetsOn=false` — pets ignored | `Member[0].Pet.PctHPs()=10` | Pet not considered |
+
+#### 5.3.5 — singleHeal dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.3.23 | Moving — no cast | `Me.Moving()=true` | `singleHeal` returns without casting |
+| 5.3.24 | Hovering — no cast | `Me.Hovering()=true` | `singleHeal` returns without casting |
+| 5.3.25 | healsArray empty — no cast | `state.heal.healsArray = {}` | `singleHeal` iterates nothing; no crash |
+| 5.3.26 | Threshold computation — singleHealPoint from array | `healsArray = {'ClericSpell\|70\|G', 'FastHeal\|40\|G'}` | `singleHealPoint = 70` after `Heal.init()` |
+| 5.3.27 | MA threshold computed separately | `healsArray = {'CLRSpell\|70\|', 'MASpell\|90\|MA'}` | `singleHealPoint=70`, `singleHealPointMA=90` |
+| 5.3.28 | `session.heals` wired | `healsOn=1` after `Heal.init()` | `state.session.heals = true`; castMem no longer blocked |
+
+---
+
+### 5.4 Heal.doGroupHealStuff + Heal.doWeMed (Step 5.3)
+
+#### 5.4.1 — groupHealArray population at init
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.1 | Group-type spell included | `healsArray = {'GroupHeal\|80\|'}` where `Spell.TargetType()='Group v2'` | `groupHealArray` contains the entry; `groupHealTimers[1] = 0` |
+| 5.4.2 | Single-target spell excluded | `healsArray = {'SingleHeal\|80\|'}` where `TargetType='Single'` | `groupHealArray` empty |
+| 5.4.3 | Self-target spell excluded | `healsArray = {'SelfHeal\|80\|'}` where `TargetType='Self'` | `groupHealArray` empty |
+| 5.4.4 | Targeted AE without MA/ME tag included | `TargetType='Targeted AE'`, tag='' | Included in `groupHealArray` |
+| 5.4.5 | Targeted AE with MA tag excluded | `TargetType='Targeted AE'`, tag='MA' | Excluded from `groupHealArray` |
+| 5.4.6 | medStat derived — caster class | `Me.Class.ShortName()='CLR'` | `state.heal.medStat = 'Mana'` |
+| 5.4.7 | medStat derived — melee class | `Me.Class.ShortName()='WAR'` | `state.heal.medStat = 'Endurance'` |
+| 5.4.8 | medStat derived — bard | `Me.Class.ShortName()='BRD'` | `state.heal.medStat = 'Mana'` |
+
+#### 5.4.2 — Heal.doGroupHealStuff dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.9 | groupHealArray empty — no cast | `groupHealArray = {}` | Returns immediately; no cast |
+| 5.4.10 | Injured count ≤ 1 — no cast | `Group.Injured(80)=1` | Spell not cast (needs > 1) |
+| 5.4.11 | Injured count > 1, timer expired — cast fires | `Group.Injured(80)=3`, `groupHealTimers[1]=0` | `castWhat(spell, Me.ID(), 'GroupHeal')` called |
+| 5.4.12 | Timer not expired — no cast | `groupHealTimers[1] = os.clock() + 9999` | Spell skipped |
+| 5.4.13 | Successful cast sets HoT timer | Cast returns `CAST_SUCCESS`, `MyDuration=30s` | `groupHealTimers[1] = os.clock() + 30` |
+| 5.4.14 | Successful cast sets healAgain | Cast returns `CAST_SUCCESS` | `state.heal.healAgain = true` |
+| 5.4.15 | Successful cast returns immediately | Two group spells in array | Only first matching spell cast; loop exits after success |
+| 5.4.16 | Zero-threshold entry stops iteration | `groupHealArray[2] = 'Spell\|0\|'` | Loop breaks on zero-threshold; no further spells checked |
+
+#### 5.4.3 — doGroupHealStuff call site in checkHealth
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.17 | Non-group-heal class — doGroupHealStuff skipped | `Me.Class.ShortName()='WAR'` | `doGroupHealStuff` not called |
+| 5.4.18 | Group avg HP = 100 — skipped | `Group.AvgHPs()=100` | `doGroupHealStuff` not called |
+| 5.4.19 | No group members — skipped | `Group.Members()=0` | `doGroupHealStuff` not called |
+| 5.4.20 | Group-heal class, avg < 100, 2+ injured | `CLR`, `AvgHPs=85`, `Group.Injured(90)=3` | `doGroupHealStuff` called |
+
+#### 5.4.4 — Heal.doWeMed
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.4.21 | `medOn=false` — no action | `state.heal.medOn = false` | Returns immediately; no sit/stand |
+| 5.4.22 | In combat, `medCombat=false` — no action | `aggroTargetID='1234'`, `medCombat=false` | Returns immediately |
+| 5.4.23 | In combat, `medCombat=true` — allowed | `aggroTargetID='1234'`, `medCombat=true` | Proceeds to medding check |
+| 5.4.24 | Moving — no action | `Me.Moving()=true` | Returns immediately |
+| 5.4.25 | Mana below medStart — sits | `PctMana=15`, `medStart=20` | `state.heal.medding=true`; `/sit` issued |
+| 5.4.26 | Endurance below medStart — sits | `medStat='Endurance'`, `PctEndurance=10`, `medStart=20` | `state.heal.medding=true`; `/sit` issued |
+| 5.4.27 | Medding, mana reaches medStop — stands | `medding=true`, `PctMana=100`, `medStop=100` | `state.heal.medding=false`; `/stand` issued |
+| 5.4.28 | Medding but stood up externally — re-sits | `medding=true`, `Me.Sitting()=false`, `PctMana=50` | `/sit` re-issued |
+| 5.4.29 | Mana above medStart, not medding — no action | `PctMana=80`, `medStart=20`, `medding=false` | No sit/stand; no state change |
+
+---
+
+## Section 5.5 — Heal.writeDebuffs + Heal.checkCures (Step 5.4)
+
+#### 5.5.1 — curesOn integer loading
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.1 | CuresOn=0 loads as 0 | INI `CuresOn=0` | `state.heal.curesOn == 0` |
+| 5.5.2 | CuresOn=1 loads as 1 | INI `CuresOn=1` | `state.heal.curesOn == 1` |
+| 5.5.3 | CuresOn=2 loads as 2 | INI `CuresOn=2` | `state.heal.curesOn == 2` |
+| 5.5.4 | CuresOn=3 loads as 3 | INI `CuresOn=3` | `state.heal.curesOn == 3` |
+
+#### 5.5.2 — Heal.writeDebuffs
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.5 | Not debuffed, `needCuring=false` — no-op | All `Me.*ID()=0` | No ini write; `needCuring` stays false |
+| 5.5.6 | Newly poisoned, `needCuring=false` — writes ini | `Me.Poisoned.ID()=1234`, others 0 | `needCuring=true`; `/ini` called with `"1\|1234\|0\|0\|0\|0"` |
+| 5.5.7 | Poisoned + diseased — writes combined | `Poisoned.ID()=100`, `Diseased.ID()=200` | `needCuring=true`; count field is `300` |
+| 5.5.8 | Curse + Restless Curse — combined into curse field | `Cursed.ID()=50`, `Song('Restless Curse').ID()=60` | Curse field = `110` |
+| 5.5.9 | Already debuffed + `needCuring=true` — no re-write | `Me.Poisoned.ID()=1234`, `needCuring=true` | No second ini write (state gate prevents duplicate) |
+| 5.5.10 | Was debuffed, cured, `needCuring=true` — clears | All debuffs gone, `needCuring=true` | `needCuring=false`; `/ini` called with empty Debuffs value |
+| 5.5.11 | Was clean, still clean, `needCuring=false` — no-op | All 0, `needCuring=false` | No ini write; `needCuring` stays false |
+
+#### 5.5.3 — Heal.checkCures guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.12 | `curesOn=0` — returns immediately | `state.heal.curesOn=0` | Returns; no cure logic runs |
+| 5.5.13 | Invisible, no aggro — returns | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.5.14 | Invisible with aggro — proceeds | `Me.Invis()=true`, `aggroTargetID='1234'` | Does not return early on invis guard |
+| 5.5.15 | Medding + medCombat — returns | `medding=true`, `medCombat=true` | Returns immediately (mac:12599) |
+| 5.5.16 | Medding, medCombat=false — proceeds | `medding=true`, `medCombat=false` | Does not return early |
+
+#### 5.5.4 — Target list building
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.17 | CuresOn=2 (self-only) — only Me.ID in list | `curesOn=2` | Only `Me.ID()` iterated; no ini section read |
+| 5.5.18 | CuresOn=1 — reads section names from ini | `curesOn=1`, ini has sections `12345` and `67890` | Both IDs iterated |
+| 5.5.19 | Empty ini sections, CuresOn=1 — falls back to self | `curesOn=1`, ini returns `''` | Falls back to `[Me.ID()]` |
+| 5.5.20 | CuresOn=3, target not in group — skipped | `curesOn=3`, target `12345` not in `Group.Member(0..5)` | Target skipped; no cure attempt |
+| 5.5.21 | Target is Corpse — skipped | `Spawn.Type()='Corpse'` | Target skipped |
+| 5.5.22 | Target > 100 distance — skipped | `Spawn.Distance()=150` | Target skipped |
+
+#### 5.5.5 — Cure entry parsing and dispatch
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.23 | Blank entry skipped | `curesArray[1]=''` | No cast attempt |
+| 5.5.24 | Scope `me`, target is self — cures | `entry='CurePoison\|poison\|me'`, `targetID=Me.ID()` | Cure attempted on self |
+| 5.5.25 | Scope `me`, target is other — skipped | `entry='CurePoison\|poison\|me'`, `targetID=99999` | Skip; no cast |
+| 5.5.26 | No type filter (`arg2=''`) — cures regardless | `entry='Cleanse'`, target has any debuff | Cure attempted unconditionally |
+| 5.5.27 | Type `poison`, target poisoned — cures | `debuffType='poison'`, `poison>0` | `castWhat('Cleanse', targetID, 'Cure')` called |
+| 5.5.28 | Type `poison`, target not poisoned — skipped | `debuffType='poison'`, `poison=0` | No cast |
+| 5.5.29 | Type `disease` — matches disease field | `debuffType='disease'`, `disease>0` | Cast fires |
+| 5.5.30 | Type `curse` — matches combined curse field | `debuffType='curse'`, `curse>0` | Cast fires |
+| 5.5.31 | Type `corruption` — matches corrupt field | `debuffType='corruption'`, `corrupt>0` | Cast fires |
+| 5.5.32 | Type `mezzed` — matches mez field | `debuffType='mezzed'`, `mezzed>0` | Cast fires |
+| 5.5.33 | Spell not ready — skipped | `Me.SpellReady=false`, no AA/disc/item ready either | No cast |
+| 5.5.34 | Group-spell, target out-of-group — skipped | `TargetType='Group v1'`, target not in group | Skip with no cast |
+| 5.5.35 | Self-target: live TLO read; no debuffs — breaks cure loop | `targetID=Me.ID()`, all debuffs 0 | Inner cure loop breaks; moves to next target |
+| 5.5.36 | Other target: ini count=0 — breaks cure loop | `Ini[targetID][Debuffs]='0\|...'` first field = 0 | Inner loop breaks |
+
+#### 5.5.6 — Post-cast behavior
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.37 | Successful cure — broadcasts | `castReturn='CAST_SUCCESS'` | `/bc o "CURING: >> <name> << with <spell>"` issued |
+| 5.5.38 | Successful cure + healsOn>0 — re-checks health | `castReturn='CAST_SUCCESS'`, `healsOn=1` | `Heal.checkHealth('CheckCures')` called |
+| 5.5.39 | Successful self-cure — refreshes writeDebuffs | `targetID=Me.ID()`, `castReturn='CAST_SUCCESS'` | `Heal.writeDebuffs()` called after cure loop |
+| 5.5.40 | Failed cure — no broadcast or health re-check | `castReturn='CAST_FIZZLE'` | No broadcast; no checkHealth call |
+
+#### 5.5.7 — MezBroke reset
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 5.5.41 | checkCures resets mez.broke | `state.mez.broke=true` before call | `state.mez.broke=false` after checkCures returns |
+
+---
+
+## Section 5.6 — Heal.rezCheck + rezWithCheck (Step 5.5)
+
+#### 5.6.1 — autoRezOn integer loading
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.1 | AutoRezOn=0 loads as 0 | INI `AutoRezOn=0` | `state.heal.autoRezOn == 0` |
+| 5.6.2 | AutoRezOn=1 loads as 1 | INI `AutoRezOn=1` | `state.heal.autoRezOn == 1` |
+| 5.6.3 | AutoRezOn=2 loads as 2 | INI `AutoRezOn=2` | `state.heal.autoRezOn == 2` |
+
+#### 5.6.2 — AutoRez array loading
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.4 | AutoRez entries load into array | INI `AutoRez1=Resurrection\|0\|rez` | `state.heal.autoRezArray[1] == 'Resurrection\|0\|rez'` |
+| 5.6.5 | Multiple entries load in order | INI `AutoRez1=…`, `AutoRez2=…` | Array has both entries in order |
+| 5.6.6 | NULL entries skipped | INI `AutoRez1=NULL` | Array is empty |
+
+#### 5.6.3 — rezCheck guards
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.7 | `autoRezOn=0` — returns immediately | `state.heal.autoRezOn=0` | Returns; no rez logic runs |
+| 5.6.8 | DMZ zone, not in instance — returns | `state.misc.dmz=true`, `Zone.IsInstance()=false` | Returns immediately |
+| 5.6.9 | DMZ zone, in instance — proceeds | `state.misc.dmz=true`, `Zone.IsInstance()=true` | Does not return early on DMZ guard |
+| 5.6.10 | Hovering — returns | `Me.Hovering()=true` | Returns immediately |
+| 5.6.11 | Invisible, no aggro — returns | `Me.Invis()=true`, `aggroTargetID=''` | Returns immediately |
+| 5.6.12 | `autoRezOn=2`, aggro present — returns | `autoRezOn=2`, `aggroTargetID='1234'` | Returns (OOC-only mode) |
+| 5.6.13 | `autoRezOn=1`, aggro present — proceeds | `autoRezOn=1`, `aggroTargetID='1234'` | Does not return early on combat guard |
+| 5.6.14 | No rez spell ready — returns early | `autoRezArray` empty or no spell ready | Returns after probe; no targeting attempted |
+
+#### 5.6.4 — rezWithCheck spell selection
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.15 | `rez` type — valid OOC and in combat | `rezType='rez'`, `Me.SpellReady()=true` | Returns spell name |
+| 5.6.16 | `rezooc` type — valid OOC, skipped in combat | `rezType='rezooc'`, in combat | Returns nil; spell skipped |
+| 5.6.17 | `rezooc` type — valid when OOC | `rezType='rezooc'`, not in combat | Returns spell name |
+| 5.6.18 | `rezcombat` type — valid in combat, skipped OOC | `rezType='rezcombat'`, not in combat | Returns nil; spell skipped |
+| 5.6.19 | `rezcombat` type — valid when in combat | `rezType='rezcombat'`, in combat | Returns spell name |
+| 5.6.20 | Unknown rez type — stops iteration | `rezType='invalid'`, second entry is valid | Returns nil; loop stops at bad entry |
+| 5.6.21 | Spell not ready — skipped | `SpellReady()=false`, `AltAbilityReady()=false`, `ItemReady()=false` | Returns nil |
+| 5.6.22 | First ready spell returned | Two entries, first not ready, second ready | Returns second spell name |
+
+#### 5.6.5 — MA corpse rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.23 | MA corpse in range — rezzes | MA has corpse within 150, rez ready, no OOC timer | Target set to corpse; `castWhat` called; broadcast sent |
+| 5.6.24 | MA corpse — OOC timer not expired — skips | `oocRezTimers[maCorpseID]` in future | No cast attempted |
+| 5.6.25 | No MA set — skips MA phase | `state.session.mainAssist=''` | MA phase skipped cleanly |
+
+#### 5.6.6 — Self rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.26 | Self corpse exists, timer clear — rezzes | Own pccorpse in range, `oocRezTimers` clear | `castWhat` called with corpse ID; broadcast sent |
+| 5.6.27 | Self corpse, OOC timer active — skips | `oocRezTimers[myCopseID]` in future | No cast |
+| 5.6.28 | No self corpse — skips | No pccorpse for own name | Self rez phase no-ops |
+| 5.6.29 | `rezMeLast=false` — self rezzes before group | `rezMeLast=false`, both self and group member have corpse | Self rezzed first |
+| 5.6.30 | `rezMeLast=true` — group rezzes before self | `rezMeLast=true`, both self and group member have corpse | Group member rezzed first |
+
+#### 5.6.7 — Group member rez
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.31 | Group member corpse in range — rezzes | Member corpse < 100 dist, battleRezTimers[i]=0 | `castWhat` called; broadcast "REZZED" |
+| 5.6.32 | battleRezTimer not expired — skips slot | `battleRezTimers[i]` in future | No cast for that slot |
+| 5.6.33 | MA member — skipped | Member's name == mainAssist | Slot skipped |
+| 5.6.34 | Corpse > 100 dist — skipped | Corpse distance = 150 | No cast |
+| 5.6.35 | OOC rez success — timer set to 60s | Non-combat, rez success | `battleRezTimers[i] = os.clock() + 60` |
+| 5.6.36 | Combat rez success — timer set to 180s | `combatStart=true`, rez success | `battleRezTimers[i] = os.clock() + 180` |
+| 5.6.37 | Call of Wild rez success — timer set to 360s | Spell name contains 'Call of', rez success | `battleRezTimers[i] = os.clock() + 360` |
+| 5.6.38 | Rez fails — throttle timer set to 60s | `castReturn != CAST_SUCCESS` | `battleRezTimers[i] = os.clock() + 60` |
+| 5.6.39 | Member in other zone + Call of Wild — skipped | `OtherZone()=true`, spell contains 'Call of' | Slot skipped |
+
+#### 5.6.8 — autoRezAll OOC pass
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.6.40 | `autoRezAll=false` — OOC pass skipped | `autoRezAll=false`, corpses present | autoRezAll block not entered |
+| 5.6.41 | `combatStart=true` — OOC pass skipped | `combatStart=true`, `autoRezAll=true` | autoRezAll block not entered |
+| 5.6.42 | New corpse, tries=0 — casts and records | `autoRezAll=true`, OOC, corpse nearby, timer clear | Cast attempted; `corpseRezCheck` updated to `id:1|…` |
+| 5.6.43 | tries=3 — skipped | `corpseRezCheck` has `id:3|` | No cast for that corpse |
+| 5.6.44 | OOC timer active — skipped | `oocRezTimers[id]` in future | No cast |
+| 5.6.45 | No corpses remain — prunes timers + resets corpseRezCheck | `SpawnCount=0` | `corpseRezCheck='null'`; stale timer entries removed |
+
+---
+
+## Section 5.7 — Loop wiring (Step 5.6)
+
+#### 5.7.1 — Combat.init heal wiring
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.1 | `_heal` stored when Heal passed as 4th arg | `Combat.init(state, utils, cast, Heal)` | Internal `_heal` reference holds the Heal module |
+| 5.7.2 | No error when Heal not passed | `Combat.init(state, utils, cast)` — no 4th arg | All `if _heal then` guards handle nil cleanly; no runtime error |
+
+#### 5.7.2 — fight() inner loop: CheckCures/CheckHealth after AggroCheck
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.3 | `checkCures()` called after AggroCheck each iteration | `_heal` present; combat loop iterates | `checkCures` invoked before NamedWatch check each pass |
+| 5.7.4 | `checkHealth('Combat')` called after AggroCheck | `_heal` present | `checkHealth` called with `sentFrom='Combat'` |
+| 5.7.5 | No error when `_heal` nil | Heal not passed to `Combat.init` | `if _heal then` guard prevents nil call; loop continues normally |
+
+#### 5.7.3 — fight() inner loop: WriteDebuffs + second cure/heal after DPS casts
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.6 | `writeDebuffs()` called after DPS casts | `_heal` present; DPS cast block executes | `writeDebuffs` invoked post-DPS each inner-loop iteration |
+| 5.7.7 | Second `checkCures()` + `checkHealth('Combat2')` called | `_heal` present | Both called in order after `writeDebuffs` |
+
+#### 5.7.4 — checkForCombat() non-MA assist loop: CheckHealth
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.8 | `checkHealth('CheckForCombat')` called after assist | Non-MA, `_heal` present | `checkHealth` called each pass of the assist wait loop |
+| 5.7.9 | Fires even when assist yields no target | `assist()` returns with `myTargetID=0` | `checkHealth` still called before break-condition check |
+
+#### 5.7.5 — checkForCombat() skipCombat==1 healer path
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.10 | `skipCombat==1`: checkCures + checkHealth called | `skipCombat=1`, `_heal` present | `checkCures()` then `checkHealth('SkipCombat')` called; full combat block skipped |
+| 5.7.11 | `skipCombat==0`: healer-only block not entered | `skipCombat=0`, `_heal` present | `skipCombat == 1` guard prevents entry; block not executed |
+| 5.7.12 | `_heal` nil with `skipCombat==1` — no error | `_heal=nil`, `skipCombat=1` | `if _heal then` guard prevents nil call |
+
+#### 5.7.6 — init.lua main loop: heal calls every tick
+
+| # | Test | Setup | Expected |
+|---|------|-------|----------|
+| 5.7.13 | `Heal.writeDebuffs()` called every tick | Main loop running, any state | Called once per tick regardless of combat state |
+| 5.7.14 | `Heal.checkHealth('MainLoop')` called every tick | Main loop running | Called once per tick; `healsOn==0` guard causes immediate return when inactive |
+| 5.7.15 | `Heal.checkCures()` called every tick | Main loop running | Called once per tick; `curesOn==0` guard causes immediate return when inactive |
+| 5.7.16 | `Heal.doWeMed()` called every tick | Main loop running | Called once per tick; `medOn=false` guard causes immediate return when inactive |
+| 5.7.17 | Out-of-combat heals fire from main loop | `healsOn=1`, group member HP < threshold, `aggroTargetID=''` | `checkHealth('MainLoop')` fires a heal from main loop without a combat pass |
+| 5.7.18 | Combat heals fire from fight() inner loop, not only from main loop | `healsOn=1`, mob engaged in fight() | `checkHealth('Combat')` fires mid-combat loop independently of main-loop call |
+
+---
+
+## Section 6 — Integration Smoke Test
+
+Run after all individual tests pass to verify modules interact correctly.
+
+| # | Scenario | Steps | Expected |
+|---|----------|-------|----------|
+| 6.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 6.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 6.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 6.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 6.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 6.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+
+---
+
+## Known Deferred / Out of Scope for M1–M5 (Steps 4.1–4.8, 5.1–5.6)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
 | `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
-| `namedWatchList` population from INI | M4 (needs KissAssist_Info.ini loader) |
-| `autoBurnTimer` auto-burn trigger | M4 Step 4.8 |
+| `namedWatchList` population from INI | M5 (needs KissAssist_Info.ini loader; M4 complete without it) |
+| `autoBurnTimer` auto-burn trigger | N/A — not present in kissassist.mac source; auto-burn uses `/kaburn` bind only |
 | `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
 | BroadCast burn/add/tank-announce | M9 (cross-char comms) |
-| `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
-| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.x |
+| `CombatTargetCheckRaid` | M9 (raid/cross-char comms; M4 complete without it) |
+| CheckForCombat SkipCombat==1 healer loop | ✅ Step 5.6 |
 | CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
 | CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
 | CheckForCombat tank EnduranceCheck | M6 (buffs module) |
 | SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
-| fight: CheckCures / CheckHealth during combat | M5 (healing module) |
+| fight: CheckCures / CheckHealth during combat | ✅ Step 5.6 |
 | fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
-| fight: CastMana / mana-sit logic | M5 |
+| fight: CastMana / mana-sit logic | ✅ Step 5.3 (`Heal.doWeMed` implemented; wired into main loop at Step 5.6) |
 | fight: MercsDoWhat | M6 (merc module) |
-| fight: MezCheck / AECheck | M5 (mez module) |
+| fight: MezCheck / AECheck | M5 Step 5.x (mez sub-step) |
 | fight: AggroCheck in inner loop | ✅ Step 4.8 |
 | fight: WriteDebuffs / DebuffStuff | ✅ Step 4.8 (`doDebuffStuff`) |
 | fight: DoBardStuff | M8 (bard module) |
@@ -920,9 +1310,16 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
 | mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M5 stretch |
 | DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
-| `state.session.heals` wire (castMem guard) | M5 |
-| Healing/cures triggered by events | M5 |
-| Mez timer reset (MezBroke) | M5 |
+| `state.session.heals` wire (castMem guard) | ✅ Step 5.2 |
+| `/addimmune` bind | ✅ Step 5.1 |
+| Heal.init — INI loading + state wiring | ✅ Step 5.1 |
+| Healing/cures triggered by events | ✅ Steps 5.2–5.6 |
+| Mez timer reset (MezBroke) | ✅ Step 5.4 (`checkCures` resets `state.mez.broke` at end) |
+| CheckHealth | ✅ Step 5.2 |
+| DoGroupHealStuff | ✅ Step 5.3 |
+| doWeMed (medding sit/stand) | ✅ Step 5.3 (main loop wiring deferred to Step 5.6) |
+| CheckCures / WriteDebuffs (healer) | ✅ Step 5.4 |
+| RezCheck / RezWithCheck | ✅ Step 5.5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
@@ -934,4 +1331,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.8 complete. Milestone 4 is now complete.*
+*Last updated: 2026-05-15. Reflects Milestones 1–4 complete + M5 Steps 5.1–5.6 complete (Milestone 5 fully done). Section 5.7 added for loop wiring (18 test cases). SkipCombat healer path, combat-loop heal calls, and Healing/cures-triggered-by-events marked ✅ in Known Deferred.*
