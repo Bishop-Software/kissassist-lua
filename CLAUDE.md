@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**KissAssist v12.002** — A MacroQuest (MQ2) scripting macro for automating multi-character group combat in EverQuest. Written in MacroQuest's proprietary macro language. Maintained by Ctaylor22 for RedGuides subscribers; originally created by Maskoi.
+**KissAssist v1.0.0 (Lua)** — A Lua refactor of the original KissAssist v12.002 `.mac` macro for automating multi-character group combat in EverQuest. Original macro written in MacroQuest's proprietary macro language; maintained by Ctaylor22 for RedGuides subscribers, originally created by Maskoi.
 
 - Main file: `kissassist.mac` (~17,000 lines)
 - Loot helper: `Ninjadvloot.inc` (~1,160 lines)
@@ -73,7 +73,7 @@ AssignMainAssist
 | `FindMobToPull` / `PullCheck` | Pull target discovery and execution |
 | `CheckBuffs` / `WriteBuffs` | Self/group buffing + cross-character state tracking |
 | `DoPetStuff` / `CheckPetBuffs` | Pet combat and buffs |
-| `DoBardStuff` | Bard-specific song twist management |
+| `DoBardStuff` | Bard-specific song management (Lua port uses MQ2Medley, not MQ2Twist) |
 | `LootStuff` | Delegates to `Ninjadvloot.inc` |
 | `DoWeMove` / `DoWeChase` / `Stuck` | Camp return, chase, anti-stuck |
 
@@ -113,13 +113,16 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 ## Plugin Dependencies
 
 **Required** (validated at startup by `InitPlugins`):
-- `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2Twist`
+- `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`
 - Extended Target window with Auto Hater x-target slots configured in-game
+
+**Required for Bard only:**
+- `MQ2Medley` — named medley sets replace MQ2Twist for song management (see `design/mq2twist_vs_mq2medley.md`)
 
 **Optional** (conditionally used):
 - `MQ2Cast` — casting management (macro may unload/reload it)
 - `MQ2Melee` — melee auto-attack (macro may unload/reload it)
-- `MQ2DanNet` or `MQ2EQBC` — cross-character messaging
+- `MQ2DanNet` or `MQ2EQBC` — cross-character messaging (EQBC deprecated in Lua port)
 - `MQ2Nav` — navigation mesh pathfinding
 - `MQ2AdvPath` — waypoint-based pathing
 - `MQ2DPSAdv`, `MQ2Map`, `MQ2Notepad`, `MQ2SpawnMaster`, `MQ2Log`
@@ -127,4 +130,16 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 ## Reference
 
 - RedGuides wiki: https://www.redguides.com/wiki/KissAssist
-- Analysis docs in repo: `KissAssist_Macro_Analysis_Summary.md`, `KissAssist_Macro_Quick_Reference.md`
+- Analysis docs in repo: `design/KissAssist_Macro_Analysis_Summary.md`, `design/KissAssist_Macro_Quick_Reference.md`
+- Plugin comparison: `design/mq2twist_vs_mq2medley.md`
+- Lua migration plan: `design/kissassist_lua_migration_plan.md`
+
+## Lua Port Layout
+
+Run with: `/lua run kissassist-lua`
+
+```
+kissassist-lua/     ← repo root (deployed into MQ2's lua/ directory)
+├── init.lua        ← entry point
+└── modules/        ← all domain modules (config, state, combat, etc.)
+```
