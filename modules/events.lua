@@ -19,7 +19,7 @@ end
 -- Cast event handlers set State.cast.castReturn so the cast engine (cast.lua, M3)
 -- can react. Patterns mirror kissassist.mac lines 48-101.
 
-local state, utils
+local state, utils, movement
 
 -- CAST_BEGIN: optimistic — assume success until a failure event fires
 local function onCastBegin(_, _)
@@ -185,34 +185,38 @@ end
 
 local function onCantHit()
     utils.debug('combat', 'CantHit')
-    if state.pull.pulling then
-        state.movement.cantHit = true
+    state.movement.cantHit = true
+    mq.cmd('/squelch /attack off')
+    if (mq.TLO.Target.ID() or 0) ~= 0 then
+        mq.cmdf('/face fast id %d', mq.TLO.Target.ID())
     end
 end
 
 local function onCantSee()
     utils.debug('move', 'CantSee')
-    if state.pull.pulling then
-        state.movement.cantSee = true
-        return
-    end
-    -- Full LOS movement response in M7 (movement.lua)
+    state.movement.cantSee = true
 end
 
 local function onTooClose()
     utils.debug('move', 'TooClose')
+    state.movement.toClose = true
     if state.pull.pulling and state.pull.withAlt == 'Melee' then
-        state.movement.toClose = true
+        -- pull module handles TooClose during pulls
+        return
     end
-    -- Autofire disable in M4 (combat.lua)
+    if (mq.TLO.Target.ID() or 0) ~= 0 then
+        mq.cmdf('/face fast id %d', mq.TLO.Target.ID())
+    end
+    mq.cmd('/keypress back hold')
+    mq.delay(100)
+    mq.cmd('/keypress back')
 end
 
 local function onTooFar()
     utils.debug('move', 'TooFar')
-    if state.pull.pulling then
-        state.pull.tooFar = true
-    end
-    -- Stick/moveto response in M7 (movement.lua)
+    state.pull.tooFar         = true
+    state.movement.dontMoveMe = false
+    if movement then movement.doWeMove(1, 'tooFar') end
 end
 
 local function onMezBroke(_, mob, breaker)
@@ -611,9 +615,10 @@ local EVENT_DEFS = {
     { 'MLogOff',         '#*#KissAssist Debug Off Marker!',                      onMLogOff        },
 }
 
-function Events.register(s, u)
-    state = s
-    utils = u
+function Events.register(s, u, m)
+    state    = s
+    utils    = u
+    movement = m
     _nameCount = {}
     for _, def in ipairs(EVENT_DEFS) do
         register(def[1], def[2], def[3])

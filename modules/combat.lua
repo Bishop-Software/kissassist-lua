@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal
+local _state, _utils, _cast, _heal, _movement
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
 local function dist2D(y1, x1, y2, x2)
@@ -227,17 +227,37 @@ local function validateTarget(spawnID)
         end
     end
 
+    -- Pull-specific checks: only active while pull module is pulling (Step 7.8).
+    if _state.pull.pulling then
+        local mobY = sp and sp.Y() or 0
+        local mobX = sp and sp.X() or 0
+        -- Reject if any non-group PC is within 30 units of the mob.
+        if (mq.TLO.SpawnCount('pc radius 30 loc ' .. mobY .. ',' .. mobX .. ' nogroup') or 0) > 0 then
+            return false
+        end
+        -- Reject if mob level is outside configured pull level range.
+        local mobLevel = (sp and sp.Level()) or 0
+        local lvMin = _state.pull.min or 0
+        local lvMax = _state.pull.max or 0
+        if lvMin > 0 and mobLevel < lvMin then return false end
+        if lvMax > 0 and mobLevel > lvMax then return false end
+    end
+
     _state.combat.validTarget = true
     return true
 end
 
+-- Expose validateTarget for pull.lua (Step 7.8).
+Combat.validateTarget = validateTarget
+
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal)
-    _state = state
-    _utils = utils
-    _cast  = cast
-    _heal  = heal
+function Combat.init(state, utils, cast, heal, movement)
+    _state    = state
+    _utils    = utils
+    _cast     = cast
+    _heal     = heal
+    _movement = movement
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -254,10 +274,6 @@ function Combat.init(state, utils, cast, heal)
     _state.combat.burnOnNamed = Config.get('Burn', 'BurnAllNamed', '0') == '1'
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
     -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
-
-    -- Camp radius
-    _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius', '50')) or 50
-    _state.movement.campRadiusExceed = Config.get('General', 'CampRadiusExceed', '0') == '1'
 
     -- DPS spell/AA/disc array — entries may carry type suffixes (e.g. "Roar|disc")
     -- castWhat() reads from this array and dispatches by type.
@@ -948,10 +964,11 @@ function Combat.fight(fromWhere)
                         combatPet()
                     end
                 end
-                -- CheckStick (deferred M7), ZAxisCheck (deferred M7)
+                if _movement then _movement.checkStick(0, 1) end
+                if _movement then _movement.zAxisCheck() end
             else
                 -- MeleeOn off: pet-only combat (mac:1119-1127)
-                -- stick off (deferred M7)
+                if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
                 if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
                     sp = mq.TLO.Spawn('id ' .. myID)
                     if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
