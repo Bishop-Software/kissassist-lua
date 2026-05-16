@@ -301,8 +301,90 @@ local function onWriteSpells(_quiet)
     printf('>> WriteMySpells — M10 (config.lua)')
 end
 
-local function onMemMySpells(_charName, _spellSet)
-    printf('>> MemMySpells — M3 (cast.lua)')
+-- Mirrors Bind_MemMySpells (kissassist.mac:14131-14232).
+-- Reads Gem1..GemN from [Spells] (or [Spells{set}]) in the character INI and
+-- mems each spell into the corresponding gem slot.
+local function onMemMySpells(_charName, p_spellSet)
+    local iniFile     = state.session.iniFileName
+    local gemSlots    = state.cast.gemSlots or 8
+
+    -- Determine spell section (Spells or SpellsN for alternate sets)
+    local spellSection = (p_spellSet and p_spellSet ~= '' and p_spellSet ~= 'null')
+                         and ('Spells' .. p_spellSet) or 'Spells'
+
+    -- Validate section exists; fall back to Spells if alternate set not found
+    if (mq.TLO.Ini(iniFile, spellSection, 'Gem1')() or '') == '' then
+        if spellSection ~= 'Spells' then
+            printf('\aw No Spells Section found for: %s. Defaulting to Spells Section.', spellSection)
+            spellSection = 'Spells'
+        end
+        if (mq.TLO.Ini(iniFile, 'Spells', 'Gem1')() or '') == '' then
+            printf('\aw No Spells found in INI: %s. Use /writespells and try again.', iniFile)
+            return
+        end
+    end
+
+    -- Bard twist-pause stub → M8
+
+    local wasStanding = mq.TLO.Me.Standing()
+
+    for i = 1, gemSlots do
+        local spellToMem = mq.TLO.Ini(iniFile, spellSection, 'Gem' .. i)() or ''
+        if spellToMem ~= '' and spellToMem ~= 'null' then
+            -- Strip " Rk. X" rank suffix before resolving to current rank
+            local baseName = spellToMem
+            local rkPos = spellToMem:find(' Rk%.', 1, false)
+            if rkPos then baseName = spellToMem:sub(1, rkPos - 1) end
+            -- Resolve to the character's current known rank
+            spellToMem = mq.TLO.Spell(baseName).RankName() or spellToMem
+
+            if mq.TLO.Me.Book(spellToMem)() then
+                -- Unmem from wrong slot first
+                local curGem = mq.TLO.Me.Gem(spellToMem)() or 0
+                if curGem > 0 and curGem ~= i then
+                    mq.cmdf('/notify CastSpellWnd CSPW_Spell%d rightmouseup', curGem - 1)
+                    local t = os.clock() + 2.0
+                    while os.clock() < t and (mq.TLO.Me.Gem(spellToMem)() or 0) ~= 0 do
+                        mq.delay(100)
+                    end
+                end
+                -- Mem only if slot doesn't already have this spell
+                if (mq.TLO.Me.Gem(i).Name() or '') ~= spellToMem then
+                    state.misc.dontMoveMe = true
+                    while mq.TLO.Me.Moving() do mq.delay(100) end
+                    if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Standing() then
+                        mq.cmd('/sit')
+                    end
+                    printf('\aw Meming %s in slot %d', spellToMem, i)
+                    local stickActive = mq.TLO.Stick.Active()
+                    if stickActive then mq.cmd('/stick pause') end
+                    mq.cmdf('/memspell %d "%s"', i, spellToMem)
+                    local timeout = os.clock() + 15.0
+                    while os.clock() < timeout do
+                        mq.delay(100)
+                        if (mq.TLO.Me.Gem(i).Name() or '') == spellToMem then break end
+                    end
+                    if stickActive then mq.cmd('/stick unpause') end
+                    state.misc.dontMoveMe = false
+                end
+            else
+                printf('\aw Could Not find the spell %s in your spell book.', baseName)
+            end
+        end
+    end
+
+    -- Refresh misc gem snapshots after memming
+    if state.cast.miscGem > 0 then
+        state.cast.reMemMiscSpell = mq.TLO.Me.Gem(state.cast.miscGem).Name() or ''
+    end
+    if state.cast.miscGemLW > 0 then
+        state.cast.reMemMiscSpellLW = mq.TLO.Me.Gem(state.cast.miscGemLW).Name() or ''
+    end
+
+    -- Bard cleanup stub → M8
+    if wasStanding and mq.TLO.Me.Sitting() and not mq.TLO.Me.Mount.ID() then
+        mq.cmd('/stand')
+    end
 end
 
 local function onIniWrite(_section, _e1, _e2, _e3, _e4, _e5, _e6, _e7, _e8)

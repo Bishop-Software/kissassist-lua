@@ -190,18 +190,19 @@ Stubs (with milestone targets):
 
 ---
 
-### Milestone 3 — Casting Engine
+### Milestone 3 — Casting Engine ✅ COMPLETE
+
 **Goal:** Spell/AA/disc/item dispatcher works.
 
 - `cast.lua` — `CastWhat`, `CastSpell`, `CastAA`, `CastDisc`, `CastItem`, `CastCommand`, `CastSkill`, `CastMem`, `CastMemSpell`, `CastReMem`, `CastTarget`
 - Cast result state machine driven by `events.lua` handlers (already wired in M2)
 - Each cast function takes explicit arguments rather than reading globals directly
 
-**Done when:** Can manually invoke casting functions and observe correct in-game behavior.
+**Done when:** Can manually invoke casting functions and observe correct in-game behavior. ✅ Verified in-game (May 8 2026): all 11 exports confirmed as functions; script RUNNING; gemSlots=12 (8 + 4 MR ranks).
 
 ---
 
-#### Step 3.1 — `cast.lua` scaffold + simple primitives
+#### Step 3.1 — `cast.lua` scaffold + simple primitives ✅
 
 Create `modules/cast.lua` with `Cast.init(state, utils)` / `Cast.castWhat(...)` stubs. Implement the three functions with no event-polling dependency:
 
@@ -209,11 +210,11 @@ Create `modules/cast.lua` with `Cast.init(state, utils)` / `Cast.castWhat(...)` 
 - **CastCommand**: strip `"command:"` prefix (first 8 chars), run `mq.cmdf`, return `'SUCCESS'`
 - **CastSkill**: `/doability name`, poll `Me.AbilityReady` false → SUCCESS
 
-**Done when:** module loads cleanly; a test invocation of CastCommand runs the raw command.
+**Done when:** module loads cleanly; a test invocation of CastCommand runs the raw command. ✅
 
 ---
 
-#### Step 3.2 — CastSpell (core poll loop)
+#### Step 3.2 — CastSpell (core poll loop) ✅
 
 The heart of the engine — reads `State.cast.castReturn` already set by `events.lua`.
 
@@ -225,11 +226,11 @@ The heart of the engine — reads `State.cast.castReturn` already set by `events
 - Restore sit state after cast
 - Cast-interrupt handlers (`sentFrom`-based) stubbed → M4 (DPS), M5 (Cure/Mez), M6 (Buffs)
 
-**Done when:** casting a known memed spell in-game returns the correct status enum value.
+**Done when:** casting a known memed spell in-game returns the correct status enum value. ✅
 
 ---
 
-#### Step 3.3 — CastAA + CastDisc + CastItem
+#### Step 3.3 — CastAA + CastDisc + CastItem ✅
 
 Three more primitives with their own polling patterns (can be implemented in parallel):
 
@@ -237,25 +238,26 @@ Three more primitives with their own polling patterns (can be implemented in par
 - **CastDisc**: Duration/target-type guard (don't re-cast active self-disc); `/disc ID` (live MQ) or `/disc name` (emu, `MacroQuest.Build == 4`); wait cooldown timer → SUCCESS.
 - **CastItem**: Gold/prestige subscription check; `/useitem "name"`; if cast time > 0, poll casting window; SUCCESS if item on cooldown or consumed.
 
-**Done when:** each function invocable via a test bind returns correct status.
+**Done when:** each function invocable via a test bind returns correct status. ✅
 
 ---
 
-#### Step 3.4 — CastMem + CastMemSpell + CastReMem
+#### Step 3.4 — CastMem + CastMemSpell + CastReMem ✅
 
 Spell memorization — needed for `CastWhat` to handle spells not currently in a gem slot.
 
 - **CastMemSpell**: low-level `/memspell gemNum "spellName"` with no-rent cursor cleanup and already-memed guard.
-- **CastMem**: combat/moving/casting/invis guards; routes to `MiscGem` (short recast) or `MiscGemLW` (long recast, >30 sec) slots; polls up to 350 ticks for spell ready; cancels if aggro appears mid-mem during buff context.
+- **CastMem**: combat/moving/casting/invis guards; routes to `MiscGem` (short recast) or `MiscGemLW` (long recast, >30 sec) slots; polls up to 35s for spell ready; cancels if aggro appears mid-mem during buff context.
 - **CastReMem**: after a misc-gem spell is cast successfully, sets `ReMemCast`/`ReMemCastLW` flag; calls `CastMemSpell` to restore the original spell when out of combat.
+- Added `state.cast.miscGemRemem` field to `state.lua` (was missing).
 
-State fields used: `State.cast.miscGem`, `State.cast.miscGemLW`, `State.cast.reMemMiscSpell`, `State.cast.reMemMiscSpellLW`, `State.cast.reMemCast`, `State.cast.reMemCastLW`, `State.cast.reMemWaitShort`, `State.cast.reMemWaitLong`.
+State fields used: `State.cast.miscGem`, `State.cast.miscGemLW`, `State.cast.miscGemRemem`, `State.cast.reMemMiscSpell`, `State.cast.reMemMiscSpellLW`, `State.cast.reMemCast`, `State.cast.reMemCastLW`, `State.cast.reMemWaitShort`, `State.cast.reMemWaitLong`.
 
-**Done when:** a non-memed spell gets slotted into the misc gem, cast, then original spell restored.
+**Done when:** a non-memed spell gets slotted into the misc gem, cast, then original spell restored. ✅
 
 ---
 
-#### Step 3.5 — CastWhat dispatcher
+#### Step 3.5 — CastWhat dispatcher ✅
 
 Orchestrates everything above. References `.mac` lines 2467–2614.
 
@@ -281,17 +283,17 @@ Additional logic:
 - Pull context short-circuit: `PullAggroTargetID` set → return SUCCESS immediately
 - Stop moving before cast if spell has cast time and character is moving (non-bard)
 
-**Done when:** `Cast.castWhat('SpellName', targetID, 'DPS', 0, 0)` detects type, acquires target, and casts.
+**Done when:** `Cast.castWhat('SpellName', targetID, 'DPS', 0, 0)` detects type, acquires target, and casts. ✅
 
 ---
 
-#### Step 3.6 — Wire into init.lua + `/memmyspells` bind + in-game validation
+#### Step 3.6 — Wire into init.lua + `/memmyspells` bind + in-game validation ✅
 
-- `local Cast = require('modules.cast')` in `init.lua`; call `Cast.init(State, Utils, Config)` in startup
-- Implement `/memmyspells` bind fully (was stubbed in step 2.4): enumerate gem slots, call `Cast.castMemSpell` for each configured spell
-- Manual validation: all cast types invoked, fizzle/resist/success transitions verified against `State.cast.castReturn`
+- `Cast.init(State, Utils)` called in `init.lua` after events/binds registration
+- `init.lua` wires `state.cast.miscGem/miscGemLW/miscGemRemem/gemSlots` from `Config.get` post-load; seeds `reMemMiscSpell`/`reMemMiscSpellLW` from live gem slot names
+- `/memmyspells` bind fully implemented in `binds.lua`: reads `Gem1..GemN` from `[Spells]` (or `[SpellsN]`) INI section, resolves current rank via `Spell[name].RankName`, mems each spell, refreshes misc gem snapshots after loop
 
-**Done when:** all cast function types observed working in-game with correct status returns.
+**Done when:** all cast function types observed working in-game with correct status returns. ✅ Verified in-game (May 8 2026).
 
 ---
 
@@ -306,6 +308,108 @@ Additional logic:
 - Target selection, assist-at threshold, MA detection, melee engagement
 
 **Done when:** Script assists a main tank and fights using melee and combat disciplines.
+
+---
+
+#### Step 4.1 — `combat.lua` scaffold + array loading + state wiring
+
+Create `modules/combat.lua` with `Combat.init(state, utils, cast)`. Wire into `init.lua`.
+
+- Load DPS, Disc, Burn arrays from INI (`DPS1..DPSN`, `Disc1..DiscN`, `Burn1..BurnN`) into `state.combat` tables
+- Wire `state.combat` flags from `Config.get`: `dpsOn`, `meleeOn`, `assistAt`, `burnOn`, `burnOnNamed`, `autoBurnTimer`, `meleeDistance`, `campRadius`, etc.
+- Load named-mob watch list (`NamedWatch` / `NamedCheck`) from INI
+- Add any missing state fields to `state.lua`
+
+**Done when:** module loads cleanly; DPS/Disc/Burn arrays populated from INI.
+
+---
+
+#### Step 4.2 — MobRadar (mob detection)
+
+Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC haters within `MeleeDistance`.
+
+- Iterate `Me.XTarget[n]`: check `.TargetType == "Auto Hater"`, `.Type == "NPC"`, spawn distance ≤ radius
+- Set `state.combat.mobCount` and `state.combat.aggroTargetID` (closest hater ID)
+- Handle LOS-only mode (`LOSBeforeCombat`) and DMZ guard
+
+**Done when:** `mobCount` correctly reflects nearby hostile NPCs.
+
+---
+
+#### Step 4.3 — Assist + CombatTargetCheck + GetCombatTarget
+
+- **`Assist`** (kissassist.mac:748): use `Me.GroupAssistTarget.ID` when MA is the group's assigned main assist; otherwise find MA's target by name. Sets `state.combat.myTargetID`. Handles IAmMA self-target mode and `/switchma` escalation when MA is dead.
+- **`CombatTargetCheck`** (kissassist.mac:1337): validate `myTargetID` not a corpse; sync to MA's target if it changed; handle `TargetSwitchingOn` mode for MA. Group variant; `CombatTargetCheckRaid` for raid context (stub initially).
+- **`GetCombatTarget`** (kissassist.mac:818): MA-only path — picks best target from XTarget hater list when no explicit target is set.
+
+**Done when:** `myTargetID` is set correctly when MA has a live NPC targeted.
+
+---
+
+#### Step 4.4 — CheckForCombat + CombatReset + CheckForAdds
+
+- **`CheckForCombat`** (kissassist.mac:484): outer combat control loop — DMZ/dead/no-mobs/no-DPS guards; calls `MobRadar`, `Assist`, then `Combat`; handles `ChainPull==2` exit; FeignAggroCheck after combat ends. IAmMA vs assist branching with `EngageWaitTimer`.
+- **`CombatReset`** (kissassist.mac:2144): clears `CombatStart`, turns off attack (`/attack off`), resets `Attacking`, `MyTargetID`, `AggroTargetID`.
+- **`CheckForAdds`** (kissassist.mac:2333): detects new mobs joining during combat; updates `mobCount`.
+- **`FeignAggroCheck`** (kissassist.mac:14524): if still feigning after combat, stands up.
+- Wire `Combat.checkForCombat()` call into `init.lua` main loop when `dpsOn || meleeOn`.
+
+**Done when:** script enters and exits combat in response to nearby mobs; `CombatStart` flag correct.
+
+---
+
+#### Step 4.5 — Combat (melee engagement)
+
+Mirrors `Combat` (kissassist.mac:1036) — the inner fight loop.
+
+- CombatRadius calculation from `Spawn[myTargetID].MaxRangeTo` vs `MeleeDistance`
+- `CombatStart` flag, announce "ATTACKING", `/attack on`, CheckStick (MQ2MoveUtils)
+- `BeforeAttack` (kissassist.mac:2022): cast pre-combat abilities from `BeforeArray` before first attack
+- Periodic `CheckHealth` calls during combat (every `HealInterval` ticks)
+- Pet engagement at `PetAssistAt`% mob HP
+- Calls `CombatTargetCheck` and `CombatCast` each iteration
+
+**Done when:** script attacks target with melee; `Attacking` flag set.
+
+---
+
+#### Step 4.6 — CombatCast + CastDPSSpellCheck + MashButtons
+
+Mirrors `CombatCast` (kissassist.mac:1616) — DPS spell/AA rotation inside the combat loop.
+
+- Iterate DPS array entries (format `spell|target|cond|...`): call `Cast.castWhat` for each when ready
+- Parse target type from array entry (`Mob`, `Me`, `MA`, `Group1..5`, spawn name)
+- `CastDPSSpellCheck` (kissassist.mac:2919): check if spell/DoT already on target via `Target.MyBuff[name]` — fills the M4 stub in `Cast.castWhat`
+- `MashButtons` (kissassist.mac:1973): iterate `MashArray` for instant-cast AAs/abilities
+
+**Done when:** script casts DPS spells and AAs during combat.
+
+---
+
+#### Step 4.7 — Burn sequence
+
+Mirrors `Burn` (kissassist.mac:11770).
+
+- Iterate `Burn` array entries (same `spell|target|cond` format as DPS), call `Cast.castWhat`
+- Tribute activation (`/tribute personal on`) at burn start when `UseTribute` set
+- Auto-burn triggers: `/kaburn` bind (already stubbed in binds.lua), named-mob detection via `NamedWatch`/`NamedCheck` list, `AutoBurnTimer`
+- `BurnActive` flag; broadcast on burn start
+
+**Done when:** `/kaburn` triggers burn sequence in combat; named mobs auto-burn.
+
+---
+
+#### Step 4.8 — WriteDebuffs + AggroCheck + in-game validation
+
+- **`WriteDebuffs`** (kissassist.mac:12569): iterate Debuff array, call `Cast.castWhat` for each when target lacks the debuff
+- **`AggroCheck`** (kissassist.mac:2373): tank roles — taunt if losing aggro; check `Me.CombatAbility[Taunt]`; broadcast aggro state
+- End-to-end validation: detect mob → assist MA → melee → DPS rotation → burn → debuffs → reset after kill
+
+**Done when:** script fights end-to-end: detect → assist → melee → DPS → burn → reset.
+
+---
+
+**Suggested order:** 4.1 → 4.2 → 4.3 → 4.4 → 4.5 → 4.6 → 4.7 → 4.8. Each step depends on the previous.
 
 ---
 

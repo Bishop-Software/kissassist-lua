@@ -4,6 +4,7 @@ local Utils  = require('modules.utils')
 local Config = require('modules.config')
 local Events = require('modules.events')
 local Binds  = require('modules.binds')
+local Cast   = require('modules.cast')
 
 local VERSION = '1.0.0'
 
@@ -31,6 +32,19 @@ State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
 
+-- Wire cast gem settings from INI into State
+State.cast.miscGem      = tonumber(Config.get('SpellS', 'MiscGem',      '0')) or 0
+State.cast.miscGemLW    = tonumber(Config.get('SpellS', 'MiscGemLW',    '0')) or 0
+State.cast.miscGemRemem = tonumber(Config.get('SpellS', 'MiscGemRemem', '0')) or 0
+State.cast.gemSlots     = 8 + (mq.TLO.Me.AltAbility('Mnemonic Retention').Rank() or 0)
+-- Snapshot the spell currently occupying each misc gem slot (restored by CastReMem)
+if State.cast.miscGem > 0 then
+    State.cast.reMemMiscSpell = mq.TLO.Me.Gem(State.cast.miscGem).Name() or ''
+end
+if State.cast.miscGemLW > 0 then
+    State.cast.reMemMiscSpellLW = mq.TLO.Me.Gem(State.cast.miscGemLW).Name() or ''
+end
+
 if State.session.mainAssist ~= '' then
     printf('\awMain Assist: \at%s \awAssist At: \at%d%%', State.session.mainAssist, State.session.assistAt)
 end
@@ -41,6 +55,7 @@ Config.checkPlugins()
 -- Register all game text events and in-game command binds
 Events.register(State, Utils)
 Binds.register(State, Utils)
+Cast.init(State, Utils)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
