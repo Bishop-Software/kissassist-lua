@@ -227,9 +227,28 @@ local function validateTarget(spawnID)
         end
     end
 
+    -- Pull-specific checks: only active while pull module is pulling (Step 7.8).
+    if _state.pull.pulling then
+        local mobY = sp and sp.Y() or 0
+        local mobX = sp and sp.X() or 0
+        -- Reject if any non-group PC is within 30 units of the mob.
+        if (mq.TLO.SpawnCount('pc radius 30 loc ' .. mobY .. ',' .. mobX .. ' nogroup') or 0) > 0 then
+            return false
+        end
+        -- Reject if mob level is outside configured pull level range.
+        local mobLevel = (sp and sp.Level()) or 0
+        local lvMin = _state.pull.min or 0
+        local lvMax = _state.pull.max or 0
+        if lvMin > 0 and mobLevel < lvMin then return false end
+        if lvMax > 0 and mobLevel > lvMax then return false end
+    end
+
     _state.combat.validTarget = true
     return true
 end
+
+-- Expose validateTarget for pull.lua (Step 7.8).
+Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.

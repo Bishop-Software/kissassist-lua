@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Pull = {}
-local _state, _utils, _cast, _movement
+local _state, _utils, _cast, _movement, _combat
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -58,11 +58,12 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Pull.init(state, utils, cast, movement)
+function Pull.init(state, utils, cast, movement, combat)
     _state    = state
     _utils    = utils
     _cast     = cast
     _movement = movement
+    _combat   = combat
 
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
@@ -557,9 +558,462 @@ function Pull.findMobToPull(readyFlag, a, b)
     return pullMob > 0 and 1 or 0
 end
 
--- Step 7.8: execute the pull against state.pull.mob.
+-- ---------------------------------------------------------------------------
+-- Step 7.8 — local helpers for pull execution
+-- ---------------------------------------------------------------------------
+
+local function stopMoving()
+    mq.cmd('/squelch /moveto off')
+    mq.cmd('/squelch /nav stop')
+    mq.cmd('/squelch /stick off')
+end
+
+local function pullReset()
+    local s = _state
+    s.pull.pulling        = false
+    s.pull.pulled         = false
+    s.combat.myTargetID   = 0
+    s.combat.myTargetName = '0'
+    stopMoving()
+end
+
+-- Mirrors Sub PullWithMelee (kissassist.mac:10039).
+local function pullWithMelee(mobID)
+    local s    = _state
+    local role = s.session.role
+    mq.cmd('/moveto id ' .. mobID .. ' mdist 15')
+    mq.delay(100)
+    local tries = 0
+    while tries < 30 do
+        mq.doevents()
+        if s.pull.aggroTargetID ~= '' or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
+        if mq.TLO.Target.ID() then
+            mq.cmd('/face fast nolook')
+            mq.cmd('/look 0')
+        end
+        mq.cmd('/squelch /attack on')
+        mq.delay(100)
+        if s.pull.aggroTargetID ~= '' or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
+        tries = tries + 1
+    end
+    -- Puller/pullertank disengage and retreat — let them run back to camp.
+    if role == 'puller' or role == 'pullertank' or
+       role == 'pullerpettank' or role == 'hunterpettank' then
+        mq.cmd('/attack off')
+        mq.cmd('/squelch /stick off')
+        mq.cmd('/squelch /target clear')
+    end
+    s.pull.pulled      = true
+    s.movement.toClose = false
+end
+
+-- Mirrors Sub PullWithRanged RSwitch==1 path (kissassist.mac:10083).
+local function pullWithRanged(mobID)
+    local s = _state
+    if mq.TLO.Me.Combat() then
+        mq.cmd('/attack off')
+        mq.delay(200, function() return not mq.TLO.Me.Combat() end)
+    end
+    mq.cmd('/squelch /stick off')
+    if mq.TLO.Target.ID() then
+        mq.cmd('/face fast nolook')
+        mq.cmd('/look 0')
+    end
+    local tries = 0
+    while tries < 3 do
+        mq.doevents()
+        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        local tID   = mq.TLO.Target.ID()       or 0
+        local tDist = mq.TLO.Target.Distance3D() or 0
+        if tID == mobID and tDist >= 30 and mq.TLO.Target.LineOfSight() then
+            mq.cmd('/range')
+            local waitMs = math.max(100, math.floor(tDist / 50 + 1) * 1000)
+            mq.delay(waitMs, function() return s.pull.aggroTargetID ~= '' end)
+        end
+        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        tries = tries + 1
+    end
+    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+end
+
+-- Mirrors Sub PullWithPet (kissassist.mac:10313).
+local function pullWithPet(mobID)
+    local s = _state
+    if mq.TLO.Target.ID() then mq.cmd('/face fast nolook') end
+    if (mq.TLO.Me.Pet.Stance() or '') ~= 'FOLLOW' then mq.cmd('/pet follow') end
+    printf('\awPulling with PET now!')
+    mq.cmd('/pet attack')
+    local tries = 0
+    while tries < 20 and s.pull.aggroTargetID == '' do
+        mq.doevents()
+        mq.delay(100)
+        local sp = mq.TLO.Spawn('id ' .. mobID)
+        if not sp() or (sp.Type() or '') == 'corpse' then break end
+        tries = tries + 1
+    end
+    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+    mq.cmd('/pet back off')
+end
+
+-- Mirrors Sub PullWithCast (kissassist.mac:10287). Used for nav/los spell/AA/item pulls.
+local function pullWithCast(mobID)
+    local s = _state
+    stopMoving()
+    if mq.TLO.Target.ID() then
+        mq.cmd('/face fast nolook')
+        mq.cmd('/look 0')
+    end
+    local tries = 0
+    while tries < 5 do
+        mq.doevents()
+        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        local sp = mq.TLO.Spawn('id ' .. mobID)
+        if not (sp() and sp.LineOfSight()) then return end
+        if not mq.TLO.Me.Moving() then
+            local result = _cast.castWhat(s.pull.withAlt, mobID, 'Pull', 0, 0)
+            if result == 'CAST_FIZZLE' then
+                tries = tries + 1
+            else
+                if result == 'CAST_SUCCESS' or result == 'CAST_RESISTED'
+                   or s.pull.aggroTargetID ~= '' then
+                    s.pull.pulled = true
+                end
+                mq.delay(100, function() return s.pull.aggroTargetID ~= '' end)
+                break
+            end
+        else
+            mq.delay(100)
+        end
+    end
+    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+end
+
+-- Main pull movement + dispatch loop. Mirrors Sub Pull (kissassist.mac:9589–9969).
+local function executePull(mobID)
+    local s       = _state
+    local moveUse = s.pull.moveUse
+    local withAlt = s.pull.withAlt
+    local pullDist = s.pull.range
+
+    local pullAttempts = 0
+    local stuckCount   = 0
+    local wasInRange   = false
+    local returnStat   = ''
+
+    s.pull.pulled  = false
+    s.pull.tooFar  = false
+    -- Pull attempt deadline (~25 s), extended while actively moving.
+    s.timers.pullTimer = os.clock() + 25
+
+    if not mq.TLO.Me.Mount.ID() and (mq.TLO.Me.Sitting() or mq.TLO.Me.Feigning()) then
+        mq.cmd('/stand')
+        mq.delay(200)
+    end
+
+    s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
+
+    -- Stuck-detection baseline positions.
+    local x1 = math.floor(mq.TLO.Me.X())
+    local y1 = math.floor(mq.TLO.Me.Y())
+    local x2, y2 = 0, 0
+
+    ::outer::
+    do
+        local pullStatusFlag = 1  -- 1=moving 2=in-range 4=abort 5=oor-return
+        returnStat = ''
+
+        mq.doevents()
+
+        -- Aggro already detected via event.
+        if s.pull.aggroTargetID ~= '' then
+            s.pull.pulled         = true
+            s.combat.myTargetID   = tonumber(s.pull.aggroTargetID) or 0
+            s.combat.myTargetName = mq.TLO.Spawn('id ' .. s.pull.aggroTargetID).CleanName() or '?'
+            stopMoving()
+            _utils.debug('pull', 'executePull: early aggro detected')
+            goto done
+        end
+
+        -- Mobs already in camp → abort pull.
+        local meCampDist = dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), s.movement.campY, s.movement.campX)
+        local xSlot2ID   = mq.TLO.Me.XTarget(s.combat.xTSlot2).ID() or 0
+        if ((s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) or
+            (xSlot2ID > 0 and s.pull.chainPull > 0)) and
+           meCampDist < s.movement.campRadius then
+            printf('\awLooks like mobs in camp, aborting pull.')
+            pullReset()
+            goto done
+        end
+
+        local sp = mq.TLO.Spawn('id ' .. mobID)
+
+        -- Evaluate pull status flag.
+        if sp() then
+            local mobCamp3D = math.sqrt(
+                (sp.Y()-s.movement.campY)^2 + (sp.X()-s.movement.campX)^2 + (sp.Z()-s.movement.campZ)^2)
+            local meCamp3D  = math.sqrt(
+                (mq.TLO.Me.Y()-s.movement.campY)^2 +
+                (mq.TLO.Me.X()-s.movement.campX)^2 +
+                (mq.TLO.Me.Z()-s.movement.campZ)^2)
+            if mobCamp3D > (s.pull.maxRadius + s.pull.range) then
+                pullStatusFlag = 4
+            elseif os.clock() > s.timers.pullTimer or
+                   (pullAttempts >= 7 and not sp.LineOfSight()) then
+                pullStatusFlag = 4
+            elseif meCamp3D >= s.pull.maxRadius * 0.95 then
+                pullStatusFlag = 5
+            end
+        else
+            pullStatusFlag = 4
+        end
+        if pullStatusFlag ~= 1 then returnStat = 'btcr' end
+
+        -- Move toward mob while status is normal and out of pull range.
+        if pullStatusFlag == 1 and sp() then
+            local myDist3D = sp.Distance3D() or 999
+            local hasLOS   = sp.LineOfSight()
+
+            if myDist3D > pullDist or not hasLOS then
+                -- Extend timer while actively navigating.
+                if moveUse == 'nav' then
+                    if mq.TLO.Navigation.PathExists('id ' .. mobID)() then
+                        mq.cmd('/nav id ' .. mobID)
+                    end
+                    if mq.TLO.Navigation.Active() then
+                        s.timers.pullTimer = s.timers.pullTimer + 0.5
+                    end
+                    mq.delay(100)
+                elseif moveUse == 'los' then
+                    if hasLOS then
+                        local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''
+                        mq.cmd('/moveto id ' .. mobID .. ' mdist ' .. math.floor(pullDist) .. uwSuffix)
+                        x2 = math.floor(mq.TLO.Me.X())
+                        y2 = math.floor(mq.TLO.Me.Y())
+                    elseif x2 ~= 0 then
+                        -- Lost LOS: abort if we drifted too far or timed out.
+                        if dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), y2, x2) > 200
+                           or os.clock() > s.timers.pullTimer then
+                            mq.cmd('/squelch /moveto off')
+                            returnStat     = 'btcr'
+                            pullStatusFlag = 4
+                        end
+                    end
+                    if mq.TLO.Me.Moving() or mq.TLO.MoveTo.Moving() then
+                        s.timers.pullTimer = s.timers.pullTimer + 0.5
+                    end
+                    mq.delay(100)
+                end
+
+                -- Stuck detection (mac:9807–9825).
+                local cx = math.floor(mq.TLO.Me.X())
+                local cy = math.floor(mq.TLO.Me.Y())
+                if cx == x1 and cy == y1 then
+                    stuckCount = stuckCount + 1
+                    if stuckCount >= 2 and not mq.TLO.Me.Hovering() then
+                        _movement.stuck('pull')
+                    end
+                    if stuckCount >= 7 and s.pull.aggroTargetID == '' then
+                        printf('\awI am stuck, aborting pull.')
+                        stopMoving()
+                        returnStat     = 'btcr'
+                        pullStatusFlag = 4
+                    end
+                else
+                    stuckCount = 0
+                end
+                x1, y1 = cx, cy
+
+                pullAttempts = pullAttempts + 1
+                -- Creep pullDist smaller on repeated failures (mac:9791–9800).
+                myDist3D = sp.Distance3D() or 999
+                if myDist3D <= pullDist and not sp.LineOfSight() and withAlt ~= 'Pet' then
+                    if pullAttempts >= 7 then pullDist = pullDist * 0.6 end
+                end
+                if pullAttempts >= 3 and (sp.Speed() or 0) > 25 and wasInRange and myDist3D > pullDist then
+                    pullDist   = pullDist * 0.6
+                    wasInRange = false
+                end
+            elseif myDist3D <= pullDist and hasLOS then
+                pullStatusFlag = 2
+            end
+        end
+
+        if s.pull.pulled or s.pull.aggroTargetID ~= '' then goto done end
+
+        -- BTC: if abort-level, stop; if no LOS, stop.
+        if returnStat == 'btcr' then
+            if pullStatusFlag == 4 then goto done end
+            if withAlt ~= 'Pet' then
+                if not (sp() and sp.LineOfSight()) then goto done end
+            else
+                if not sp() or (sp.Distance3D() or 999) > pullDist then goto done end
+            end
+            if pullStatusFlag ~= 5 then returnStat = '' end
+        end
+
+        -- Still moving toward mob → loop.
+        if pullStatusFlag == 1 then goto outer end
+
+        -- In pull range: stop, validate, dispatch.
+        if sp() then
+            local myDist3D = sp.Distance3D() or 999
+            if myDist3D < s.pull.range or
+               (withAlt == 'Melee' and myDist3D < s.pull.range * 2) then
+                stopMoving()
+                mq.cmd('/target id ' .. mobID)
+                mq.delay(200, function() return (mq.TLO.Target.ID() or 0) == mobID end)
+
+                if not _combat.validateTarget(mobID) then
+                    printf('\awAborting pull! Target no longer valid.')
+                    returnStat = 'btcr'
+                    goto done
+                end
+                wasInRange = true
+                x2 = math.floor(mq.TLO.Me.X())
+                y2 = math.floor(mq.TLO.Me.Y())
+
+                if withAlt == 'Melee' then
+                    pullWithMelee(mobID)
+                elseif withAlt == 'Ranged' and not s.movement.toClose then
+                    pullWithRanged(mobID)
+                elseif withAlt == 'Pet' then
+                    pullWithPet(mobID)
+                else
+                    -- nav/los/spell/AA/item cast pull.
+                    pullWithCast(mobID)
+                end
+                goto done
+            end
+        end
+
+        -- los/nav: loop if not yet pulled.
+        if (moveUse == 'los' or moveUse == 'nav') and not s.pull.pulled then
+            goto outer
+        end
+    end
+
+    ::done::
+    -- Post-pull cleanup (mac:9924–9969).
+    mq.cmd('/moveto dist 10')
+    if not s.pull.pulled and s.pull.aggroTargetID ~= '' then
+        s.pull.pulled = true
+        returnStat    = ''
+    end
+    s.pull.pulling = false
+
+    if returnStat == 'btcr' then
+        if not s.pull.pullOnReturn then
+            if s.movement.returnToCamp then
+                _movement.doWeMove(1, 'pullcheck')
+            end
+        end
+        return 'oor'
+    end
+
+    if s.movement.returnToCamp then
+        _movement.doWeMove(1, 'pull')
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Step 7.8 — Pull.pullCheck
+-- ---------------------------------------------------------------------------
+
+-- Outer pull coordinator. Mirrors Sub PullCheck (kissassist.mac:9308–9416).
+-- Guards, target acquisition, ValidateTarget, announce, then executePull.
 function Pull.pullCheck()
-    _utils.debug('pull', 'pullCheck stub — Step 7.8')
+    local s = _state
+
+    -- ChainPull 2 = "just-finished"; reset to 1 = active for next mob.
+    if s.pull.chainPull == 2 then s.pull.chainPull = 1 end
+    if s.pull.pullOnReturn and s.movement.checkOnReturn then
+        s.movement.checkOnReturn = false
+    end
+
+    -- Guards (mac:9313).
+    if s.pull.hold   then return end
+    if s.dps.paused  then return end
+    if (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 then return end
+    if (mq.TLO.Me.Buff('Revival Sickness').ID()       or 0) > 0 then return end
+    if s.movement.campZone ~= mq.TLO.Zone.ID() then return end
+    if mq.TLO.Me.Invis() then return end
+
+    local pullMob = s.pull.mob
+
+    -- No mob: increment fail counter; hunter returns to camp when exhausted.
+    if pullMob == 0 then
+        s.cast.failCounter = s.cast.failCounter + 1
+        _utils.debug('pull', 'pullCheck: no valid target (failCounter=%d)', s.cast.failCounter)
+        if s.cast.failCounter >= s.cast.failMax then
+            s.cast.failCounter = 0
+            local role     = s.session.role
+            local isHunter = (role == 'hunter' or role == 'hunterpettank')
+            if isHunter then
+                local dCamp = dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), s.movement.campY, s.movement.campX)
+                if dCamp > 15 then
+                    printf('\awNo mobs within %d. %s', s.pull.maxRadius,
+                        s.movement.stayPut and 'Waiting here for respawn.' or 'Returning to camp.')
+                    if not s.movement.stayPut then
+                        _movement.doWeMove(1, 'pullcheck')
+                    end
+                end
+            end
+            -- Simple inline PullDelay (mac:9418–9439; respawn wait loop deferred to M7 stretch).
+            if s.pull.pullWait > 0 and s.pull.aggroTargetID == '' then
+                printf('\awPULLING-> Waiting %d seconds for mobs to respawn.', s.pull.pullWait)
+                mq.delay(s.pull.pullWait * 1000)
+            end
+        end
+        return
+    end
+
+    local sp = mq.TLO.Spawn('id ' .. pullMob)
+    if not sp() then return end
+
+    -- Target mob for los/nav modes so buffs-populated check can run (mac:9314–9317).
+    local moveUse = s.pull.moveUse
+    if moveUse == 'los' or moveUse == 'nav' then
+        if (sp.Distance3D() or 999) <= 360 or sp.LineOfSight() then
+            mq.cmd('/target id ' .. pullMob)
+            mq.delay(200, function() return (mq.TLO.Target.ID() or 0) == pullMob end)
+        end
+    end
+
+    -- Advpath guard: deferred to M7 stretch (mac:9321–9333).
+    if moveUse == 'advpath' then
+        _utils.debug('pull', 'pullCheck: advpath mode deferred (M7 stretch)')
+        return
+    end
+
+    s.pull.pulling = true
+
+    -- ValidateTarget (mac:9335–9342).
+    if not _combat.validateTarget(pullMob) then
+        mq.cmd('/squelch /target clear')
+        s.pull.pulling = false
+        return
+    end
+    -- Reject mob too far from camp for los/nav modes.
+    if (mq.TLO.Target.ID() or 0) == pullMob and (moveUse == 'los' or moveUse == 'nav') then
+        local mobCampDist = dist2D(sp.Y(), sp.X(), s.movement.campY, s.movement.campX)
+        if mobCampDist > s.pull.maxRadius then
+            mq.cmd('/squelch /target clear')
+            s.pull.pulling = false
+            return
+        end
+    end
+
+    -- Announce pull (mac:9343–9350; /bc cross-char comms deferred to M9).
+    local mobName = sp.CleanName() or '?'
+    local mobFeet = math.floor(dist2D(sp.Y(), sp.X(), s.movement.campY, s.movement.campX))
+    printf('\awPULLING-> \at%s\aw <- ID:%d at %d feet.', mobName, pullMob, mobFeet)
+
+    s.combat.myTargetID   = pullMob
+    s.combat.myTargetName = mobName
+
+    executePull(pullMob)
+
+    _utils.debug('pull', 'pullCheck: leave mob=%d', pullMob)
 end
 
 return Pull

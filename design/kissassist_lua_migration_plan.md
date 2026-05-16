@@ -698,7 +698,8 @@ Final wiring pass to make the full buff system live (mirrors mac:398–407).
 
 ---
 
-### Milestone 7 — Pulling & Movement
+### Milestone 7 ✅ — Pulling & Movement
+
 **Goal:** Puller roles work; all characters return to camp.
 
 - `pull.lua` — `FindMobToPull`, `PullValidate`, `PullCheck` (melee/ranged/spell/pet/nav)
@@ -708,7 +709,7 @@ Final wiring pass to make the full buff system live (mirrors mac:398–407).
 
 ---
 
-#### Step 7.1 — `movement.lua` scaffold + INI wiring
+#### Step 7.1 ✅ — `movement.lua` scaffold + INI wiring
 
 Create `modules/movement.lua` with `Movement.init(state, utils)`. Load all movement config from INI into state. Wire into `init.lua`.
 
@@ -718,11 +719,18 @@ Create `modules/movement.lua` with `Movement.init(state, utils)`. Load all movem
 
 Audit `state.movement` for any missing fields and add them. Module exports stubs for Steps 7.2–7.4: `doWeMove`, `doWeChase`, `stuck`, `zAxisCheck`, `checkStick`. Wire `Movement.init(State, Utils)` into `init.lua` (after `Buffs.init`); pass `Movement` into `Combat.init` as a 5th arg so `combat.lua` can call `checkStick`.
 
-**Done when:** module loads cleanly; `state.movement.campRadius`, `state.movement.returnToCamp`, `state.movement.pullMoveUse`, etc. populated from INI.
+**Done when:** module loads cleanly; `state.movement.campRadius`, `state.movement.returnToCamp`, `state.movement.pullMoveUse`, etc. populated from INI. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `state.lua`: added `faceMobOn`, `scatterOn`, `scatterDistance` to `state.movement`; `campRadiusExceed` added.
+- `modules/movement.lua` created: `Movement.init(state, utils)` loads all `[General]` and `[Pull]` movement INI fields; local helpers `dist2D`, `isPullerRole`, `isPullerOrHunterRole`; stubs for `doWeMove`, `doWeChase`, `stuck`, `zAxisCheck`, `checkStick`.
+- `combat.lua`: `Combat.init` updated to accept `Movement` as 5th arg; `_movement` upvalue stored; duplicate `campRadius`/`campRadiusExceed` INI loading removed.
+- `init.lua`: `Movement` module required; `Movement.init(State, Utils)` wired; `Combat.init` call updated to pass `Movement`.
 
 ---
 
-#### Step 7.2 — `Movement.doWeMove` (camp return, all nav modes)
+#### Step 7.2 ✅ — `Movement.doWeMove` (camp return, all nav modes)
 
 Port `DoWeMove` (kissassist.mac:3342–3663, 321 lines). Read the full source before implementing.
 
@@ -737,11 +745,15 @@ Port `DoWeMove` (kissassist.mac:3342–3663, 321 lines). Read the full source be
 
 **Additional behaviors**: `locDelayCheckUW` (underwater delay: `mq.delay(250)` before loc checks when `Me.FeetWet`); walk/run toggle (`/squelch /walk` within `stickDist + 5` of camp, `/squelch /run` otherwise); `checkOnReturn` flag set on arrival (triggers a `pullCheck` pass from pull module); heal-while-moving stub comment (deferred M9).
 
-**Done when:** character navigates back to camp X/Y/Z when `ReturnToCamp=1` and outside `CampRadius` using all three nav modes.
+**Done when:** character navigates back to camp X/Y/Z when `ReturnToCamp=1` and outside `CampRadius` using all three nav modes. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `movement.lua` `Movement.doWeMove(forceFlag, sentFrom)`: guards (dontMoveMe, chaseAssist, iAmDead/hovering, justZoned, invis+aggro, stayPut unless forced, zone mismatch, combat+aggro); camp-radius check with `campRadiusExceed` leash; three nav modes: advpath (waypoint array walk with stuck recovery), nav (`/nav locyxz` + `Navigation.Active` poll), los (`/moveto loc` + stuck recovery); walk/run toggle within `stickDist+5`; `checkOnReturn` set on arrival; `locDelayCheckUW` underwater delay.
 
 ---
 
-#### Step 7.3 — `Movement.doWeChase` + `stuck` + `zAxisCheck`
+#### Step 7.3 ✅ — `Movement.doWeChase` + `stuck` + `zAxisCheck`
 
 Port three functions from kissassist.mac. Read each source block before implementing.
 
@@ -760,11 +772,17 @@ function Movement.zAxisCheck()
 end
 ```
 
-**Done when:** character chases `whoToChase`; gets unstuck if nav stalls; `zAxisCheck` gates camp-return correctly when character is on a different floor/level.
+**Done when:** character chases `whoToChase`; gets unstuck if nav stalls; `zAxisCheck` gates camp-return correctly when character is on a different floor/level. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `movement.lua` `Movement.doWeChase()`: guards (dontMoveMe, iAmDead, chaseAssist off, whoToChase not in zone, hovering, combat+aggro); scatter offset when `scatterOn`; `/moveto loc` toward target; stuck recovery; `faceMobOn` face call when not in combat.
+- `movement.lua` `Movement.stuck()`: `/keypress back hold` + delay + release; random left/right strafe to break geometry.
+- `movement.lua` `Movement.zAxisCheck()`: press `CMD_MOVE_DOWN` while `Me.Z - campZ >= 3.1` (levi correction); returns `true` if abs Z-gap > `campRadius + 10`.
 
 ---
 
-#### Step 7.4 — `Movement.checkStick` + movement event completions + wire into loops
+#### Step 7.4 ✅ — `Movement.checkStick` + movement event completions + wire into loops
 
 **`Movement.checkStick(flag, useAttack)`** (mac:1879–1973, 94 lines): Read source before implementing.
 
@@ -795,11 +813,18 @@ if State.session.chaseAssist then Movement.doWeChase('mainloop') end
 if _state.session.chaseAssist then _movement.doWeChase('CheckForCombat1') end
 ```
 
-**Done when:** stick engages on combat target; characters return to camp and chase MA; movement events (`CantHit`, `TooFar`, etc.) respond correctly.
+**Done when:** stick engages on combat target; characters return to camp and chase MA; movement events (`CantHit`, `TooFar`, etc.) respond correctly. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `movement.lua` `Movement.checkStick(flag, useAttack)`: MA-reference camp fallback when `chaseAssist`; closes melee gap via nav or `/moveto id`; `/stick id` with `dStickHow` variants (behind/moveback); `/attack on` when `useAttack=1` and not in combat; breaks stick when mob too far from camp.
+- `events.lua`: `CantHit` → `state.movement.cantHit = true` + `/attack off`; `CantSee` → `state.movement.cantSee = true`; `TooClose` → `state.movement.toClose = true` + back keypress; `TooFar` → `state.pull.tooFar = true` + `doWeMove(1, 'tooFar')`.
+- `combat.lua` `fight()`: `_movement.checkStick(0, 1)` replacing deferred stub (mac:1065); `_movement.zAxisCheck()` replacing deferred stub.
+- `init.lua` main loop: `Movement.doWeMove(0, 'mainloop')` and `Movement.doWeChase()` wired into loop (replacing stubs).
 
 ---
 
-#### Step 7.5 — `pull.lua` scaffold + INI wiring + state audit
+#### Step 7.5 ✅ — `pull.lua` scaffold + INI wiring + state audit
 
 Create `modules/pull.lua` with `Pull.init(state, utils, cast, movement)`. Load all pull config from INI. Audit `state.pull`.
 
@@ -809,11 +834,17 @@ Create `modules/pull.lua` with `Pull.init(state, utils, cast, movement)`. Load a
 
 Compare all INI keys against `state.pull` fields and add any missing entries (e.g., `pullArcWidth`, `pullLSide`, `pullRSide`, `pullWait`, `pullLocsOn`, `searchType`). Wire `Pull.init(State, Utils, Cast, Movement)` into `init.lua`.
 
-**Done when:** module loads cleanly; `state.pull.maxRadius`, `state.pull.pullWith`, `state.pull.pullMoveUse` etc. populated from INI.
+**Done when:** module loads cleanly; `state.pull.maxRadius`, `state.pull.pullWith`, `state.pull.pullMoveUse` etc. populated from INI. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `state.lua`: `state.pull` expanded with `maxRadius`, `maxZRange`, `maxWpRange`, `mobsNotAllowed`, `mobsToIgnore`, `mobsToIgnoreByID`, `pullArcWidth`, `pullLocX/Y/Z`, `pullLocsOn`, `pullOnReturn`, `pullWait`, `searchType`; `chainPull` type changed from `false` to `0` (integer 0/1/2).
+- `modules/pull.lua` created: `Pull.init(state, utils, cast, movement)` loads all `[Pull]` and `[PullAdvanced]` INI fields; derives `lSide`/`rSide` from `pullArcWidth` when individual sides not set; stubs for `pullValidate`, `findMobToPull`, `pullCheck`.
+- `init.lua`: `Pull` module required; `Pull.init(State, Utils, Cast, Movement)` wired after `Buffs.init`.
 
 ---
 
-#### Step 7.6 — `Pull.pullValidate` (mob validity gate)
+#### Step 7.6 ✅ — `Pull.pullValidate` (mob validity gate)
 
 Port `PullValidate` (kissassist.mac:9443–9571, 128 lines). Read the full source before implementing.
 
@@ -838,11 +869,16 @@ Port all reject conditions in order:
 
 Local helper: `figureMobAngle(mobID)` (mirrors mac `FigureMobAngle`) — computes heading from mob to camp, compares to `pullLSide`/`pullRSide` window, returns `true` if in arc.
 
-**Done when:** `Pull.pullValidate(spawnID, 1)` correctly rejects mobs outside level range, not LOS, in combat, or in ignore list.
+**Done when:** `Pull.pullValidate(spawnID, 1)` correctly rejects mobs outside level range, not LOS, in combat, or in ignore list. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `pull.lua` local helpers: `dist2D`, `inNameList` (comma/pipe list with `*` substring and `#` exact prefix), `figureMobAngle` (mob→camp heading vs lSide/rSide window, wrapping arc support).
+- `pull.lua` `Pull.pullValidate(mobID, flag)`: all 13 reject conditions in mac order: NPC type gate, name-allowed list, ignore-by-name, ignore-by-ID, `pullLocsOn` proximity (must be near a pull loc), range from camp (2D), nav-path existence (nav mode), Eye of Zomm PC check, LOS (los mode), level range, PCs near mob (30-unit radius), pull arc (`figureMobAngle`), HP% already-in-combat check with server-lag recheck (target + `BuffsPopulated` wait when `flag > 0`), named mob guard (reject unless `flag > 0` and camp free).
 
 ---
 
-#### Step 7.7 — `Pull.findMobToPull` (mob discovery)
+#### Step 7.7 ✅ — `Pull.findMobToPull` (mob discovery)
 
 Port `FindMobToPull` (kissassist.mac:8945–9308, 363 lines) — the most complex function in M7. Read the entire sub before starting.
 
@@ -860,11 +896,16 @@ Port `FindMobToPull` (kissassist.mac:8945–9308, 363 lines) — the most comple
 
 **Chain pull handling** (mac:9072–9075): `readyToPullFlag == false` → subtract mobs within `meleeDistance` from count; if last-pulled mob still outside melee → return `0`.
 
-**Done when:** `Pull.findMobToPull(1, 1, 0)` sets `state.pull.mob` to a valid NPC ID matching pull criteria (level range, LOS, not ignored, not in combat).
+**Done when:** `Pull.findMobToPull(1, 1, 0)` sets `state.pull.mob` to a valid NPC ID matching pull criteria (level range, LOS, not ignored, not in combat). ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `pull.lua` local helpers: `pullQuery` (builds spawn filter string), `findMobLOS` (sequential `NearestSpawn` scan calling `pullValidate`), `findMobNAV` (scan picking mob with shortest `Navigation.PathLength`; heuristic early-out on dist vs current shortest), `findMobsFirst` (iterates `mobsToPullFirst` list; strips `#` prefix for SpawnCount queries).
+- `pull.lua` `Pull.findMobToPull(readyFlag, a, b)`: entry guards (iAmDead, invis, DMZ, zone mismatch, pulling, combatStart, holdCond, rez sickness); chainPull guard (last pulled mob still outside melee → return 0); `aggroTargetID` already set → return 0; advpath deferred (debug + return 0); `findMobsFirst` priority pass; progressive radius outer loop (up to 3 attempts); inner `pIter` loop expanding subdivision until `SpawnCount ≤ modCheck`; dispatches to `findMobLOS` or `findMobNAV` based on `moveUse`; sets `state.pull.mob` and `state.pull.lastMobPullID`; returns 1 (found) or 0 (none).
 
 ---
 
-#### Step 7.8 — `Pull.pullCheck` + bind completions + `validateTarget` pull checks + main loop wiring
+#### Step 7.8 ✅ — `Pull.pullCheck` + bind completions + `validateTarget` pull checks + main loop wiring
 
 Port `PullCheck` (kissassist.mac:9308–9443, 135 lines). Read source before implementing.
 
@@ -916,7 +957,15 @@ end
 
 Wire `Pull` into `combat.lua` `checkForCombat()` for the ChainPull==2 exit path (mac:629): when `chainPull==2` and no mobs near camp, call `Pull.findMobToPull()`.
 
-**Done when:** puller role finds a valid mob, pulls it to camp, group engages within camp radius; all 5 bind stubs respond correctly; `validateTarget` pull checks active.
+**Done when:** puller role finds a valid mob, pulls it to camp, group engages within camp radius; all 5 bind stubs respond correctly; `validateTarget` pull checks active. ✅
+
+✅ **Implemented (2026-05-16):**
+
+- `combat.lua` `validateTarget()`: added pull-specific checks (guarded by `state.pull.pulling`): rejects mob if any non-group PC is within 30 units of the mob; rejects mob level outside `[state.pull.min, state.pull.max]`. Exposed as `Combat.validateTarget = validateTarget`.
+- `pull.lua`: added `_combat` upvalue; `Pull.init()` accepts `Combat` as 5th arg. Local helpers added: `stopMoving`, `pullReset`, `pullWithMelee` (moveto+attack+retreat), `pullWithRanged` (/range loop + aggro wait), `pullWithPet` (pet attack+backoff), `pullWithCast` (castWhat loop for spell/AA/item). `executePull()` (mirrors Sub Pull mac:9589): outer `goto`-based loop handles aggro-already-detected, mobs-in-camp abort, pull-status-flag evaluation (distance/timeout/OOR), nav/los movement with timer extension, stuck detection, PullDist creep on repeated failures, in-range dispatch to pull method, BTC (back-to-camp) reset on abort, `doWeMove` return-to-camp.  `Pull.pullCheck()` (mirrors Sub PullCheck mac:9308): chainPull-2 reset, all guards (hold, DPSPaused, rez sickness, zone, invis), no-mob failcounter/hunter-return/inline pullWait, target acquisition for los/nav, advpath deferred, validateTarget + camp-distance gate, pull announce (printf; /bc deferred to M9), sets myTargetID/myTargetName, calls executePull.
+- `binds.lua`: implemented `/trackmedown` (sets `movement.whoToChase` + `session.chaseAssist`), `/SetPullArc` (sets pullArcWidth, recomputes lSide/rSide, persists), `/setpullranking` (sets ranking, persists), `/addpull` (appends to mobsToPullFirst, persists), `/addignore` (appends to mobsToIgnore, persists).
+- `init.lua`: `Pull.init` wired with `Combat` as 5th arg. `PULLER_ROLES` table declared above main loop. Puller-role block added at end of main loop: `findMobToPull(1,1,0)` → `pullCheck()` → `mob = 0`.
+- Test plan: Section 7.8 added (32 test cases). Known Deferred updated.
 
 ---
 

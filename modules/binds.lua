@@ -184,16 +184,41 @@ local function onChaseMe()
     -- /dgge /chase on Me.CleanName
 end
 
-local function onTrackMeDown(_stickOff, _useNavOnly, _ignoreDist)
-    printf('\ay>> TrackMeDown — M7 (movement.lua)')
+-- Mirrors Bind_TrackMeDown (kissassist.mac). Sets chase target; no arg toggles off.
+local function onTrackMeDown(name, _useNavOnly, _ignoreDist)
+    if not name or name == '' then
+        state.session.chaseAssist  = false
+        state.movement.whoToChase  = ''
+        printf('\ayChase assist disabled.')
+    else
+        state.movement.whoToChase  = name
+        state.session.chaseAssist  = true
+        printf('\ayChasing: \at%s', name)
+    end
 end
 
-local function onSetPullArc(_width, _fdir)
-    printf('\ay>> SetPullArc — M7 (pull.lua)')
+-- Mirrors Bind_SetPullArc (kissassist.mac). Sets arc width; recomputes lSide/rSide.
+local function onSetPullArc(width, _fdir)
+    local w = tonumber(width) or 0
+    state.pull.pullArcWidth = w
+    if w > 0 then
+        local half = w / 2.0
+        state.pull.lSide = -half
+        state.pull.rSide =  half
+    else
+        state.pull.lSide = 0
+        state.pull.rSide = 0
+    end
+    mq.cmdf('/ini "%s" "Pull" "PullArcWidth" "%d"', state.session.iniFileName, w)
+    printf('\ayPull arc set to \at%d\ay (lSide=%.1f rSide=%.1f).', w, state.pull.lSide, state.pull.rSide)
 end
 
-local function onSetPullRanking(_flag, _arg)
-    printf('\ay>> SetPullRanking — M7 (pull.lua)')
+-- Mirrors Bind_SetPullRanking (kissassist.mac). Sets mob ranking preference.
+local function onSetPullRanking(n, _arg)
+    local ranking = tonumber(n) or 0
+    state.pull.ranking = ranking
+    mq.cmdf('/ini "%s" "Pull" "PullRanking" "%d"', state.session.iniFileName, ranking)
+    printf('\ayPull ranking set to \at%d\ay.', ranking)
 end
 
 -- ─── Buffs / group ────────────────────────────────────────────────────────────
@@ -243,13 +268,36 @@ end
 
 -- ─── Pull management ──────────────────────────────────────────────────────────
 
-local function onAddPull(_mtp)
-    printf('\ay>> AddToPull — M7 (pull.lua)')
-    -- Spawn lookup + state.pull.mobsToPullRaw update + INI write in M7/M10
+-- Mirrors Bind_AddToPull (kissassist.mac). Appends name to MobsToPull list; persists to INI.
+local function onAddPull(name)
+    if not name or name == '' then
+        printf('\ay/addpull [mobname]')
+        return
+    end
+    local cur = state.pull.mobsToPullFirst or 'all'
+    if cur == 'all' or cur == 'null' or cur == '' then
+        state.pull.mobsToPullFirst = name
+    else
+        state.pull.mobsToPullFirst = cur .. '|' .. name
+    end
+    mq.cmdf('/ini "%s" "Pull" "MobsToPull" "%s"', state.session.iniFileName, state.pull.mobsToPullFirst)
+    printf('\ayAdded \at%s\ay to pull list.', name)
 end
 
-local function onAddIgnore(_mti, _byID)
-    printf('\ay>> AddToIgnore — M7 (pull.lua)')
+-- Mirrors Bind_AddToIgnore (kissassist.mac). Appends name to MobsToIgnore list; persists to INI.
+local function onAddIgnore(name, _byID)
+    if not name or name == '' then
+        printf('\ay/addignore [mobname]')
+        return
+    end
+    local cur = state.pull.mobsToIgnore or 'null'
+    if cur == 'null' or cur == '' then
+        state.pull.mobsToIgnore = name
+    else
+        state.pull.mobsToIgnore = cur .. '|' .. name
+    end
+    mq.cmdf('/ini "%s" "Pull" "MobsToIgnore" "%s"', state.session.iniFileName, state.pull.mobsToIgnore)
+    printf('\ayAdded \at%s\ay to ignore list.', name)
 end
 
 -- Mirrors Sub Bind_AddMezImmune (kissassist.mac:8226).
