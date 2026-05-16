@@ -112,22 +112,190 @@ end
 ### Milestone 2 — Events & Binds
 **Goal:** All game text reactions and player commands registered.
 
-- `events.lua` — port all 113 `#Event` handlers; each sets flags in `State.*` tables
-- `binds.lua` — port all 31 `#bind` commands (toggles: `/kacampon`, `/kaburn`, etc.)
-- Register clean shutdown via `mq.unevent()` / `mq.unbind()` on exit
+**Done when:** All 113 events registered, all 31 binds respond in-game, `/lua stop` cleans up handlers.
 
-**Done when:** Toggle commands work in-game; game text events flip correct state flags.
+#### Step 2.1 — `events.lua` scaffold + cast result events ✅
+Create `modules/events.lua`, register it in `init.lua`, and port all cast-result events (~50 patterns across 22 named events): `CAST_BEGIN`, `CAST_FIZZLE`, `CAST_INTERRUPTED`, `CAST_RESISTED`, `CAST_TAKEHOLD`, `CAST_IMMUNE`, `CAST_DISTRACTED`, `CAST_STUNNED`, `CAST_NOTARGET`, `CAST_OUTOFRANGE`, `CAST_OUTOFMANA`, `CAST_NOTREADY`, `CAST_RECOVER`, `CAST_NOMOUNT`, `CAST_OUTDOORS`, `CAST_COMPONENTS`, `CAST_STANDING`, `CAST_CANNOTSEE`, `CAST_COLLAPSE`, `CAST_FAILED`, `CAST_FDFAIL`, `CAST_RESISTEDYOU`. Each handler sets `State.cast.castReturn`. `Events.register(state, utils)` / `Events.unregister()` wired into `init.lua`.
+
+Notes: `CAST_OUTDOORS` maps to `CAST_OUTOFMANA` (preserves .mac quirk). `CAST_STUNNED` does not block in the handler — cast engine polls. `CAST_STANDING` uses `State.heal.medding` (not a TLO). `CAST_FDFAIL` guards `Me.Name` match before acting.
+
+**Done when:** Script starts cleanly with events registered; cast result messages in-game set the correct `State.cast.castReturn`. ✅
+
+---
+
+#### Step 2.2 — Combat, movement, and session events ✅
+Port remaining high-frequency gameplay events into `events.lua`:
+- `GotHit` ×13 (12 attack types + near-miss) → `State.combat.gotHitToggle`, `State.timers.sitToMed`
+- `AttackCalled` ×2 → `State.combat.calledTargetID` (guarded: not IAmMA, caller == mainAssist)
+- `CantHit`, `CantSee`, `TooClose`, `TooFar` → `State.movement.*` / `State.pull.tooFar` (stubs; full movement in M7)
+- `MezBroke` → `State.mez.broke` (stub; mez timer reset in M5)
+- `Missing` ×2 → `State.combat.missingComponent`
+- `ImDead` ×3 → `State.session.iAmDead` (duplicate-guarded)
+- `Zoned` ×2 → `State.timers.justZoned`, DMZ, zone name, camp/return logic
+- `Joined` → `State.timers.joinedParty`, `State.buffs.forceBuffs`
+- `LeftGroup`, `Invised` → `State.combat.eventFlag`
+- `Camping` → `State.terminate = true`
+- `TooSteep` → `State.misc.campfireOn = false`
+
+Also: added `campfireOn = false` to `State.misc` in `state.lua` (was missing).
+
+**Done when:** Getting hit, dying, and zoning flip the correct State flags. ✅
+
+---
+
+#### Step 2.3 — Buff, pet, and comms events ✅
+Port remaining events:
+- `GoMOn` ×3, `GoMOff` ×2 → `State.bard.gomActive` (class filter BRD/BER/MNK/ROG/WAR; cast loop in M8)
+- `WornOff`, `GainSomething`, `AskForBuffs` ×2, `KABegCheck` → `State.buffs.*` (full buff queuing in M6)
+- `PetSusStateAdd1`, `PetSusStateAdd2`, `PetSusStateSub`, `PetToysPlease` → `State.pet.*`
+- `YouGotTell` → echo tell (with pet/NPC filter inline)
+- `EQBCIRC`, `FSEQBC`, `GUEQBC` → stubs (EQBC deprecated; DanNet relay in M9)
+- `KTDismount` → `state.misc.mountOn = false` + `/dismount` (inline; blocking KT helpers stubbed for M7)
+- `KTDoorClick` ×2, `KTHail`, `KTInvite`, `KTSay`, `KTTarget` → stubs for M7
+- `#Event Timer Timer1` → omitted (Lua uses `os.clock()` polling; no equivalent event)
+- `TaskUpdate`, `MLogOff` → eventFlag + minimal inline action
+
+**Done when:** All 113 events registered with no errors on startup. ✅
+
+---
+
+#### Step 2.4 — `binds.lua` + shutdown cleanup ✅
+Created `modules/binds.lua` with all 31 binds. `Binds.register/unregister` wired into `init.lua`.
+
+Fully implemented inline:
+- `/debug` — toggles `state.debug.*` flags by category (all/buffs/combat/cast/chainp/heals/mez/move/pet/pull/rk); log/logc arg controls `/mlog on|off`
+- `/burn` — sets `state.combat.burnOn/burnActive/burnCalled/burnID`; rotation in M4
+- `/backoff` — toggles `state.dps.paused` + clears `combatStart`; CombatReset in M4
+- `/makecamphere` — sets campX/Y/Z/Zone + `returnToCamp=true`; broadcast in M9
+- `/aggroinfo` — printf XTarget + group MA info from state/TLOs
+- `/zoneinfo` — printf pull list state
+- `/addfriend` — calls `/posse add/save/load` directly
+
+Stubs (with milestone targets):
+- `/switchnow`, `/switchma`, `/kisscast` → M4 (combat.lua)
+- `/stayhere`, `/chaseme` → M9 (comms.lua)
+- `/trackmedown`, `/addpull`, `/addignore`, `/SetPullArc`, `/setpullranking` → M7 (pull/movement)
+- `/buffgroup`, `/campfire`, `/tbmanager` → M6 (buffs.lua)
+- `/addimmune` → M5 (healing.lua)
+- `/writespells`, `/iniwrite`, `/kisscheck`, `/changevarint` → M10 (config.lua)
+- `/memmyspells` → M3 (cast.lua)
+- `/kasettings` → M11 (ImGui)
+- `/togglevariable`, `/parse`, `/mycmd` → respective domain modules
+
+**Done when:** `/burn`, `/stayhere`, `/makecamphere`, `/debug` etc. toggle correct State flags in-game; `/lua stop` cleans up all handlers. ✅
+
+---
+
+**Suggested order:** 2.1 → 2.2 → 2.3 (sequential, all build on `events.lua`). Step 2.4 can start after 2.1 — binds have no dependency on events.
 
 ---
 
 ### Milestone 3 — Casting Engine
 **Goal:** Spell/AA/disc/item dispatcher works.
 
-- `cast.lua` — `CastWhat`, `CastSpell`, `CastAA`, `CastDisc`, `CastItem`, `CastCommand`
-- MQ2Cast plugin interaction (cast result event → flag → next cast feedback loop)
+- `cast.lua` — `CastWhat`, `CastSpell`, `CastAA`, `CastDisc`, `CastItem`, `CastCommand`, `CastSkill`, `CastMem`, `CastMemSpell`, `CastReMem`, `CastTarget`
+- Cast result state machine driven by `events.lua` handlers (already wired in M2)
 - Each cast function takes explicit arguments rather than reading globals directly
 
 **Done when:** Can manually invoke casting functions and observe correct in-game behavior.
+
+---
+
+#### Step 3.1 — `cast.lua` scaffold + simple primitives
+
+Create `modules/cast.lua` with `Cast.init(state, utils)` / `Cast.castWhat(...)` stubs. Implement the three functions with no event-polling dependency:
+
+- **CastTarget**: `/target clear` + `/target id X` with `mq.delay`
+- **CastCommand**: strip `"command:"` prefix (first 8 chars), run `mq.cmdf`, return `'SUCCESS'`
+- **CastSkill**: `/doability name`, poll `Me.AbilityReady` false → SUCCESS
+
+**Done when:** module loads cleanly; a test invocation of CastCommand runs the raw command.
+
+---
+
+#### Step 3.2 — CastSpell (core poll loop)
+
+The heart of the engine — reads `State.cast.castReturn` already set by `events.lua`.
+
+- Invis guard (except `sentFrom == 'SingleHeal'` or `'GroupHeal'`)
+- Free-target (splash) check: skip if `Target.CanSplashLand` is false
+- Guard: spell must be in a gem (`Me.Gem[spellName]`), else return `CAST_NO_RESULT`
+- `/cast "spellName"` then `mq.delay(100)` poll loop reading `State.cast.castReturn`
+- Retry up to 2× on FIZZLE/INTERRUPT/RESIST if `Spell.RecastTime <= 2 sec`
+- Restore sit state after cast
+- Cast-interrupt handlers (`sentFrom`-based) stubbed → M4 (DPS), M5 (Cure/Mez), M6 (Buffs)
+
+**Done when:** casting a known memed spell in-game returns the correct status enum value.
+
+---
+
+#### Step 3.3 — CastAA + CastDisc + CastItem
+
+Three more primitives with their own polling patterns (can be implemented in parallel):
+
+- **CastAA**: Banestrike race/distance/combat guard; `/alt act ID`; poll `AltAbilityReady == false && Casting.ID == 0` → SUCCESS. Bard twist-pause stubbed → M8.
+- **CastDisc**: Duration/target-type guard (don't re-cast active self-disc); `/disc ID` (live MQ) or `/disc name` (emu, `MacroQuest.Build == 4`); wait cooldown timer → SUCCESS.
+- **CastItem**: Gold/prestige subscription check; `/useitem "name"`; if cast time > 0, poll casting window; SUCCESS if item on cooldown or consumed.
+
+**Done when:** each function invocable via a test bind returns correct status.
+
+---
+
+#### Step 3.4 — CastMem + CastMemSpell + CastReMem
+
+Spell memorization — needed for `CastWhat` to handle spells not currently in a gem slot.
+
+- **CastMemSpell**: low-level `/memspell gemNum "spellName"` with no-rent cursor cleanup and already-memed guard.
+- **CastMem**: combat/moving/casting/invis guards; routes to `MiscGem` (short recast) or `MiscGemLW` (long recast, >30 sec) slots; polls up to 350 ticks for spell ready; cancels if aggro appears mid-mem during buff context.
+- **CastReMem**: after a misc-gem spell is cast successfully, sets `ReMemCast`/`ReMemCastLW` flag; calls `CastMemSpell` to restore the original spell when out of combat.
+
+State fields used: `State.cast.miscGem`, `State.cast.miscGemLW`, `State.cast.reMemMiscSpell`, `State.cast.reMemMiscSpellLW`, `State.cast.reMemCast`, `State.cast.reMemCastLW`, `State.cast.reMemWaitShort`, `State.cast.reMemWaitLong`.
+
+**Done when:** a non-memed spell gets slotted into the misc gem, cast, then original spell restored.
+
+---
+
+#### Step 3.5 — CastWhat dispatcher
+
+Orchestrates everything above. References `.mac` lines 2467–2614.
+
+**ReadyToCast detection** (in priority order, mirrors `.mac` `Select[]` logic):
+
+| Value | Condition | Routes to |
+|---|---|---|
+| 1 | `Me.ItemReady[=name]` + `FindItem` | CastItem |
+| 2 | `Me.AltAbilityReady[name]` (not an item) | CastAA |
+| 3 | `Me.CombatAbilityReady[name]` + endurance check | CastDisc |
+| 4 | `Me.AbilityReady[name]` + `Me.Skill[name]` | CastSkill |
+| 5 | `Me.Gem[name]` + `Me.GemTimer == 0` | CastSpell |
+| 6 | `name:Find["command:"]` | CastCommand |
+| 7 | `Me.Book[name]` but not memed | CastMem → CastSpell |
+
+Additional logic:
+- Already-casting guard (non-bard): return `CAST_CASTING` immediately
+- `CastTarget` when target doesn't match `WhatID` and spell is not self-targeted
+- DPS stacking check stub → `CastDPSSpellCheck` returns `false` (filled in M4)
+- Buff stacking check stub → `CastBuffsSpellCheck` returns `false` (filled in M6)
+- Condition evaluation stub: `CondNumber == 0` always passes (filled in M10)
+- `CastReMem` after cast if `MiscGemRemem` is set
+- Pull context short-circuit: `PullAggroTargetID` set → return SUCCESS immediately
+- Stop moving before cast if spell has cast time and character is moving (non-bard)
+
+**Done when:** `Cast.castWhat('SpellName', targetID, 'DPS', 0, 0)` detects type, acquires target, and casts.
+
+---
+
+#### Step 3.6 — Wire into init.lua + `/memmyspells` bind + in-game validation
+
+- `local Cast = require('modules.cast')` in `init.lua`; call `Cast.init(State, Utils, Config)` in startup
+- Implement `/memmyspells` bind fully (was stubbed in step 2.4): enumerate gem slots, call `Cast.castMemSpell` for each configured spell
+- Manual validation: all cast types invoked, fizzle/resist/success transitions verified against `State.cast.castReturn`
+
+**Done when:** all cast function types observed working in-game with correct status returns.
+
+---
+
+**Suggested order:** 3.1 → 3.2 → 3.3 (CastAA/CastDisc/CastItem in parallel) → 3.4 → 3.5 → 3.6. Each group depends on the previous.
 
 ---
 
