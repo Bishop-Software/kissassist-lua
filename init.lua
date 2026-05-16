@@ -9,6 +9,7 @@ local Combat = require('modules.combat')
 local Heal     = require('modules.healing')
 local Buffs    = require('modules.buffs')
 local Movement = require('modules.movement')
+local Pull     = require('modules.pull')
 
 local VERSION = '1.0.0'
 
@@ -64,6 +65,7 @@ Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement)
 Buffs.init(State, Utils, Cast, Heal)
+Pull.init(State, Utils, Cast, Movement)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
