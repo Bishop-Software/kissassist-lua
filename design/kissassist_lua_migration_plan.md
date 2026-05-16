@@ -608,7 +608,7 @@ Port the entry point, loop guards, and the two simplest target-type branches (ma
 
 ---
 
-#### Step 6.4 — `CheckBuffs`: single-target group iteration + class filters
+#### Step 6.4 ✅ — `CheckBuffs`: single-target group iteration + class filters
 
 Port the single-target path that iterates each group member and all class-filter tags (mac:4523–4638).
 
@@ -625,6 +625,8 @@ Port the single-target path that iterates each group member and all class-filter
 - **No-group fallback** (mac:4614–4637): when no group and no class-filter tags, cast on Me.ID
 
 **Done when:** script buffs each group member individually with single-target spells, respecting per-slot-per-member timers.
+
+**Implemented:** `isSingle` detection added to `Buffs.checkBuffs()` in [modules/buffs.lua](../modules/buffs.lua). Module-level constants `CASTER_CLASSES`, `MELEE_CLASSES`, `CLASS_FILTER_TAGS`, and local helper `classInList()` added. Group loop iterates `j` from `Group.Members()` downto 0; skips dead/out-of-range/timer-active members; applies `|me`, `|MA`, `|!MA`, `|Melee`, `|caster`, `|class`, `|!class` filters (and their Dual variants). Per-cast mana check breaks the j loop; gem timer wait (up to 6s) with aggro bail; `WornOff` drain via `mq.doevents()`; `castWhat(..., 'buffs-nomem')`; `slotTimers[i][j]` set on SUCCESS/TAKEHOLD/HASBUFF using `Spell.MyDuration.TotalSeconds()`; COMPONENTS nulls slot. No-group fallback casts on Me.ID when `CLASS_FILTER_TAGS[p2]` is false. DanNet pet extension deferred to M9. `p5` unused-local hint resolves (consumed by class/!class dispatch).
 
 ---
 

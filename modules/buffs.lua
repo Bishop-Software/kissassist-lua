@@ -10,6 +10,24 @@ local DUAL_TAGS = {
     DualClass=true, ['Dual!Class']=true, DualMgb=true, Dualme=true,
 }
 
+-- Class sets for |caster / |Melee filter tags (mac:4538).
+local CASTER_CLASSES = { CLR=true, DRU=true, SHM=true, BST=true, ENC=true, MAG=true, NEC=true, PAL=true, SHD=true, RNG=true, WIZ=true }
+local MELEE_CLASSES  = { BRD=true, BER=true, BST=true, MNK=true, PAL=true, ROG=true, RNG=true, SHD=true, WAR=true }
+
+-- Tag set that implies single-target filtering; suppresses no-group fallback (mac:4614).
+local CLASS_FILTER_TAGS = {
+    MA=true, ['!MA']=true, Melee=true, caster=true,
+    DualMA=true, DualMelee=true, DualCaster=true,
+    ['class']=true, ['!class']=true, DualClass=true, ['Dual!Class']=true,
+}
+
+local function classInList(shortName, classList)
+    for cls in (classList .. ','):gmatch('([^,]+),') do
+        if cls == shortName then return true end
+    end
+    return false
+end
+
 local BUFFS_FILE  = 'KissAssist_Buffs.ini'
 local PET_ROLES   = { pettank=true, pullerpettank=true, hunterpettank=true }
 
@@ -400,7 +418,127 @@ function Buffs.checkBuffs(forceGroup)
             goto continue
         end
 
-        -- single-target group iteration and special tags: deferred to Steps 6.4 / 6.5
+        -- single-target branch: buff each group member individually (mac:4523-4638)
+        local isSingle = (bookIs0 and spellTT:find('single', 1, true) ~= nil)
+                      or (not bookIs0 and bookSpellTT:find('single', 1, true) ~= nil)
+
+        if isSingle then
+            local groupCount = mq.TLO.Group.Members() or 0
+            if groupCount > 0 then
+                local spellMana = tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0
+
+                for j = groupCount, 0, -1 do
+                    if mq.TLO.Me.Invis() then break end
+
+                    local memberID = mq.TLO.Group.Member(j).ID() or 0
+                    if memberID == 0 then goto jcontinue end
+
+                    local memberDist = mq.TLO.Spawn(memberID).Distance() or 999
+                    if memberDist >= spellRange then goto jcontinue end
+
+                    if (timers_i[j] or 0) > os.clock() then goto jcontinue end
+
+                    -- |me / |Dualme: self only (mac:4535)
+                    if (p2 == 'me' or p2 == 'Dualme') and j > 0 then goto jcontinue end
+
+                    -- Per-cast mana check; break entire j loop if insufficient (mac:4536)
+                    if mq.TLO.Me.CurrentMana() < spellMana then break end
+
+                    -- Class and role filters (mac:4538-4542)
+                    local memberClass = mq.TLO.Group.Member(j).Class.ShortName() or ''
+                    if (p2 == 'caster'  or p2 == 'DualCaster') and not CASTER_CLASSES[memberClass] then goto jcontinue end
+                    if (p2 == 'Melee'   or p2 == 'DualMelee')  and not MELEE_CLASSES[memberClass]  then goto jcontinue end
+                    if (p2 == 'class'   or p2 == 'DualClass')  and not classInList(memberClass, p5) then goto jcontinue end
+                    if (p2 == '!class'  or p2 == 'Dual!Class') and     classInList(memberClass, p5) then goto jcontinue end
+                    if p2 == 'MA' or p2 == 'DualMA' then
+                        local maID = (_state.session.mainAssist ~= '')
+                                 and (mq.TLO.Spawn('PC ' .. _state.session.mainAssist).ID() or 0) or 0
+                        if memberID ~= maID then goto jcontinue end
+                    end
+                    if p2 == '!MA' then
+                        local maID = (_state.session.mainAssist ~= '')
+                                 and (mq.TLO.Spawn('PC ' .. _state.session.mainAssist).ID() or 0) or 0
+                        if memberID == maID then goto jcontinue end
+                    end
+
+                    -- Aggro bail mid-loop (mac:4544)
+                    do
+                        local agID = _state.combat.aggroTargetID
+                        if agID ~= '' and agID ~= '0' then
+                            local agNum = tonumber(agID) or 0
+                            if agNum ~= 0 and (mq.TLO.Spawn(agNum).Distance() or 999) < 200 then return end
+                        end
+                    end
+
+                    -- Gem timer wait: skip if > 6s cooldown; wait up to 6s if memed (mac:4546-4552)
+                    local gemSlot = mq.TLO.Me.Gem(spellToCast)()
+                    if gemSlot and gemSlot ~= 0 then
+                        if (mq.TLO.Me.GemTimer(gemSlot).TotalSeconds() or 0) > 6 then goto jcontinue end
+                        local deadline = os.clock() + 6
+                        while not mq.TLO.Me.SpellReady(spellToCast)() and os.clock() < deadline do
+                            local agID2 = _state.combat.aggroTargetID
+                            if agID2 ~= '' and agID2 ~= '0' then
+                                local agNum2 = tonumber(agID2) or 0
+                                if agNum2 ~= 0 and (mq.TLO.Spawn(agNum2).Distance() or 999) < 200 then return end
+                            end
+                            mq.delay(250)
+                        end
+                    end
+
+                    -- WornOff drain (mac:4553-4557)
+                    mq.doevents()
+
+                    local result = _cast.castWhat(spellToCast, memberID, 'buffs-nomem')
+                    if result == 'CAST_SUCCESS' then
+                        printf('\awBuffing \at%s\aw on \at%s', spellToCast,
+                            mq.TLO.Group.Member(j).CleanName() or '')
+                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
+                        timers_i[j] = os.clock() + dur
+                        mq.doevents()
+                        if j == 0 then
+                            _state.timers.writeBuffs = 0
+                            Buffs.writeBuffs()
+                        end
+                    elseif result == 'CAST_HASBUFF' then
+                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
+                        timers_i[j] = os.clock() + dur
+                    elseif result == 'CAST_COMPONENTS' then
+                        mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                        _state.buffs.buffsArray[i] = 'NULL'
+                        goto jcontinue
+                    elseif result == 'CAST_TAKEHOLD' then
+                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
+                        timers_i[j] = os.clock() + dur
+                    end
+
+                    -- Pet buff via DanNet: deferred to M9
+
+                    ::jcontinue::
+                end
+
+            else
+                -- No group: cast on self unless a class-filter tag is present (mac:4614-4638)
+                if not CLASS_FILTER_TAGS[p2] then
+                    mq.doevents()
+                    local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+                    if result == 'CAST_SUCCESS' then
+                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
+                        timers_i[0] = os.clock() + dur
+                        mq.doevents()
+                        _state.timers.writeBuffs = 0
+                        Buffs.writeBuffs()
+                    elseif result == 'CAST_HASBUFF' then
+                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
+                        timers_i[0] = os.clock() + dur
+                    elseif result == 'CAST_COMPONENTS' then
+                        mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                        _state.buffs.buffsArray[i] = 'NULL'
+                    end
+                end
+            end
+        end
+
+        -- special action tags (Endgroup, Managroup, Aura, Once, mana, command:, mgb): deferred to Step 6.5
 
         ::continue::
     end

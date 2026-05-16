@@ -1480,6 +1480,103 @@ end)
 | 6.3.60 | Cast returns `CAST_COMPONENTS` | `buffsArray[i]` set to `'NULL'`; echo printed |
 | 6.3.61 | Cast returns `CAST_SUCCESS` | `goto continue`; no extra timer set (self spells re-check buff presence each loop) |
 
+#### 6.4 — `CheckBuffs`: single-target group iteration + class filters
+
+##### 6.4.1 — `isSingle` detection
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.1 | `bookSpellTT == '0'` and `Spell.TargetType` contains `'single'` | `isSingle = true`; group loop entered |
+| 6.4.2 | `bookSpellTT` contains `'single'` (book lookup succeeded) | `isSingle = true` |
+| 6.4.3 | Neither TT contains `'single'` | `isSingle = false`; falls through to Step 6.5 stub |
+
+##### 6.4.2 — Group member skip conditions
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.4 | `Group.Member(j).ID() == 0` (slot empty) | `goto jcontinue`; member skipped |
+| 6.4.5 | `Spawn(memberID).Distance() >= spellRange` | `goto jcontinue` |
+| 6.4.6 | `slotTimers[i][j] > os.clock()` (timer active) | `goto jcontinue` |
+| 6.4.7 | All members skipped due to distance | Loop completes without casting |
+
+##### 6.4.3 — `|me` / `|Dualme` filter
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.8 | `p2 == 'me'`, `j == 0` (self) | Member not skipped; cast attempted |
+| 6.4.9 | `p2 == 'me'`, `j > 0` (group member) | `goto jcontinue`; member skipped |
+| 6.4.10 | `p2 == 'Dualme'`, `j > 0` | `goto jcontinue` |
+
+##### 6.4.4 — Per-cast mana check
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.11 | `Me.CurrentMana() >= Spell.Mana()` | Cast proceeds |
+| 6.4.12 | `Me.CurrentMana() < Spell.Mana()` | `break` entire j loop; no more members buffed |
+
+##### 6.4.5 — Class filter tags
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.13 | `p2 == 'caster'`; member class is `WIZ` (in CASTER_CLASSES) | Not skipped; cast attempted |
+| 6.4.14 | `p2 == 'caster'`; member class is `WAR` (not in CASTER_CLASSES) | `goto jcontinue` |
+| 6.4.15 | `p2 == 'DualCaster'`; member class is `CLR` | Not skipped |
+| 6.4.16 | `p2 == 'Melee'`; member class is `WAR` (in MELEE_CLASSES) | Not skipped |
+| 6.4.17 | `p2 == 'Melee'`; member class is `WIZ` (not in MELEE_CLASSES) | `goto jcontinue` |
+| 6.4.18 | `p2 == 'DualMelee'`; member class is `MNK` | Not skipped |
+| 6.4.19 | `p2 == 'class'`; member class in `p5` list (`CLR,DRU`) | Not skipped |
+| 6.4.20 | `p2 == 'class'`; member class not in `p5` list | `goto jcontinue` |
+| 6.4.21 | `p2 == 'DualClass'`; member class in `p5` | Not skipped |
+| 6.4.22 | `p2 == '!class'`; member class IS in `p5` list | `goto jcontinue` |
+| 6.4.23 | `p2 == '!class'`; member class not in `p5` | Not skipped |
+| 6.4.24 | `p2 == 'Dual!Class'`; member class IS in `p5` | `goto jcontinue` |
+
+##### 6.4.6 — `|MA` / `|!MA` filter
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.25 | `p2 == 'MA'`; member ID matches `Spawn('PC mainAssist').ID()` | Not skipped |
+| 6.4.26 | `p2 == 'MA'`; member ID does not match MA | `goto jcontinue` |
+| 6.4.27 | `p2 == 'DualMA'`; member matches MA | Not skipped |
+| 6.4.28 | `p2 == '!MA'`; member IS the MA | `goto jcontinue` |
+| 6.4.29 | `p2 == '!MA'`; member is not the MA | Not skipped |
+
+##### 6.4.7 — Mid-loop aggro bail + gem timer wait
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.30 | `aggroTargetID` set and aggro spawn distance < 200 | `return` from `checkBuffs` |
+| 6.4.31 | `aggroTargetID` set but distance ≥ 200 | Loop continues |
+| 6.4.32 | Spell memed; `GemTimer > 6s` | `goto jcontinue`; member skipped |
+| 6.4.33 | Spell memed; `GemTimer ≤ 6s`; spell becomes ready | Cast proceeds after wait |
+| 6.4.34 | Aggro fires during gem timer wait | `return` |
+
+##### 6.4.8 — Cast results (per member)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.35 | `CAST_SUCCESS`; `j > 0` | `slotTimers[i][j] = os.clock() + Spell.MyDuration.TotalSeconds()`; no writeBuffs |
+| 6.4.36 | `CAST_SUCCESS`; `j == 0` (self) | `timers.writeBuffs = 0`; `writeBuffs()` called |
+| 6.4.37 | `CAST_HASBUFF` | `slotTimers[i][j]` set from spell duration |
+| 6.4.38 | `CAST_TAKEHOLD` | `slotTimers[i][j]` set from spell duration |
+| 6.4.39 | `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed; `goto jcontinue` |
+
+##### 6.4.9 — Invis during j loop
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.40 | `Me.Invis()` becomes true at top of j loop | `break`; remaining members not buffed |
+
+##### 6.4.10 — No-group fallback
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 6.4.41 | `Group.Members() == 0`; `p2` not in CLASS_FILTER_TAGS | Cast on `Me.ID`; `CAST_SUCCESS` sets `slotTimers[i][0]` + `writeBuffs()` |
+| 6.4.42 | `Group.Members() == 0`; `p2 == 'MA'` (CLASS_FILTER_TAGS) | No cast; `goto continue` |
+| 6.4.43 | `Group.Members() == 0`; `p2 == 'caster'` | No cast |
+| 6.4.44 | No-group fallback; `CAST_HASBUFF` | `slotTimers[i][0]` set |
+| 6.4.45 | No-group fallback; `CAST_COMPONENTS` | `buffsArray[i] = 'NULL'`; echo printed |
+
 ---
 
 ## Section 7 — Integration Smoke Test
@@ -1558,7 +1655,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | RezCheck / RezWithCheck | ✅ Step 5.5 |
 | Buffs.init — INI loading + state wiring | ✅ Step 6.1 |
 | CheckBuffs guards + group-v + self dispatch | ✅ Step 6.3 |
-| CheckBuffs single-target group iteration + class filters | M6 Step 6.4 |
+| CheckBuffs single-target group iteration + class filters | ✅ Step 6.4 |
 | CheckBuffs special action tags + CheckBegforBuffs | M6 Step 6.5 |
 | WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
 | CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
@@ -1573,4 +1670,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-15. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.3 complete. Section 6.3 added (33 test cases for checkBuffs guards, PowerSource, mount, entry parsing, buffToCheck resolution, bookSpellTT, group-v, and self dispatch). CheckBuffs group-v + self marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.4 complete. Section 6.4 added (45 test cases for isSingle detection, group member skip conditions, me/MA/!MA/class/caster/Melee filters, mana check, gem timer wait, per-member cast results, invis break, and no-group fallback). CheckBuffs single-target group iteration marked ✅ in Known Deferred.*
