@@ -1815,6 +1815,111 @@ end)
 
 ---
 
+## Section 6.7 — Wire into main loop + `/buffgroup` + `/tbmanager` + `castBuffsSpellCheck`
+
+### 6.7.1 — init.lua main loop: writeBuffs OOC guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.1 | OOC + no DanNet → writeBuffs called | `combatStart=false`; `danNetOn=false` | `writeBuffs`, `writeBuffsPet`, `writeBuffsMerc` all execute |
+| 6.7.2 | In combat → writeBuffs skipped | `combatStart=true`; `danNetOn=false` | None of the three write calls execute |
+| 6.7.3 | DanNet active → writeBuffs skipped | `combatStart=false`; `danNetOn=true` | None of the three write calls execute |
+| 6.7.4 | Both combat + DanNet → writeBuffs skipped | `combatStart=true`; `danNetOn=true` | None of the three write calls execute |
+
+### 6.7.2 — init.lua main loop: checkBuffs buffsOn guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.5 | `buffsOn=true` → checkBuffs called | `buffsOn=true`; `forceBuffs=false` | `Buffs.checkBuffs(false)` called; `forceBuffs` set to `false` after |
+| 6.7.6 | `buffsOn=false` → checkBuffs skipped | `buffsOn=false` | `checkBuffs` never called |
+| 6.7.7 | `forceBuffs=true` passed through | `buffsOn=true`; `forceBuffs=true` | `checkBuffs(true)` called; `forceBuffs` reset to `false` |
+| 6.7.8 | forceBuffs reset after one cycle | `forceBuffs=true`; loop runs twice | Second iteration calls `checkBuffs(false)` |
+
+### 6.7.3 — init.lua main loop: checkBegforBuffs guard
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.9 | `kaBegActive=true` → checkBegforBuffs called | `buffs.kaBegActive=true` | `Buffs.checkBegforBuffs()` called |
+| 6.7.10 | `kaBegActive=false` → not called | `buffs.kaBegActive=false` | `checkBegforBuffs` not called |
+| 6.7.11 | Call order: checkBegforBuffs after checkBuffs | Verify execution order | checkBuffs executes before checkBegforBuffs in same loop tick |
+
+### 6.7.4 — `/buffgroup` bind
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.12 | `/buffgroup` sets forceBuffs | Fire `/buffgroup` | `state.buffs.forceBuffs == true` |
+| 6.7.13 | `/buffgroup` resets iniNext | Fire `/buffgroup` | `state.timers.iniNext == 0` |
+| 6.7.14 | `/buffgroup` calls checkBuffs(true) directly | Fire `/buffgroup` | `Buffs.checkBuffs(true)` called immediately (not deferred to main loop) |
+| 6.7.15 | `/buffgroup` works with no active target | No target selected | No crash; buff cycle runs normally |
+
+### 6.7.5 — `/tbmanager` bind — add
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.16 | Add to empty list | `extendedList=''`; `/tbmanager add Shield of Fate` | `extendedList == 'Shield of Fate'` |
+| 6.7.17 | Add to existing list | `extendedList='SpellA'`; `/tbmanager add SpellB` | `extendedList == 'SpellA,SpellB'` |
+| 6.7.18 | Add duplicate | `extendedList='SpellA'`; `/tbmanager add SpellA` | List unchanged; "already in" message printed |
+| 6.7.19 | Add persists to INI | `/tbmanager add SpellA` | INI `[Buffs] ExtendedList` updated via `/ini` command |
+| 6.7.20 | Add prints confirmation | `/tbmanager add SpellA` | Console prints "Added SpellA to Too-Buff list" |
+
+### 6.7.6 — `/tbmanager` bind — remove
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.21 | Remove only entry | `extendedList='SpellA'`; `/tbmanager remove SpellA` | `extendedList == ''` |
+| 6.7.22 | Remove from middle of list | `extendedList='A,B,C'`; `/tbmanager remove B` | `extendedList == 'A,C'` |
+| 6.7.23 | Remove non-existent entry | `extendedList='SpellA'`; `/tbmanager remove SpellX` | List unchanged |
+| 6.7.24 | Remove persists to INI | `/tbmanager remove SpellA` | INI `[Buffs] ExtendedList` updated |
+| 6.7.25 | Remove prints confirmation | `/tbmanager remove SpellA` | Console prints "Removed SpellA from Too-Buff list" |
+
+### 6.7.7 — `/tbmanager` bind — invalid usage
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.26 | No arguments | `/tbmanager` | Usage message printed; no crash |
+| 6.7.27 | One argument only | `/tbmanager add` | Usage message printed |
+| 6.7.28 | Unknown action | `/tbmanager set SpellA` | Usage message printed |
+
+### 6.7.8 — `castBuffsSpellCheck` function
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.29 | Buff already on self → returns true | `Me.Buff('Shield of Fate').ID() ~= 0` | `castBuffsSpellCheck` returns `true` |
+| 6.7.30 | Song already on self → returns true | `Me.Song('Aria of Asceticism').ID() ~= 0` | Returns `true` |
+| 6.7.31 | Buff not active → returns false | Both `Me.Buff` and `Me.Song` return 0 | Returns `false` |
+| 6.7.32 | Unknown spell name → returns false | `Me.Buff('Nonexistent').ID()` returns 0 | Returns `false` |
+
+### 6.7.9 — `castWhat` buff stacking gate
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.33 | sentFrom='Buffs' + buff active → CAST_HASBUFF | `sentFrom='Buffs'`; buff already on self | `castWhat` returns `'CAST_HASBUFF'` without casting |
+| 6.7.34 | sentFrom='buffs-nomem' + buff active → CAST_HASBUFF | `sentFrom='buffs-nomem'`; buff on self | Returns `'CAST_HASBUFF'` |
+| 6.7.35 | sentFrom='Buffs' + buff not active → proceeds | Buff not active | `castWhat` continues to cast normally |
+| 6.7.36 | sentFrom='dps' + buff active → not gated | `sentFrom='dps'` | Buff stacking check NOT applied; cast proceeds |
+| 6.7.37 | sentFrom='SingleHeal' → not gated | `sentFrom='SingleHeal'` | Buff stacking check NOT applied |
+
+### 6.7.10 — Invis guard bypass for buff sentFrom values
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.38 | `castSpell` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | Cast NOT cancelled by invis guard |
+| 6.7.39 | `castSpell` + invis + sentFrom='buffs-nomem' → proceeds | `Me.Invis()=true`; `sentFrom='buffs-nomem'` | Cast NOT cancelled |
+| 6.7.40 | `castAA` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castAA` NOT cancelled |
+| 6.7.41 | `castDisc` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castDisc` NOT cancelled |
+| 6.7.42 | `castItem` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castItem` NOT cancelled |
+| 6.7.43 | `castMem` + invis + sentFrom='Buffs' → proceeds | `Me.Invis()=true`; `sentFrom='Buffs'` | `castMem` NOT cancelled |
+| 6.7.44 | `castSpell` + invis + sentFrom='dps' → cancelled | `Me.Invis()=true`; `sentFrom='dps'` | Returns `CAST_CANCELLED` |
+
+### 6.7.11 — Binds.register Buffs wiring
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.7.45 | Buffs passed to Binds.register | `Binds.register(State, Utils, Buffs)` in init.lua | `/buffgroup` can call `Buffs.checkBuffs` without nil error |
+| 6.7.46 | onBuffGroup with buffsOn=false | `buffsOn=false`; fire `/buffgroup` | `checkBuffs(true)` still called directly; no crash |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1895,7 +2000,7 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | CheckBuffs special action tags + CheckBegforBuffs | ✅ Step 6.5 |
 | WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
 | CheckPetBuffs + CheckBegforPetBuffs | ✅ Step 6.6 |
-| CastBuffsSpellCheck + /buffgroup + /tbmanager | M6 Step 6.7 |
+| CastBuffsSpellCheck + /buffgroup + /tbmanager | ✅ Step 6.7 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
 | Stop-moving before cast | M7 |
@@ -1906,4 +2011,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.6 complete. Section 6.6 added (46 test cases for checkPetBuffs guards, NULL skip, aggro bail, spell/AA path, item path, dual tag, pettoys|begfor, post-loop shrink+target-clear, checkBegforPetBuffs guards and list processing, and main loop wiring). CheckPetBuffs + CheckBegforPetBuffs marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.7 complete. Section 6.7 added (46 test cases for writeBuffs OOC guard, checkBuffs buffsOn gate + forceBuffs pass-through, checkBegforBuffs main-loop wiring, /buffgroup bind, /tbmanager add/remove/invalid, castBuffsSpellCheck self-buff check, castWhat CAST_HASBUFF gate, invis-guard bypass for Buffs/buffs-nomem in all five cast primitives, and Binds.register Buffs wiring). CastBuffsSpellCheck + /buffgroup + /tbmanager marked ✅ in Known Deferred.*

@@ -667,7 +667,7 @@ Port the pet-specific buff functions (mac:5402–5517, mac:13307+).
 
 ---
 
-#### Step 6.7 — Wire into main loop + `/buffgroup` + `/tbmanager` + `CastBuffsSpellCheck`
+#### Step 6.7 ✅ — Wire into main loop + `/buffgroup` + `/tbmanager` + `CastBuffsSpellCheck`
 
 Final wiring pass to make the full buff system live (mirrors mac:398–407).
 
@@ -689,6 +689,8 @@ Final wiring pass to make the full buff system live (mirrors mac:398–407).
 - ConOn condition evaluation — deferred to M10 (always passes for now)
 
 **Done when:** characters self-buff on startup, rebuff when worn off, group-buff all members, `/buffgroup` forces a full rebuff cycle.
+
+**Implemented:** `init.lua` main loop rewritten — `writeBuffs`/`writeBuffsPet`/`writeBuffsMerc` now gated on `not combatStart and not danNetOn`; `checkBuffs` gated on `buffsOn` and receives `forceBuffs` (reset to false after); `checkBegforBuffs()` added after `checkBuffs`. `Binds.register` now accepts a third `Buffs` argument; `onBuffGroup` sets `forceBuffs=true`, clears `iniNext`, and calls `Buffs.checkBuffs(true)` directly; `onTbManager` implements add/remove on `state.buffs.extendedList` with INI persistence under `[Buffs]`. `cast.lua`: `castBuffsSpellCheck(spellName)` added (checks `Me.Buff` + `Me.Song`; full WillStack/SPA-374/340 deferred to M10); wired into `castWhat` for `sentFrom == 'Buffs'` or `'buffs-nomem'`; `'Buffs'` and `'buffs-nomem'` added to the invis-bypass sentFrom set in `castSpell`, `castAA`, `castDisc`, `castItem`, and `castMem`.
 
 ---
 
