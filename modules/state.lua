@@ -170,7 +170,7 @@ local State = {
         advpathY        = 0.0,
         advpathZ        = 0.0,
         campRadius       = 50,
-        campRadiusExceed = false,
+        campRadiusExceed = 0,   -- 0=disabled; >0=leash distance that disables ReturnToCamp
         campX           = 0,
         campY           = 0,
         campZ           = 0,
