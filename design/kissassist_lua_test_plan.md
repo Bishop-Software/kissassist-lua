@@ -1,4 +1,4 @@
-# KissAssist Lua — In-Game Test Plan (Milestones 1–3)
+# KissAssist Lua — In-Game Test Plan (Milestones 1–4)
 
 All tests are manual and in-game. No automated test framework exists.
 Tests are ordered from cheapest (startup/config) to most interactive (casting).
@@ -393,37 +393,540 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Integration Smoke Test
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.8)
+
+---
+
+### 4.1 Combat.init — module load and state wiring (Step 4.1)
+
+**Setup:** Valid pickle config exists with `[DPS]`, `[Melee]`, `[Burn]`, `[General]` sections populated.
+Start with `/lua run kissassist-lua assist TankName debug`.
+
+| # | Action | Expected |
+|---|--------|----------|
+| 4.1.1 | Start script, watch chat | Debug line: `Combat.init: dpsOn=... meleeOn=... assistAt=... meleeDistance=... dps#=... burn#=... campRadius=...` |
+| 4.1.2 | Verify `dpsOn` from INI | `[DPS] DPSOn=1` → `dpsOn = true`; `DPSOn=0` → `false` |
+| 4.1.3 | Verify `meleeOn` from INI | `[Melee] MeleeOn=1` → `meleeOn = true` |
+| 4.1.4 | Verify `assistAt` from INI | `[Melee] AssistAt=85` → `assistAt = 85`; absent key → falls back to CLI arg (default 95) |
+| 4.1.5 | Verify `meleeDistance` | `[Melee] MeleeDistance=25` → `meleeDistance = 25` |
+| 4.1.6 | Verify `campRadius` | `[General] CampRadius=40` → `state.movement.campRadius = 40` |
+| 4.1.7 | Verify DPS array populated | `dps#` in debug line matches number of non-empty `DPS1..DPSN` entries in INI |
+| 4.1.8 | Verify Burn array populated | `burn#` matches number of non-empty `Burn1..BurnN` entries |
+| 4.1.9 | Start with empty/missing DPS section | `dps# = 0`; no crash |
+| 4.1.10 | `burnOnNamed` | `[Burn] BurnAllNamed=1` → `state.combat.burnOnNamed = true` |
+
+---
+
+### 4.2 Combat.mobRadar — mob detection (Step 4.2)
+
+**Setup:** Script running. Add a temporary test bind for invocation (or wire Step 4.4 first and observe in combat).
+
+**Add test bind temporarily (remove after testing):**
+```lua
+-- In binds.lua onDebug or a scratch bind:
+mq.bind('/katestmobRadar', function()
+    local Combat = require('modules.combat')
+    local State  = require('modules.state')
+    Combat.mobRadar('los', State.combat.meleeDistance)
+    printf('mobCount=%d aggro=%s', State.combat.mobCount, State.combat.aggroTargetID)
+end)
+```
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.2.1 | No mobs in range | Open area with no NPCs | `mobCount = 0`; `aggroTargetID = ''` |
+| 4.2.2 | Aggressive NPC in XTarget | Stand near an aggressive NPC that has auto-aggroed (slot shows "Auto Hater") | `mobCount ≥ 1`; `aggroTargetID = <NPC spawn ID>` |
+| 4.2.3 | NPC corpse only | Kill a mob; only corpse remains on XTarget | `mobCount = 0` (corpse filtered out) |
+| 4.2.4 | NPC beyond `meleeDistance` | Target a hater-type NPC outside configured distance | Not counted; `mobCount = 0` |
+| 4.2.5 | NPC within distance | Same NPC, move within `meleeDistance` | `mobCount = 1` |
+| 4.2.6 | Multiple haters | Multiple NPCs all on XTarget "Auto Hater" slots within range | `mobCount` equals the count of in-range living haters |
+| 4.2.7 | `aggroTargetID` is closest | Two haters at different distances | `aggroTargetID` resolves to the closer one's ID |
+| 4.2.8 | DMZ zone guard | Start in a DMZ zone (e.g. Plane of Knowledge, ID 344) outside an instance | `mobRadar` returns without scanning; `mobCount` unchanged from prior value |
+| 4.2.9 | LOSBeforeCombat off (default) | NPC behind a wall, `LOSBeforeCombat=0` | NPC counted regardless of LOS |
+| 4.2.10 | LOSBeforeCombat on | `[General] LOSBeforeCombat=1`; NPC behind a wall | NPC NOT counted; `mobCount = 0` for that NPC |
+| 4.2.11 | XTSlot fallback — count=0 | `xTSlot` set to a slot holding a living non-auto-hater NPC; no haters elsewhere | `mobCount = 1`; `aggroTargetID` set to that NPC's ID |
+| 4.2.12 | Debug output | Run with `debug` flag | Prints `mobRadar(los,N): mobCount=X aggro=Y` |
+
+---
+
+### 4.3 Combat.assist / Combat.getCombatTarget / Combat.combatTargetCheck (Step 4.3)
+
+**Setup:** Script running with a real group. One character set as MA (`assist TankName`). Have at least one aggressive NPC in range.
+
+**Shared test bind (remove after testing):**
+```lua
+mq.bind('/katestassist', function()
+    local Combat = require('modules.combat')
+    local State  = require('modules.state')
+    Combat.assist('test')
+    printf('myTargetID=%d myTargetName=%s', State.combat.myTargetID, State.combat.myTargetName)
+end)
+```
+
+#### 4.3.1 — Combat.assist (non-MA path)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.1.1 | Normal assist — group MA set | MA has an NPC targeted; group `MainAssist` assigned in-game | `myTargetID` = MA's target ID; `myTargetName` set |
+| 4.3.1.2 | GroupAssistTarget shortcut | `Group.MainAssist.ID == maSpawn.ID` | Uses `Me.GroupAssistTarget.ID` directly (no `/assist` command) |
+| 4.3.1.3 | Fallback `/assist` when no group MA | No group `MainAssist` assigned | Sends `/assist TankName`; waits for `AssistComplete` |
+| 4.3.1.4 | MA out of range | MA farther than 200 units | Skips assist; `myTargetID` unchanged |
+| 4.3.1.5 | Offtank — MA dead/far | Role = `offtank`; MA gone | Returns immediately; no target set |
+| 4.3.1.6 | Aggro fallback when MA gone | `aggroTargetID` set; MA absent | Targets `aggroTargetID` if within `meleeDistance` |
+| 4.3.1.7 | DPS paused guard | `state.dps.paused = true` | Returns immediately; no target change |
+| 4.3.1.8 | Hovering guard | Character is dead/hovering | Returns immediately |
+| 4.3.1.9 | Invalid target (bad type) | MA targets a corpse or aura | `validateTarget` returns false; `myTargetID = 0` |
+| 4.3.1.10 | Valid target → state set | MA targets a live NPC | `myTargetID`, `myTargetName`, `lastTargetID` all updated |
+| 4.3.1.11 | Debug output | Run with `debug` flag | Prints `assist: myTarget=<name> id=<n>` |
+
+#### 4.3.2 — Combat.getCombatTarget (MA path)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.2.1 | Single hater on XTarget | One NPC on auto-hater slot | Targets that NPC directly via `aggroTargetID` |
+| 4.3.2.2 | Named mob priority | Multiple haters including a named NPC | Named NPC targeted first |
+| 4.3.2.3 | Alert-4 (mez-immune) priority | Alert 4 has a non-corpse hater; no named | Alert-4 NPC targeted before others |
+| 4.3.2.4 | Multi-mob closest selection | 3+ haters, no named/alert-4 | Closest hater targeted |
+| 4.3.2.5 | Most-hurt upgrade | Most-hurt NPC in camp range | `mostHurtID` used if within `meleeDistance` of camp |
+| 4.3.2.6 | ReturnToCamp distance gate | Most-hurt NPC outside camp radius | Falls back to closest; out-of-range mob not targeted |
+| 4.3.2.7 | Stale `aggroTargetID2` cleared | `aggroTargetID2` points to a corpse | Cleared to `'0'` before processing |
+| 4.3.2.8 | Non-MA character | Role = `assist`, not MA | Returns immediately; no target selection |
+| 4.3.2.9 | MezMobFlag blurred scan | `aggroID = 0`, `mobCount > 0`, `mez.mobFlag = true` | Scans for nearby unalerted NPC; targets if in camp range |
+| 4.3.2.10 | Mezzed mob detected | Blurred scan finds a mezzed NPC | Sets `aggroTargetID2`, `myTargetID`; returns early |
+| 4.3.2.11 | `validateTarget` rejection | Best-selected NPC fails validation | `myTargetID = 0`; no target locked |
+| 4.3.2.12 | Debug output | Run with `debug` flag | Prints `getCombatTarget: myTarget=<name> id=<n>` |
+
+#### 4.3.3 — Combat.combatTargetCheck
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.3.3.1 | Dead target cleared | `myTargetID` points to a corpse | `myTargetID = 0`; `lastTargetID` updated; returns |
+| 4.3.3.2 | Non-MA syncs to group assist | Group MA set; MA switches targets | `myTargetID` updated to new `GroupAssistTarget.ID` |
+| 4.3.3.3 | MA re-locks own target | MA's game target drifts; `targetSwitchingOn = false` | `/target id myTargetID` re-issued |
+| 4.3.3.4 | MA accepts new target (switching on) | `targetSwitchingOn = true`; MA manually targets new NPC | `myTargetID` updated; tank-announce echoed |
+| 4.3.3.5 | MA ignores PC target (switching on) | MA accidentally targets a PC | `myTargetID` unchanged; PC skipped |
+| 4.3.3.6 | CalledTargetID accepted (no group MA) | No group MA; event sets `calledTargetID = N` | `myTargetID = N`; `calledTargetID = 0` |
+| 4.3.3.7 | DPS paused — SetTarget 0 | `dps.paused = true`, `setTarget = 0` | Returns immediately |
+| 4.3.3.8 | DPS paused — SetTarget 2 bypass | `dps.paused = true`, `setTarget = 2` | Proceeds normally |
+| 4.3.3.9 | XTarAutoSet re-targets | `xTarAutoSet = true`; `myTargetID` changed; not MA | `/target id N` issued; `/xtarget set` called |
+| 4.3.3.10 | Debug output | Run with `debug` flag | Prints `combatTargetCheck: myTarget=... id=... lastID=...` |
+
+### 4.4 Combat.checkForCombat / Combat.combatReset / Combat.checkForAdds / Combat.feignAggroCheck (Step 4.4)
+
+**Setup:** Script running with `dpsOn = true` or `meleeOn = true`. Character in a zone with valid mobs.
+
+#### 4.4.1 — Combat.checkForCombat entry guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.1.1 | ChaseAssist + moving guard | `chaseAssist = true`; character moving; not MA | Returns immediately; no radar/assist called |
+| 4.4.1.2 | DMZ guard | Zone is a DMZ; not in instance | Returns immediately after mobRadar |
+| 4.4.1.3 | Hovering guard | `Me.Hovering() = true` | Returns immediately |
+| 4.4.1.4 | Dead + no aggro guard | `iAmDead = true`; `aggroTargetID = 0` | Returns immediately |
+| 4.4.1.5 | No mobs + no aggro guard | `mobCount = 0`; `aggroTargetID = 0` | Returns immediately |
+| 4.4.1.6 | DPS + melee both off | `dpsOn = false`; `meleeOn = false` | Returns immediately |
+| 4.4.1.7 | iAmDead clears when rezzed | `iAmDead = true`; rez sickness buff present | `iAmDead` cleared to `false` |
+| 4.4.1.8 | Main loop wiring | Script running with `dpsOn = true` and mob present | `checkForCombat` called each main loop tick |
+
+#### 4.4.2 — Non-MA assist path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.2.1 | Assist loop acquires target | Non-MA; mob in range; MA has target | `Combat.assist` called; `myTargetID` set |
+| 4.4.2.2 | EngageWaitTimer=0 exits loop immediately | `waitTime = 0`; no target set after assist | Loop exits without spinning |
+| 4.4.2.3 | Loop exits when myTargetID set | `myTargetID` locked after first assist call | Inner loop breaks without re-calling assist |
+| 4.4.2.4 | Offtank with dead MA — deferred | Role = `offtank`; MA gone | Breaks out of assist loop (switchMA deferred) |
+
+#### 4.4.3 — MA path (getCombatTarget + engage wait)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.3.1 | MA waits for mob in radius | MA role; mob approaching camp; `aggroTargetID` set | Loops until `mobCount > 0`, then calls `getCombatTarget` |
+| 4.4.3.2 | EngageWaitTimer expires | `waitTime = 0`; mob never enters radius | Loop exits immediately; `getCombatTarget` still called |
+| 4.4.3.3 | Puller-role MA skips wait | Role = `pullertank`; `aggroTargetID` set | Skips wait loop; calls `getCombatTarget` directly |
+| 4.4.3.4 | Mob corpse during wait | Mob dies while MA waiting | Wait loop breaks; `getCombatTarget` still called |
+
+#### 4.4.4 — Post-combat guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.4.1 | FeignAggroCheck called | `Me.Feigning() = true` after assist path | `feignAggroCheck` called; waits out aggroOff timer |
+| 4.4.4.2 | ChainPull==2 exits | `pull.chainPull = 2` | Returns immediately after combat block |
+| 4.4.4.3 | Non-manual target dead → CombatReset | `role = 'assist'`; `myTargetID` points to corpse | `combatReset(0, ...)` called; target fields cleared |
+
+#### 4.4.5 — Combat.combatReset
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.5.1 | Core field reset | Call `combatReset(0, 'test')` | `myTargetID=0`, `combatStart=false`, `attacking=false`, `validTarget=false` |
+| 4.4.5.2 | Attack off issued | Call `combatReset(0, 'test')` | `/attack off` command sent |
+| 4.4.5.3 | Target cleared | Call `combatReset(0, 'test')` | `/target clear` command sent |
+| 4.4.5.4 | Burn state cleared for dead burn target | `burnID = N`; mob N is a corpse | `burnCalled=false`, `burnID=0`; echo printed |
+| 4.4.5.5 | TargetSwitchingOn reset for non-MA | Non-MA; `targetSwitchingOn=true` | Reset to `false` |
+| 4.4.5.6 | Tank timer set | Call `combatReset` | `timers.tank` set to `os.clock() + 30` |
+| 4.4.5.7 | AggroOff wait | `timers.aggroOff` active | Waits up to 2s; continues when timer expires |
+| 4.4.5.8 | Event drain | Pending events in queue | `doevents` loop runs until `eventFlag` is false |
+| 4.4.5.9 | Debug output | Run with `debug` flag | Prints `combatReset: enter ...` and `done ...` |
+
+#### 4.4.6 — Combat.checkForAdds
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.6.1 | mobCount ≤ 1 guard | `mobCount = 1` | Returns immediately |
+| 4.4.6.2 | Dead guard | `iAmDead = true`; `mobCount = 3` | Returns immediately |
+| 4.4.6.3 | DPS paused guard | `dps.paused = true`; `mobCount = 3` | Returns immediately |
+| 4.4.6.4 | Re-acquire valid living target | `myTargetID` set; target not acquired; within campRadius | `/target id N` sent; returns |
+| 4.4.6.5 | Add spam popup | `aggroID` set; `myTargetID = 0`; add within campRadius; spam timer expired | `/popup Add(s) in camp detected` shown |
+| 4.4.6.6 | Add spam throttle | Add spam popup just fired (5s ago) | Popup suppressed until `timers.addSpam` expires |
+| 4.4.6.7 | Tank role targets aggro | Role = `tank`; no current target; `aggroTargetID` set | `/target id aggroID` sent |
+| 4.4.6.8 | Stale myTargetID cleaned | `myTargetID` points to a corpse; target not NPC | `lastTargetID` updated; `myTargetID=0`; `/target clear` sent |
+| 4.4.6.9 | Debug output | Run with `debug` flag | Prints `checkForAdds: mobCount=N from=...` |
+
+#### 4.4.7 — Combat.feignAggroCheck
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.4.7.1 | AggroOff timer active — waits | `timers.aggroOff` set to future; `Me.Feigning() = true` | Loops calling `doevents` + delay until feign drops or timer expires |
+| 4.4.7.2 | AggroOff timer expired — single doevents | `timers.aggroOff = 0` | Calls `doevents` once and returns |
+| 4.4.7.3 | Not feigning — exits immediately | `timers.aggroOff` active; `Me.Feigning() = false` | While loop exits immediately |
+
+---
+
+## Section 5 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 4.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 4.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 4.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 4.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 4.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 4.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 5.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 5.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 5.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 5.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 5.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 5.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
 
 ---
 
-## Known Deferred / Out of Scope for M1–M3
+### 4.5 Combat.fight — melee engagement loop (Step 4.5)
+
+**Setup:** Script running in an area with attackable NPCs. MA designated. `meleeOn=1`, `dpsOn=1` in INI. Stand near an NPC that the MA will target.
+
+#### 4.5.1 Entry guards
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.1 | `myTargetID == 0` when fight() is entered | Returns immediately; no attack |
+| 4.5.2 | NPC out of LOS (non-hunter role) | Returns; no `CombatStart` |
+| 4.5.3 | Hunter role, NPC out of LOS | Does NOT return on LOS check; continues to engage |
+| 4.5.4 | `dps.paused == true` | Returns immediately |
+| 4.5.5 | Target is mezzed, non-MA, HP ≤ assistAt | Waits 500ms and returns; does not attack |
+| 4.5.6 | Puller role, `pulling == true`, outside campRadius | Returns; does not engage |
+
+#### 4.5.2 CombatRadius calculation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.7 | `MaxRangeTo` ≤ `meleeDistance` | `combatRadius = meleeDistance` |
+| 4.5.8 | `MaxRangeTo` > `meleeDistance` (e.g. ranged mob) | `combatRadius = MaxRangeTo + 5` |
+
+#### 4.5.3 CombatStart and ATTACKING announce
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.9 | First time fight() engages target | `combatStart = true`; chat shows `ATTACKING -> <name> <-` |
+| 4.5.10 | Tank/hunter role | Also echoes `[KA] TANKING-> <name> <- ID:<id>` |
+| 4.5.11 | PetTank role | Echoes `[KA] <PetName> is TANKING-> <name> <- ID:<id>` |
+| 4.5.12 | CombatStart already true | Announce not repeated on subsequent calls |
+
+#### 4.5.4 Melee initiation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.13 | `meleeOn=true`, character sitting | `/stand` issued before attack |
+| 4.5.14 | Tank/hunter with Taunt skill ready | `/doability Taunt` issued on first engage |
+| 4.5.15 | Not yet in combat, `beforeArray[1] ~= 'null'` | `beforeAttack(myID, 1)` fires configured pre-combat abilities |
+| 4.5.16 | `attacking = true` already | No repeated `/attack on` or `beforeAttack` on re-entry |
+| 4.5.17 | `meleeOn=false`, pet configured, mob in pet range | Pet sent to attack; `attacking = true` set via pet path |
+
+#### 4.5.5 beforeAttack helper
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.18 | Entry is a ready item (exact name) | `/useitem` issued; echoes `## Before Attack >> <name> <<` |
+| 4.5.19 | Entry is a ready AA | `/alt act <id>` issued |
+| 4.5.20 | Entry is a ready disc with sufficient endurance | `/disc "<name>"` issued |
+| 4.5.21 | Entry is a ready activated skill | `/doability "<name>"` issued |
+| 4.5.22 | Target clears mid-loop | Returns immediately without processing remaining entries |
+| 4.5.23 | `condCheck=2`, entry has no `\|cond` | Entry skipped |
+| 4.5.24 | `condCheck=2`, entry has `\|cond` | Entry processed normally |
+
+#### 4.5.6 combatPet helper
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.25 | No pet summoned | Returns immediately |
+| 4.5.26 | Pet already in combat | Returns; no `/pet attack` |
+| 4.5.27 | Mob distance < `petAttackRange`, not mezzed | `/pet attack` + `/pet swarm` issued; `timers.petAttack` set +3s |
+| 4.5.28 | Mob distance ≥ `petAttackRange` | `/pet follow` if not already following |
+| 4.5.29 | PetTank + ReturnToCamp: me in camp, mob in range | `/pet attack` + `/pet swarm` |
+| 4.5.30 | PetTank + ReturnToCamp: pet outside campRadius | `/pet follow` issued |
+| 4.5.31 | Target mezzed | Returns without sending pet |
+
+#### 4.5.7 Inner combat loop
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.32 | Target becomes corpse mid-loop | `combatReset(0, ...)` called; loop breaks; `attacking = false`; `/attack off` |
+| 4.5.33 | `dps.paused` becomes true mid-loop | Treated as dead target: `combatReset + break` |
+| 4.5.34 | `combatTargetCheck(1)` changes `myTargetID` | Next iteration uses updated ID |
+| 4.5.35 | Target in range, `attacking=true`, standing | `/attack on` re-issued each iteration if standing/mounted |
+| 4.5.36 | `targetSwitchingOn=false`, current target drifts from myTargetID | `/target id <myTargetID>` re-issued |
+| 4.5.37 | MA: current target dead, TargetSwitchingOn=true, new target found | `combatTargetCheck(1)` acquires next target; loop continues |
+| 4.5.38 | MA: TargetSwitchingOn=true, no next target | `lastTargetID` restored; `combatReset + break` |
+| 4.5.39 | Non-MA: target dead, TargetSwitchingOn=false | `combatReset(0, '_targetGone') + break` |
+| 4.5.40 | Character feigning after iteration | `feignAggroCheck()` called; if still feigning, loop breaks |
+| 4.5.41 | Tank/pullertank role enters combat | `mez.mobFlag = true` set |
+
+#### 4.5.8 Out-of-HP-range else-if block
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.5.42 | Mob in range, HP > assistAt (approaching) | `combatTargetCheck(1)` called; `beforeAttack(myID, 2)` fires `\|cond` entries |
+| 4.5.43 | `petCombatOn=true`, mob in petAttackRange, HP ≤ petAssistAt | `combatPet()` called in this block |
+
+---
+
+### 4.6 Cast.combatCast — DPS rotation (Step 4.6)
+
+**Setup:** Script running. MA designated. `dpsOn=1` in INI. `[DPS]` section has at least two entries (one spell, one AA). Stand near an attackable NPC. `meleeOn=1`.
+
+#### 4.6.1 Basic DPS rotation
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.1 | `dpsOn=true`, script enters combat | `Cast.combatCast()` called from fight() inner loop; DPS spells/AAs fire in order |
+| 4.6.2 | Ready memed spell in DPS array at HP < threshold | `castWhat` called; spell casts; echoes `** SpellName on >> <target> <<` |
+| 4.6.3 | Ready AA in DPS array | `/alt act <ID>` fires via castAA path |
+| 4.6.4 | Ready disc in DPS array | `/disc <ID>` fires via castDisc path |
+| 4.6.5 | Entry with no HP threshold (malformed: `SpellName||Mob`) | Loop breaks on that entry; entries after it not attempted |
+| 4.6.6 | DPS array empty or all entries at index > debuffCount | `mashButtons` called immediately; returns without error |
+
+#### 4.6.2 Target validation and corpse guard
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.7 | Target becomes corpse between DPS entries | `combatCast` returns immediately on next iteration |
+| 4.6.8 | `dps.paused = true` mid-rotation | Returns immediately; no further casts |
+| 4.6.9 | `myTargetID = 0` on entry | Returns immediately |
+
+#### 4.6.3 HP% gate
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.10 | `dpsOn=true`, target HP 98%, entry threshold 95% | Entry skipped (HP > dpsAt) |
+| 4.6.11 | Target HP 90%, entry threshold 95% | Entry cast |
+| 4.6.12 | `iAmMA=true`, entry threshold 80%, global assistAt 95% | Uses assistAt 95% (MA ignores per-entry threshold) |
+
+#### 4.6.4 Target type resolution
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.13 | Entry has `Me` target type | `castTargetID = Me.ID`; castWhat targets self |
+| 4.6.14 | Entry has `MA` target type, non-pettank role | `castTargetID = Spawn[=MainAssist].ID` |
+| 4.6.15 | Entry has `MA` target type, pettank role | `castTargetID = Me.Pet.ID` |
+| 4.6.16 | Entry has `Group2` target type | `castTargetID = Group.Member(2).ID` |
+| 4.6.17 | `Me` target type, buff already on me | Entry skipped; no re-cast |
+
+#### 4.6.5 DPS stacking guard (castDPSSpellCheck)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.18 | DoT spell already on target, cast by me | Entry skipped via `castDPSSpellCheck` |
+| 4.6.19 | Same DoT on target but cast by another player | NOT skipped (different caster) |
+| 4.6.20 | DoT not on target | Cast proceeds normally |
+| 4.6.21 | Spell uses SPA-470 (proc DoT trigger), trigger already on target by me | Entry skipped |
+
+#### 4.6.6 Weave/Mash/Ambush skips
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.22 | Entry string contains `\|weave` | Skipped in DPS loop (goto next_dps) |
+| 4.6.23 | Entry string contains `\|mash` | Skipped in DPS loop |
+| 4.6.24 | Entry string contains `\|ambush` | Skipped in DPS loop |
+
+#### 4.6.7 Attack-off for self/MA casts
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.25 | `Me` targeted spell, non-MA caster, in combat | `/attack off` before cast; restored after |
+| 4.6.26 | MA-targeted spell, MA caster | No attack-off (iAmMA guard) |
+
+#### 4.6.8 MashButtons
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 4.6.27 | `mashArray[1]` = ready AA name | `/alt act <ID>` fired; echoes `## Mashing >> <name> <<` if went on cooldown |
+| 4.6.28 | `mashArray[1]` = ready item name | `/useitem "<name>"` fired |
+| 4.6.29 | `mashArray[1]` = ready disc (sufficient endurance) | `/disc <ID>` fired (live) or `/disc "<name>"` (emu) |
+| 4.6.30 | `mashArray[1]` = `'null'` | Returns immediately without firing anything |
+| 4.6.31 | Target becomes corpse during mash loop | Returns immediately |
+| 4.6.32 | `dpsOn=false` | `mashButtons` returns immediately; no mash fires |
+| 4.6.33 | Character sitting | `mashButtons` returns (not STAND/MOUNT state) |
+
+---
+
+### 4.7 Cast.doBurn — Burn sequence (Step 4.7)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 4.7.1 | Basic burn fires | `burnOn=true`, `burnArray` has one valid spell, `burnID` set by `/kaburn` | `Cast.castWhat` called with spell; `burnActive` set to `true` |
+| 4.7.2 | `burnOn=false` guard | `burnOn=false` | Returns immediately; prints "Burn is turned Off." |
+| 4.7.3 | Hovering guard | `Me.Hovering()=true` | Returns immediately without iterating array |
+| 4.7.4 | Wrong zone guard | `campZone` set to a different zone ID | Returns immediately |
+| 4.7.5 | Announce on first activation | `burnActive=false` before call | `/echo BURN ACTIVATED => Autobots Transform <=` sent once |
+| 4.7.6 | No announce on repeat call | `burnActive=true` before call | No activation echo |
+| 4.7.7 | Tribute activation | `useTribute=true`, `Me.TributeActive()=false` | `/tribute personal on` + `/trophy personal on` sent; `timers.tribute` set to `now + 570` |
+| 4.7.8 | Tribute already active | `useTribute=true`, `Me.TributeActive()=true` | No tribute commands sent |
+| 4.7.9 | `null` entry skipped | `burnArray = {'null\|Mob'}` | Entry skipped; no castWhat call |
+| 4.7.10 | `Mob` target resolves to myTargetID | Entry `SpellName\|Mob` | `burnTargetID = state.combat.myTargetID` |
+| 4.7.11 | `Me` target resolves to self | Entry `SpellName\|Me` | `burnTargetID = Me.ID()` |
+| 4.7.12 | `MA` target resolves to main assist | Entry `SpellName\|MA` | `burnTargetID = Spawn['=MainAssist'].ID()` |
+| 4.7.13 | `Pet` target resolves to pet | Entry `SpellName\|Pet` | `burnTargetID = Me.Pet.ID()` |
+| 4.7.14 | Unknown target defaults to myTargetID | Entry `SpellName\|group1` | `burnTargetID = myTargetID` |
+| 4.7.15 | CAST_SUCCESS echoes + waits (non-bard) | Spell returns `CAST_SUCCESS`; CastingWindow open briefly | `Casting >> BURN1:SpellName` printed; waits for CastingWindow to close |
+| 4.7.16 | Bard skips cast-wait | `iAmABard=true`; spell returns `CAST_SUCCESS` | No cast-window wait loop |
+| 4.7.17 | Hovering mid-loop aborts | Second entry; `Me.Hovering()=true` during loop | Loop breaks; no further entries cast |
+| 4.7.18 | NamedWatch — named target triggers burn | `burnOnNamed=true`; `namedCheck=false`; target `Named()=true`; within `meleeDistance` | `/echo *** Mob:(Name) is a NAMED!`; `doBurn()` called; `namedCheck=true` |
+| 4.7.19 | NamedWatch — non-named target not triggered | `burnOnNamed=true`; target `Named()=false`; empty `namedWatchList` | No burn triggered; `namedCheck` stays false |
+| 4.7.20 | NamedWatch — watchlist match triggers burn | `burnOnNamed=true`; target in `namedWatchList` by name+ID | `doBurn()` called; `namedCheck=true` |
+| 4.7.21 | NamedWatch — out of range, no trigger | `burnOnNamed=true`; target distance > `meleeDistance` | No burn triggered even if Named |
+| 4.7.22 | NamedWatch — already checked, no re-trigger | `namedCheck=true` | NamedWatch block skipped entirely |
+| 4.7.23 | `/kaburn` sets burnID | Call `onBurn()` bind handler with no arg while in combat | `state.combat.burnID = myTargetID`; fight loop dispatches `doBurn()` next tick |
+| 4.7.24 | burnActive cleared on combatReset | Kill mob; `combatReset` called | `burnActive=false` reset for next fight |
+
+### 4.8 DoDebuffStuff + AggroCheck (Step 4.8)
+
+**Setup:** Script running in combat. Character has `[DPS]` entries with hp threshold ≥ 101 (debuff slots), `[Aggro]` section populated.
+
+#### 4.8.1 — Combat.aggroCheck
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.1.1 | No myTargetID — returns early | `myTargetID=0` | Returns immediately; no castWhat call |
+| 4.8.1.2 | Target is corpse — returns early | Target type is `corpse` | Returns immediately |
+| 4.8.1.3 | `<` gain-aggro — fires when below threshold | Entry `Taunt\|110\|<\|Mob`; `Me.PctAggro=80` | `castWhat('Taunt', myTargetID, 'Aggro')` called |
+| 4.8.1.4 | `<` gain-aggro — skips when above threshold | Same entry; `Me.PctAggro=115` | Skipped; no cast |
+| 4.8.1.5 | `>` lose-aggro — fires when above threshold | Entry `Jolt\|80\|>\|Mob`; `Me.PctAggro=95` | `castWhat('Jolt', myTargetID, 'Aggro')` called |
+| 4.8.1.6 | `>` lose-aggro — skips when below threshold | Same entry; `Me.PctAggro=60` | Skipped |
+| 4.8.1.7 | `<<` secondary — fires when secondary holder above threshold | Entry `Spell\|120\|<<\|Mob`; `SecondaryPctAggro=25` | Fires (adjPct=20, secPct=25 ≥ 20) |
+| 4.8.1.8 | `Me` target resolves to self | Entry with `\|Me` | `castTargetID = Me.ID()` |
+| 4.8.1.9 | `MA` target resolves to mainAssist | Entry with `\|MA` | `castTargetID = Spawn['=MainAssist'].ID()` |
+| 4.8.1.10 | `Pet` target resolves to pet | Entry with `\|Pet` | `castTargetID = Me.Pet.ID()` |
+| 4.8.1.11 | Cast SUCCESS → echoes and breaks | castWhat returns `CAST_SUCCESS` | Prints `Casting >> SpellName << to control AGGRO(<) on MobName`; loop stops |
+| 4.8.1.12 | `aggroOn=false` — skipped entirely | `aggroOn=false` in `state.combat` | aggroCheck block never entered in fight() |
+| 4.8.1.13 | aggroOff timer set on FD lose-aggro cast | `glt='>'`; `Me.Feigning()=true`; cast succeeds | `timers.aggroOff` set to `now + 20` |
+
+#### 4.8.2 — Cast.doDebuffStuff guards
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.2.1 | `debuffAllOn=0` — skip | `state.combat.debuffAllOn=0` | Returns immediately |
+| 4.8.2.2 | `debuffCount=0` — skip | `state.mez.debuffCount=0` | Returns immediately |
+| 4.8.2.3 | DPSPaused — skip | `state.dps.paused=true` | Returns immediately |
+| 4.8.2.4 | RespawnWnd open — skip | RespawnWnd open | Returns immediately |
+| 4.8.2.5 | Bard+MA+activeTarget — skip | `iAmABard=true`, `iAmMA=true`, `myTargetID≠0`, `aggroTargetID≠''` | Returns immediately |
+
+#### 4.8.3 — debuffCast behavior
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.3.1 | Debuff already on mob (dboList hit) | `dboTimer[1]` not expired; mob ID in `dboList[1]` | Slot skipped; no cast |
+| 4.8.3.2 | Timer expired → re-debuffs | `dboTimer[1]` expired | Proceeds to cast check |
+| 4.8.3.3 | Mob out of spell range — skip | Mob distance > spell range | Slot skipped |
+| 4.8.3.4 | Spell not ready, fwait=false — skip | Spell on cooldown; `fwait=false` | Skipped immediately |
+| 4.8.3.5 | Spell not ready, fwait=true — waits | Spell on short cooldown (< 2s); `fwait=true` | Waits up to 2s for ready, then casts |
+| 4.8.3.6 | SUCCESS updates dboList + dboTimer | Cast succeeds | Mob ID appended to `dboList[i]`; `dboTimer[i]` set to `now + duration` |
+| 4.8.3.7 | SUCCESS echoes | Cast succeeds | Prints `** Debuff SpellName on MobName` |
+
+#### 4.8.4 — DoDebuffStuff multi-mob behavior
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.4.1 | Primary mob debuffed | `firstMobID` is valid NPC | `debuffCast(firstMobID, true)` called |
+| 4.8.4.2 | XTarget add debuffed | Extra auto-hater in XTarget, in range, LOS | `debuffCast(xtID, false)` called |
+| 4.8.4.3 | XTarget same as firstMobID — skip | `xt.ID() == firstMobID` | Skipped (already handled as primary) |
+| 4.8.4.4 | XTarget out of range — skip | Mob distance ≥ `meleeDistance` | Skipped |
+| 4.8.4.5 | XTarget no LOS — skip | `xsp.LineOfSight()=false` | Skipped |
+| 4.8.4.6 | PC target — skip | XTarget is player character | Skipped |
+| 4.8.4.7 | Stale dboList cleaned | Dead mob ID in `dboList[1]` | ID removed from list on next DoDebuffStuff call |
+| 4.8.4.8 | Target restored after multi-mob | Debuffed secondary mob (target drifted) | Target restored to `myTargetID` after loop |
+
+#### 4.8.5 — debuffCount computation in Combat.init
+
+| ID | Scenario | Setup | Expected |
+|----|----------|-------|----------|
+| 4.8.5.1 | DPS entries with thresh ≥ 101 counted | `dpsArray[1]` has thresh 110; `dpsArray[2]` has thresh 50 | `state.mez.debuffCount=1` |
+| 4.8.5.2 | No debuff entries | All DPS entries have thresh ≤ 100 | `state.mez.debuffCount=0`; `combatCast` starts at index 1 |
+| 4.8.5.3 | All debuff entries | All DPS entries have thresh ≥ 101 | `debuffCount = #dpsArray`; `combatCast` DPS loop empty |
+
+---
+
+## Known Deferred / Out of Scope for M1–M4 (Steps 4.1–4.8)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
 | Area | Deferred to |
 |------|-------------|
-| CombatReset (called from /backoff) | M4 |
-| `/switchnow` actual target switch | M4 |
-| Full `/kaburn` rotation | M4 |
+| `Combat.mobRadar` — `'pull'` mode | M5 Step 5.x (pull.lua wires it) |
+| `namedWatchList` population from INI | M4 (needs KissAssist_Info.ini loader) |
+| `autoBurnTimer` auto-burn trigger | M4 Step 4.8 |
+| `validateTarget` pull-specific checks (PullValid, PCNear, BadLevel) | M5 Step 5.x |
+| BroadCast burn/add/tank-announce | M9 (cross-char comms) |
+| `CombatTargetCheckRaid` | M4 Step 4.8 (raid context) |
+| CheckForCombat SkipCombat==1 healer loop | M5 Step 5.x |
+| CheckForCombat MezCheck call | M4 Step 4.x (mez module) |
+| CheckForCombat DoWeChase / DoWeMove / LOSBeforeCombat | M7 (movement module) |
+| CheckForCombat tank EnduranceCheck | M6 (buffs module) |
+| SwitchMA on offtank / MA-dead path | M9 (DanNet/EQBC) |
+| fight: CheckCures / CheckHealth during combat | M5 (healing module) |
+| fight: CheckStick / ZAxisCheck (melee positioning) | M7 (movement module) |
+| fight: CastMana / mana-sit logic | M5 |
+| fight: MercsDoWhat | M6 (merc module) |
+| fight: MezCheck / AECheck | M5 (mez module) |
+| fight: AggroCheck in inner loop | ✅ Step 4.8 |
+| fight: WriteDebuffs / DebuffStuff | ✅ Step 4.8 (`doDebuffStuff`) |
+| fight: DoBardStuff | M8 (bard module) |
+| fight: ChainPullNextMob puller path | M5 Step 5.x |
+| fight: AutoFireOn branches | M7 or later |
+| fight: FaceMobOn | M7 (movement module) |
+| fight: BreakMez for pettank | M6 (pet module) |
+| fight: `beforeAttack` ConOn condition evaluation | M10 (conditions module) |
+| fight: `combatPet` Summon Companion AA cast | M6 (pet/cast module) |
+| combatReset: DPS meter output | M9 (MQ2DPSAdv) |
+| combatReset: loot after kill | M8 (loot module) |
+| combatReset: bard twist restart | M8 (bard module) |
+| combatReset: MQ2Melee re-enable / stick release | M7 (movement module) |
+| combatReset: PetHold re-enable | M6 (pet module) |
+| doBurn: condNo / abortFlag per-entry | M10 (conditions module) |
+| combatCast: per-slot timers (ABTimer/DPSTimer/FDTimer) | M5 stretch |
+| combatCast: DPSSkip lower HP bound | M5 stretch |
+| combatCast: DPSOn==2 wait-for-cooldown mode | M5 stretch |
+| combatCast: DAMod duration modifiers | M5 stretch |
+| combatCast: Feign-death sequence (FDTimer) | M5 stretch |
+| combatCast: DPSInterval for untiered spells | M5 stretch |
+| combatCast: WeaveArray / CastWeave during cooldown | M8 (bard module) |
+| combatCast: WriteDebuffs at entry | ✅ Step 4.8 (`doDebuffStuff` before combatCast) |
+| combatCast: TargetSwitchingOn+IAmMA mid-rotation retarget | M5 stretch |
+| mashButtons: ConOn/`\|cond` condition evaluation | M10 (conditions module) |
+| mashButtons: TargetSwitchingOn+IAmMA full CombatTargetCheck path | M5 stretch |
+| DPS/Buffs stacking checks in castWhat | M4 Step 4.6 done (DPS) / M6 (Buffs) |
+| `state.session.heals` wire (castMem guard) | M5 |
 | Healing/cures triggered by events | M5 |
 | Mez timer reset (MezBroke) | M5 |
 | CheckBuffs / WriteBuffs | M6 |
 | Stuck-gem detection in castWhat | M6 |
-| DPS/Buffs stacking checks in castWhat | M4 / M6 |
 | Condition evaluation (condNumber) | M10 |
-| Stop-moving before cast (M7) | M7 |
+| Stop-moving before cast | M7 |
 | Bard: twist pause/resume in all cast functions | M8 |
 | Cross-char comms (EQBC/DanNet stubs) | M9 |
 | KT task events (KTTarget, KTHail, etc.) | M7 |
@@ -431,4 +934,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-08. Reflects Milestones 1–3 implementation as of commit 2e4f881.*
+*Last updated: 2026-05-13. Reflects Milestones 1–3 complete + M4 Steps 4.1–4.8 complete. Milestone 4 is now complete.*

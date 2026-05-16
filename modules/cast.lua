@@ -147,7 +147,7 @@ local function castSpell(spellName, sentFrom)
                        or castResult == 'CAST_RESISTED'
         if tryNum < maxTries and retryable then
             ---@diagnostic disable-next-line: undefined-field
-        local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
+            local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
             if recast <= 2 then
                 while (mq.TLO.Me.GemTimer(spellName)() or 0) > 0
                         and not mq.TLO.Me.SpellReady(spellName)() do
@@ -335,6 +335,7 @@ local function castItem(whatItem, sentFrom)
     end
 
     -- Bard twist-pause stub → M8
+    ---@diagnostic disable-next-line: undefined-field
     local castTime = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime.TotalSeconds() or 0
 
     if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then
@@ -808,6 +809,530 @@ function Cast.castWhat(castWhat, whatID, sentFrom)
 
     utils.debug('cast', 'CastWhat leave: %s → %s', castWhat, castResult)
     return castResult
+end
+
+-- ─── DPS Stacking Check ───────────────────────────────────────────────────────
+
+-- Mirrors CastDPSSpellCheck (kissassist.mac:2919).
+-- Returns true if spellName (or its SPA-470 trigger) is already on the current
+-- target and was cast by me — prevents re-casting active DoTs.
+local function castDPSSpellCheck(spellName)
+    local myName = mq.TLO.Me.CleanName() or ''
+    local tgt    = mq.TLO.Target
+    if (tgt.Buff(spellName).ID() or 0) ~= 0
+            and (tgt.Buff(spellName).Caster() or '') == myName then
+        return true
+    end
+    if mq.TLO.Spell(spellName).HasSPA(470)() then
+        local numFX = mq.TLO.Spell(spellName).NumEffects() or 0
+        for k = 1, numFX do
+            if (mq.TLO.Spell(spellName).Attrib(k)() or 0) == 470 then
+                local trigName = mq.TLO.Spell(spellName).Trigger(k).Name() or ''
+                if trigName ~= ''
+                        and (tgt.Buff(trigName).ID() or 0) ~= 0
+                        and (tgt.Buff(trigName).Caster() or '') == myName then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- ─── Mash Buttons ─────────────────────────────────────────────────────────────
+
+-- Mirrors MashButtons (kissassist.mac:1973).
+-- Iterates MashArray and fires any ready instant-cast AA/disc/item/skill each tick.
+-- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
+local function mashButtons(_tarID)
+    if not state.combat.dpsOn then return end
+    local meState = mq.TLO.Me.State() or ''
+    if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
+
+    if (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID then
+        mq.cmdf('/squelch /target id %d', state.combat.myTargetID)
+        local t = os.clock() + 0.5
+        while os.clock() < t do
+            if mq.TLO.Target.ID() == state.combat.myTargetID then break end
+            mq.delay(50)
+        end
+    end
+
+    local mashArr = state.arrays.mashArray
+    for i = 1, #mashArr do
+        local entry = mashArr[i]
+        if not entry or entry == 'null' then return end
+        local name = entry:match('^([^|]+)') or entry
+        if name == '' or name == 'null' then return end
+        if (mq.TLO.Target.ID() or 0) == 0 then return end
+        if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
+        -- |cond evaluation deferred → M5 (ConOn/CondNo system)
+        if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
+            mq.cmd('/useitem "' .. name .. '"')
+            mq.delay(100)
+            mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
+        elseif (mq.TLO.Me.AltAbility(name).ID() or 0) ~= 0
+                and mq.TLO.Me.AltAbilityReady(name)()
+                and (mq.TLO.Me.AltAbility(name).Type() or 0) ~= 5
+                and name:lower() ~= 'twincast' then
+            mq.cmdf('/alt act %d', mq.TLO.Me.AltAbility(name).ID() or 0)
+            mq.delay(100)
+            if not mq.TLO.Me.AltAbilityReady(name)() then
+                mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
+            end
+        elseif mq.TLO.Me.CombatAbility(name)() ~= nil
+                and not mq.TLO.Me.CombatAbilityTimer(name)()
+                and mq.TLO.Me.CombatAbilityReady(name)()
+                and (mq.TLO.Spell(name).EnduranceCost() or 0) < (mq.TLO.Me.CurrentEndurance() or 0) then
+            ---@diagnostic disable-next-line: undefined-field
+            local isEmu = (mq.TLO.MacroQuest.Build() or 0) == 4
+            if not isEmu then
+                local ranked = mq.TLO.Me.CombatAbility(name)() or name
+                mq.cmdf('/disc %d', mq.TLO.Me.CombatAbility(ranked).ID() or 0)
+            else
+                mq.cmdf('/disc "%s"', name)
+            end
+            mq.delay(100)
+            if not mq.TLO.Me.CombatAbilityReady(name)() then
+                mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
+            end
+        elseif (mq.TLO.Me.Skill(name)() or 0) > 0 and mq.TLO.Me.AbilityReady(name)() then
+            mq.cmdf('/doability "%s"', name)
+            mq.delay(100)
+            if not mq.TLO.Me.AbilityReady(name)() then
+                mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
+            end
+        elseif name:find('command:', 1, true) then
+            mq.cmdf('/docommand %s', name:sub(9))
+            mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
+        end
+    end
+end
+
+-- ─── Combat Cast (DPS Rotation) ───────────────────────────────────────────────
+
+-- Mirrors CombatCast (kissassist.mac:1616).
+-- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
+-- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
+-- Deferred: per-slot timers (ABTimer/DPSTimer/FDTimer), ConOn/CondNo, WeaveArray,
+--           WriteDebuffs, Feign-death sequence, DPSSkip min-HP gate, DPSInterval, DPSOn==2.
+function Cast.combatCast()
+    utils.debug('cast', 'combatCast enter')
+
+    local debuffCount = state.mez.debuffCount or 0
+    local dpsStart    = debuffCount + 1
+    local dpsArr      = state.combat.dpsArray
+
+    -- If nothing to cast in DPS slots, still run mash
+    if dpsStart > #dpsArr then
+        mashButtons(state.combat.myTargetID)
+        return
+    end
+
+    local myID = state.combat.myTargetID
+    if (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() ~= myID then
+        if myID == 0 then return end
+    end
+    for i = dpsStart, #dpsArr do
+        -- Drain all pending events before each entry (mirrors inner EventFlag while loop)
+        repeat
+            state.combat.eventFlag = false
+            mq.doevents()
+        until not state.combat.eventFlag
+
+        myID = state.combat.myTargetID
+        if (mq.TLO.Spawn('id ' .. myID).Type() or ''):lower() == 'corpse'
+                or (mq.TLO.Spawn('id ' .. myID).ID() or 0) == 0
+                or state.dps.paused then
+            return
+        end
+
+        local entry = dpsArr[i]
+        if not entry or entry == 'null' or entry == '' then break end
+
+        -- Skip weave/mash/ambush-tagged entries (handled by other subsystems)
+        if entry:find('|weave', 1, true) or entry:find('|mash', 1, true)
+                or entry:find('|ambush', 1, true) then
+            goto next_dps
+        end
+
+        -- Parse |-delimited fields: spellName|hpThresh|targetType|opt4|opt5
+        local parts = {}
+        for part in (entry .. '|'):gmatch('([^|]*)|') do
+            parts[#parts + 1] = part
+        end
+        local spellName  = parts[1] or ''
+        local hpThreshStr = parts[2] or ''
+        local targetType  = parts[3] or ''
+
+        if spellName == '' or spellName == 'null' then goto next_dps end
+
+        local hpThresh = tonumber(hpThreshStr)
+        if not hpThresh or hpThresh <= 0 then break end
+
+        -- IAmMA or DPSOn off → use global AssistAt; otherwise use per-entry threshold
+        local dpsAt = (state.combat.dpsOn and not state.session.iAmMA)
+                      and hpThresh or state.combat.assistAt
+
+        -- Skip entry if nothing is ready to fire
+        local rankName = mq.TLO.Spell(spellName).RankName() or spellName
+        local isCmd    = spellName:find('command:', 1, true) ~= nil
+        if not isCmd
+                and not state.session.iAmABard
+                and not mq.TLO.Me.SpellReady(rankName)()
+                and not mq.TLO.Me.AltAbilityReady(spellName)()
+                and not mq.TLO.Me.CombatAbilityReady(rankName)()
+                and not mq.TLO.Me.AbilityReady(spellName)()
+                and not mq.TLO.Me.ItemReady(spellName)() then
+            goto next_dps
+        end
+
+        -- Mezzed guard: non-MA only casts Utility Detrimental on mezzed targets
+        if mq.TLO.Target.Mezzed.ID() and not state.session.iAmMA then
+            if (mq.TLO.Spell(spellName).Category() or '') ~= 'Utility Detrimental' then
+                goto next_dps
+            end
+        end
+
+        -- HP% gate (DPSSkip lower bound deferred → treated as 0)
+        local targetHP = mq.TLO.Spawn('id ' .. myID).PctHPs() or 0
+        if state.combat.dpsOn and targetHP > dpsAt then goto next_dps end
+
+        -- Resolve cast target
+        local castTargetID = myID
+        local tType = targetType:lower()
+        if tType == 'me' or tType == 'feign' then
+            castTargetID = mq.TLO.Me.ID() or 0
+        elseif tType == 'ma' or tType == 'maonce' then
+            if state.session.role:find('pettank') then
+                castTargetID = mq.TLO.Me.Pet.ID() or 0
+            else
+                castTargetID = mq.TLO.Spawn('=' .. state.session.mainAssist).ID() or 0
+            end
+        else
+            local gIdx = tType:match('^group(%d)$')
+            if gIdx then
+                local member = mq.TLO.Group.Member(tonumber(gIdx) or 0)
+                castTargetID = member and (member.ID() or 0) or 0
+            end
+        end
+
+        -- Self-buff skip: already active on me
+        if tType == 'me' then
+            if (mq.TLO.Me.Buff(spellName).ID() or 0) ~= 0
+                    or (mq.TLO.Me.Song(spellName).ID() or 0) ~= 0 then
+                goto next_dps
+            end
+        end
+
+        -- Drop attack for self/MA targeted casts when not the MA
+        if (tType == 'me' or tType == 'ma') and mq.TLO.Me.Combat() and not state.session.iAmMA then
+            mq.cmd('/attack off')
+            local t = os.clock() + 0.5
+            while os.clock() < t and mq.TLO.Me.Combat() do mq.delay(50) end
+        end
+
+        -- Skip gem-spell if under global spell cooldown (DPSOn==2 wait mode deferred)
+        if mq.TLO.Me.SpellInCooldown() and not state.session.iAmABard then
+            if mq.TLO.Me.Gem(spellName)() and (mq.TLO.Spawn('id ' .. myID).ID() or 0) ~= 0 then
+                goto next_dps
+            end
+        end
+
+        -- DPS stacking check: don't re-cast DoT/spell already on target from me
+        if not isCmd and (tType == '' or tType == 'mob' or tType == 'target') then
+            if castDPSSpellCheck(spellName) then goto next_dps end
+        end
+
+        -- Cast and handle result
+        local result = Cast.castWhat(spellName, castTargetID, 'dps')
+        utils.debug('cast', 'combatCast [%d] %s → %s', i, spellName, result or 'nil')
+
+        -- Restore melee if we dropped attack for a self/MA spell
+        if state.combat.meleeOn and not mq.TLO.Me.Combat()
+                and mq.TLO.Target.ID() == state.combat.myTargetID then
+            mq.cmd('/squelch /attack on')
+        end
+
+        if result == 'CAST_COND_FAILED' then goto next_dps end
+        if result == 'tcnc' then return 'tcnc' end
+
+        state.dps.lastCast = spellName
+        mq.doevents()
+
+        if result == 'CAST_SUCCESS' then
+            local castTType = mq.TLO.Spell(spellName).TargetType() or ''
+            if castTType == 'Self' or castTType:find('Group') then
+                printf('** %s on >> %s <<', spellName, mq.TLO.Me.CleanName() or '')
+            elseif (mq.TLO.Spawn('id ' .. myID).ID() or 0) ~= 0 then
+                printf('** %s on >> %s <<', spellName,
+                    mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
+            end
+            -- Per-slot timers (ABTimer/DPSTimer/FDTimer/Feign) deferred → Step 4.8
+        elseif result == 'CAST_RESISTED' then
+            printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
+        end
+
+        ::next_dps::
+    end
+
+    mashButtons(state.combat.myTargetID)
+end
+
+-- ─── Debuff-all system (mac:7613, 7714) ──────────────────────────────────────
+
+-- Local helper — mirrors Sub DebuffCast (kissassist.mac:7714).
+-- Iterates DPS slots 1..debuffCount on a specific target.
+-- fwait: wait briefly for a ready check on the primary mob; skip immediately for secondary mobs.
+local function debuffCast(targetID, fwait)
+    local debuffCount = state.mez.debuffCount or 0
+    if debuffCount == 0 then return end
+
+    local sp = mq.TLO.Spawn('id ' .. targetID)
+    if not sp or (sp.ID() or 0) == 0 then return end
+    if (sp.Type() or ''):lower() == 'corpse' then return end
+
+    local tidStr = tostring(targetID)
+
+    for i = 1, debuffCount do
+        local entry = state.combat.dpsArray[i]
+        if not entry or entry == 'null' or entry == '' then break end
+
+        local spellName = entry:match('^([^|]+)') or ''
+        if spellName == '' or spellName == 'null' then goto next_debuff end
+
+        -- DBOTimer/DBOList: skip if mob was recently debuffed with this slot (mac:7634-7648)
+        local dboExpiry = (state.combat.dboTimer or {})[i] or 0
+        if os.clock() < dboExpiry then
+            local list = (state.combat.dboList or {})[i] or ''
+            if list:find('|' .. tidStr, 1, true) then goto next_debuff end
+        end
+
+        -- Check effective cast range (mac:7759-7763)
+        local castRange = mq.TLO.Spell(spellName).Range() or 0
+        local aeRange   = mq.TLO.Spell(spellName).AERange() or 0
+        local effRange  = (castRange >= aeRange) and castRange or aeRange
+        if effRange == 0 then effRange = state.combat.meleeDistance end
+        if (sp.Distance() or 999) > effRange then goto next_debuff end
+
+        -- Check readiness (mac:7755-7757); fwait=true: wait up to 2s for primary mob
+        local rankName = mq.TLO.Spell(spellName).RankName() or spellName
+        local ready = mq.TLO.Me.SpellReady(rankName)()
+                   or mq.TLO.Me.AltAbilityReady(spellName)()
+                   or mq.TLO.Me.CombatAbilityReady(rankName)()
+        if not ready then
+            if fwait then
+                local waitUntil = os.clock() + 2
+                while os.clock() < waitUntil do
+                    mq.doevents()
+                    mq.delay(100)
+                    if mq.TLO.Me.SpellReady(rankName)()
+                       or mq.TLO.Me.AltAbilityReady(spellName)()
+                       or mq.TLO.Me.CombatAbilityReady(rankName)() then
+                        ready = true
+                        break
+                    end
+                end
+            end
+            if not ready then goto next_debuff end
+        end
+
+        -- Cast
+        local result = Cast.castWhat(spellName, targetID, 'dps')
+        utils.debug('cast', 'debuffCast [%d] %s on %d → %s', i, spellName, targetID, result or 'nil')
+
+        if result == 'CAST_SUCCESS' then
+            -- Track: update DBOList and set DBOTimer (mac:7744+)
+            if not state.combat.dboList  then state.combat.dboList  = {} end
+            if not state.combat.dboTimer then state.combat.dboTimer = {} end
+            local existing = state.combat.dboList[i] or ''
+            if not existing:find('|' .. tidStr, 1, true) then
+                state.combat.dboList[i] = existing .. '|' .. tidStr
+            end
+            local duration = mq.TLO.Spell(spellName).Duration() or 30
+            state.combat.dboTimer[i] = os.clock() + duration
+            printf('** Debuff %s on %s', spellName, sp.CleanName() or '')
+        end
+
+        ::next_debuff::
+    end
+end
+
+-- Mirrors Sub DoDebuffStuff (kissassist.mac:7613).
+-- Casts debuff-all DPS slots (1..debuffCount) on the primary target and nearby XTarget haters.
+function Cast.doDebuffStuff(firstMobID)
+    if (state.combat.debuffAllOn or 0) == 0 then return end
+    if (state.mez.debuffCount or 0) == 0 then return end
+    if mq.TLO.Window('RespawnWnd').Open() then return end
+    if state.dps.paused then return end
+    if state.misc.dmz and not mq.TLO.Me.InInstance() then return end
+    -- No myTargetID and MA is present as non-merc: skip (mac:7616)
+    if (state.combat.myTargetID or 0) == 0 then
+        local maID = mq.TLO.Spawn('=' .. (state.session.mainAssist or '')).ID() or 0
+        if maID ~= 0 and (mq.TLO.Spawn('id ' .. maID).Type() or '') ~= 'Mercenary' then return end
+    end
+    -- Bard+MA: skip when in active combat to avoid interruption (mac:7628-7631)
+    if state.session.iAmABard and state.session.iAmMA
+       and (state.combat.myTargetID or 0) ~= 0
+       and (state.combat.aggroTargetID or '') ~= '' then
+        return
+    end
+
+    mq.doevents()
+
+    -- Clean stale entries from dboLists (dead/far/corpse mobs) (mac:7641-7648)
+    for i = 1, (state.mez.debuffCount or 0) do
+        local list = (state.combat.dboList or {})[i] or ''
+        if list ~= '' then
+            local cleaned = ''
+            for idStr in list:gmatch('|(%d+)') do
+                local id = tonumber(idStr) or 0
+                if id ~= 0 then
+                    local mob = mq.TLO.Spawn('id ' .. id)
+                    if mob and (mob.ID() or 0) ~= 0
+                       and (mob.Distance() or 999) <= 200
+                       and (mob.Type() or ''):lower() ~= 'corpse' then
+                        cleaned = cleaned .. '|' .. idStr
+                    end
+                end
+            end
+            state.combat.dboList[i] = cleaned
+        end
+    end
+
+    -- Debuff primary target (mac:7653)
+    if firstMobID and firstMobID ~= 0 then
+        local fType = (mq.TLO.Spawn('id ' .. firstMobID).Type() or ''):lower()
+        if fType == 'npc' or fType == 'pet' then
+            debuffCast(firstMobID, true)
+        end
+    end
+
+    -- Debuff additional XTarget auto-haters in range (mac:7654-7700)
+    local xTotal = state.combat.xSlotTotal
+    for j = 1, xTotal do
+        mq.doevents()
+        if state.dps.paused then return end
+
+        local xt = mq.TLO.Me.XTarget(j)
+        if not xt then goto next_xt end
+        local xtID = xt.ID() or 0
+        if xtID == 0 or xtID == firstMobID then goto next_xt end
+        if (xt.TargetType() or '') ~= 'Auto Hater' then goto next_xt end
+
+        local xsp = mq.TLO.Spawn('id ' .. xtID)
+        if not xsp or (xsp.ID() or 0) == 0 then goto next_xt end
+        if (xsp.Type() or ''):lower() == 'corpse' then goto next_xt end
+        if (xsp.Distance() or 999) >= state.combat.meleeDistance then goto next_xt end
+        if not xsp.LineOfSight() then goto next_xt end
+        -- Skip PC or PC-owned pets (mac:7680-7683)
+        local xType = (xsp.Type() or ''):lower()
+        if xType == 'pc' then goto next_xt end
+        if xType == 'pet' then
+            local masterSp = mq.TLO.Spawn('id ' .. (xsp.Master.ID() or 0))
+            if masterSp and (masterSp.Type() or ''):lower() == 'pc' then goto next_xt end
+        end
+
+        -- Drop melee briefly for off-target cast (mac:7686-7690); restored after loop
+        if state.combat.meleeOn and mq.TLO.Me.Combat()
+           and (not state.session.iAmMA or xtID ~= (mq.TLO.Target.ID() or 0)) then
+            mq.cmd('/attack off')
+            mq.delay(500, function() return not mq.TLO.Me.Combat() end)
+        end
+
+        local fwait = (state.combat.debuffAllOn == 2 and not state.combat.burnCalled)
+        debuffCast(xtID, fwait)
+
+        ::next_xt::
+    end
+
+    -- Restore target to primary mob and resume melee (mac:7701-7707)
+    if (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID
+       and state.combat.myTargetID ~= 0 then
+        local mysp = mq.TLO.Spawn('id ' .. state.combat.myTargetID)
+        if mysp and (mysp.Type() or ''):lower() ~= 'corpse' then
+            mq.cmd('/target id ' .. state.combat.myTargetID)
+            mq.delay(1000, function()
+                return (mq.TLO.Target.ID() or 0) == state.combat.myTargetID
+            end)
+            if state.combat.meleeOn and state.combat.attacking then
+                mq.cmd('/squelch /attack on')
+            end
+        end
+    end
+
+    utils.debug('cast', 'doDebuffStuff: leave')
+end
+
+-- ─── Burn sequence (mac:11770) ────────────────────────────────────────────────
+
+function Cast.doBurn()
+    -- Guards (mac:11771-11773)
+    if mq.TLO.Me.Hovering() then return end
+    if (state.movement.campZone or 0) ~= 0
+       and (mq.TLO.Zone.ID() or 0) ~= state.movement.campZone then return end
+    if not state.combat.burnOn then
+        printf('Leaving Burn. Burn is turned Off.')
+        return
+    end
+
+    -- Announce on first activation; BroadCast deferred M9 (mac:11782)
+    if not state.combat.burnActive then
+        mq.cmd('/echo BURN ACTIVATED => Autobots Transform <=')
+    end
+
+    -- Tribute (mac:11783-11787)
+    if state.combat.useTribute and not mq.TLO.Me.TributeActive() then
+        mq.cmd('/squelch /tribute personal on')
+        mq.cmd('/squelch /trophy personal on')
+        state.timers.tribute = os.clock() + 570
+    end
+
+    -- Iterate burn array (mac:11788-11825)
+    for i, entry in ipairs(state.combat.burnArray) do
+        if mq.TLO.Me.Hovering() then break end
+
+        local parts = {}
+        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spellName  = parts[1] or 'null'
+        local targetType = parts[2] or 'Mob'
+        -- parts[3] = arg3 (abort flag / cond) deferred → Step 4.8
+
+        if spellName == 'null' or spellName == '' then goto next_burn end
+
+        -- Resolve target ID (mac:11799-11812); abortFlag deferred → Step 4.8
+        local tType = targetType:lower()
+        local burnTargetID
+        if tType == 'me' then
+            burnTargetID = mq.TLO.Me.ID() or 0
+        elseif tType == 'ma' then
+            burnTargetID = mq.TLO.Spawn('=' .. state.session.mainAssist).ID() or 0
+        elseif tType == 'pet' then
+            burnTargetID = mq.TLO.Me.Pet.ID() or 0
+        else
+            burnTargetID = state.combat.myTargetID
+        end
+
+        -- condNo/abortFlag (mac:11793-11815) deferred → Step 4.8
+
+        local result = Cast.castWhat(spellName, burnTargetID, 'burn')
+
+        if result == 'CAST_SUCCESS' then
+            printf('Casting >> BURN%d:%s', i, spellName)
+            if not state.session.iAmABard then
+                local deadline = os.clock() + 10
+                while os.clock() < deadline
+                      and (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                      and mq.TLO.Window('CastingWindow').Open() do
+                    mq.delay(50)
+                end
+            end
+        end
+
+        ::next_burn::
+    end
+
+    state.combat.burnActive = true
 end
 
 return Cast

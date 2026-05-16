@@ -73,7 +73,18 @@ local State = {
         mobFlag            = true,
         myTargetID         = 0,
         myTargetName       = '0',
+        assistAt           = 95,
+        autoBurnTimer      = 0,
+        burnArray          = {},
+        burnOnNamed        = false,
+        dpsArray           = {},
+        dpsOn              = false,
+        meleeDistance      = 30,
+        meleeOn            = false,
         namedCheck         = false,
+        namedWatchList     = {},
+        targetSwitchingOn  = false,
+        useTribute         = false,
         raidAssistEntry    = 1,
         raidTargetID       = '0',
         validTarget        = false,
@@ -81,6 +92,12 @@ local State = {
         xTSlot             = 0,
         xTSlot2            = 0,
         xTarAutoSet        = true,
+        -- Step 4.8
+        aggroArray         = {},
+        aggroOn            = false,
+        debuffAllOn        = 0,
+        dboList            = {},   -- per-debuff-slot: string of "|id|id..." already-debuffed mobs
+        dboTimer           = {},   -- per-debuff-slot: os.clock() expiry for re-debuff
     },
 
     cast = {
@@ -150,6 +167,8 @@ local State = {
         advpathX        = 0.0,
         advpathY        = 0.0,
         advpathZ        = 0.0,
+        campRadius       = 50,
+        campRadiusExceed = false,
         campX           = 0,
         campY           = 0,
         campZ           = 0,
@@ -207,7 +226,9 @@ local State = {
 
     pet = {
         activeState   = false,
+        assistAt      = 100,   -- PetAssistAt: mob HP% threshold to send pet (set from INI)
         attackRange   = 0,
+        combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
         focusOn       = false,
         globalToysGave = '',
         suspendState  = false,
@@ -225,6 +246,7 @@ local State = {
         mobCount   = 0,
         mobDone    = false,
         mobFlag    = false,
+        mezOn      = false,
     },
 
     bard = {

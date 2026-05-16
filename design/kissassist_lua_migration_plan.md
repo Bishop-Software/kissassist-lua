@@ -301,7 +301,7 @@ Additional logic:
 
 ---
 
-### Milestone 4 — Combat Core
+### Milestone 4 — Combat Core 🔄 IN PROGRESS
 **Goal:** Script fights when controlling a single character.
 
 - `combat.lua` — `CheckForCombat`, `Combat`, `CombatTargetCheck`, `CombatTargetCheckRaid`
@@ -311,7 +311,7 @@ Additional logic:
 
 ---
 
-#### Step 4.1 — `combat.lua` scaffold + array loading + state wiring
+#### Step 4.1 — `combat.lua` scaffold + array loading + state wiring ✅
 
 Create `modules/combat.lua` with `Combat.init(state, utils, cast)`. Wire into `init.lua`.
 
@@ -320,11 +320,11 @@ Create `modules/combat.lua` with `Combat.init(state, utils, cast)`. Wire into `i
 - Load named-mob watch list (`NamedWatch` / `NamedCheck`) from INI
 - Add any missing state fields to `state.lua`
 
-**Done when:** module loads cleanly; DPS/Disc/Burn arrays populated from INI.
+**Done when:** module loads cleanly; DPS/Disc/Burn arrays populated from INI. ✅
 
 ---
 
-#### Step 4.2 — MobRadar (mob detection)
+#### Step 4.2 — MobRadar (mob detection) ✅
 
 Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC haters within `MeleeDistance`.
 
@@ -332,80 +332,107 @@ Mirrors `MobRadar` (kissassist.mac:7143). Scans XTarget slots 1–13 for NPC hat
 - Set `state.combat.mobCount` and `state.combat.aggroTargetID` (closest hater ID)
 - Handle LOS-only mode (`LOSBeforeCombat`) and DMZ guard
 
-**Done when:** `mobCount` correctly reflects nearby hostile NPCs.
+**Done when:** `mobCount` correctly reflects nearby hostile NPCs. ✅
 
 ---
 
-#### Step 4.3 — Assist + CombatTargetCheck + GetCombatTarget
+#### Step 4.3 — Assist + CombatTargetCheck + GetCombatTarget ✅
 
-- **`Assist`** (kissassist.mac:748): use `Me.GroupAssistTarget.ID` when MA is the group's assigned main assist; otherwise find MA's target by name. Sets `state.combat.myTargetID`. Handles IAmMA self-target mode and `/switchma` escalation when MA is dead.
-- **`CombatTargetCheck`** (kissassist.mac:1337): validate `myTargetID` not a corpse; sync to MA's target if it changed; handle `TargetSwitchingOn` mode for MA. Group variant; `CombatTargetCheckRaid` for raid context (stub initially).
-- **`GetCombatTarget`** (kissassist.mac:818): MA-only path — picks best target from XTarget hater list when no explicit target is set.
+- **`Combat.assist(_fromWhere)`** (kissassist.mac:748): non-MA path. Uses `Me.GroupAssistTarget.ID` when group MA is assigned and matches `MainAssist`; falls back to `/assist MainAssist`. Validates target via `validateTarget()` and locks `state.combat.myTargetID`.
+- **`Combat.getCombatTarget()`** (kissassist.mac:818): MA/offtank path. Selects best XTarget auto-hater: named > alert-4 > closest with hurt/level tie-breaks. Mem-blurred mob fallback when `mez.mobFlag` set.
+- **`Combat.combatTargetCheck(setTarget)`** (kissassist.mac:1337): mid-combat sync. When group MA is active: non-MA syncs to `GroupAssistTarget`; MA locks or accepts new target based on `targetSwitchingOn`. Without group MA: drains `CalledTargetID` from event handlers. Re-targets the game client if `myTargetID` changed.
+- **`validateTarget(spawnID)`** (kissassist.mac:948): local helper shared by Assist and GetCombatTarget. Checks bad types, ignore-by-ID list, camp distance (tank roles), eye-of, PC-owned pet, charmed, and PC/Zek rules. Pull-specific checks deferred to Step 5.x.
+- **New state fields**: `mez.mezOn`, `combat.targetSwitchingOn`.
 
 **Done when:** `myTargetID` is set correctly when MA has a live NPC targeted.
 
 ---
 
-#### Step 4.4 — CheckForCombat + CombatReset + CheckForAdds
+#### ✅ Step 4.4 — CheckForCombat + CombatReset + CheckForAdds
 
-- **`CheckForCombat`** (kissassist.mac:484): outer combat control loop — DMZ/dead/no-mobs/no-DPS guards; calls `MobRadar`, `Assist`, then `Combat`; handles `ChainPull==2` exit; FeignAggroCheck after combat ends. IAmMA vs assist branching with `EngageWaitTimer`.
-- **`CombatReset`** (kissassist.mac:2144): clears `CombatStart`, turns off attack (`/attack off`), resets `Attacking`, `MyTargetID`, `AggroTargetID`.
-- **`CheckForAdds`** (kissassist.mac:2333): detects new mobs joining during combat; updates `mobCount`.
-- **`FeignAggroCheck`** (kissassist.mac:14524): if still feigning after combat, stands up.
-- Wire `Combat.checkForCombat()` call into `init.lua` main loop when `dpsOn || meleeOn`.
+- **`Combat.checkForCombat(skipCombat, fromWhere, waitTime)`** (kissassist.mac:484): outer combat control loop — chaseAssist+moving guard; DMZ/hovering/dead/no-mobs/no-DPS guards; calls `mobRadar`, then MA vs non-MA branching: non-MA runs `assist()` loop with EngageWaitTimer, MA waits for mob in radius then calls `getCombatTarget()`; calls `feignAggroCheck()` after combat; ChainPull==2 exit; calls `checkForAdds()`; non-manual CombatReset if target died. `Combat.fight()` stub present for Step 4.5.
+- **`Combat.combatReset(sFlag, calledFrom)`** (kissassist.mac:2144): mez array + immuneIDs + mobsToIgnoreByID cleanup; resets `myTargetID/aggroTargetID2/calledTargetID/combatStart/validTarget/pulled`; `/attack off` + `/target clear`; resets XTarget slot to autohater; sends pet back; clears `attacking/burnActive/dps.target`; clears burn state if burn target died; resets tank+petFollow timers; waits up to 2s for aggroOff timer; drains events. DPS meter output, loot, bard, MQ2Melee deferred.
+- **`Combat.checkForAdds(calledFrom)`** (kissassist.mac:2333): calls `mobRadar`; guards (mobCount≤1, DMZ, pulling, !dps/melee, puller past campRadius, dead, chainPull==2, paused); re-acquires valid living target within campRadius; add spam popup + echo; puller-returning guard; tank roles target aggroID; stale myTargetID cleanup.
+- **`Combat.feignAggroCheck()`** (kissassist.mac:14524): if aggroOff timer active, loops while feigning/invis draining events; else single `doevents`.
+- Wired `Combat.checkForCombat(0, 'main', 0)` into `init.lua` main loop when `dpsOn || meleeOn`.
 
 **Done when:** script enters and exits combat in response to nearby mobs; `CombatStart` flag correct.
 
 ---
 
-#### Step 4.5 — Combat (melee engagement)
+#### ✅ Step 4.5 — Combat (melee engagement)
 
 Mirrors `Combat` (kissassist.mac:1036) — the inner fight loop.
 
-- CombatRadius calculation from `Spawn[myTargetID].MaxRangeTo` vs `MeleeDistance`
-- `CombatStart` flag, announce "ATTACKING", `/attack on`, CheckStick (MQ2MoveUtils)
-- `BeforeAttack` (kissassist.mac:2022): cast pre-combat abilities from `BeforeArray` before first attack
-- Periodic `CheckHealth` calls during combat (every `HealInterval` ticks)
-- Pet engagement at `PetAssistAt`% mob HP
-- Calls `CombatTargetCheck` and `CombatCast` each iteration
+- **`Combat.fight(fromWhere)`**: entry guards (LOS, mezzed non-MA bailout, puller+pulling+out-of-camp, DPSPaused). CombatRadius = `max(MaxRangeTo, MeleeDistance) + 5`. Determines `inRange` as direct distance OR both MA and target within campRadius.
+- **Main engage block** (mob not corpse, HP ≤ assistAt, inRange): `CombatStart` flag — echoes `ATTACKING -> name <-`, local echo for TANKING roles (BroadCast deferred M9). `/look 0` when not underwater. Initiates attack: sets `attacking = true`, stands, taunts for tank/hunter, fires `beforeAttack()`, sends pet via `combatPet()`. CheckStick/ZAxisCheck deferred M7.
+- **`beforeAttack(_tarID, condCheck)`** (kissassist.mac:2022): local helper iterating `beforeArray`; tries each entry as item → AA → disc → ability; `condCheck==2` runs only `|cond`-flagged entries. ConOn condition evaluation deferred.
+- **`combatPet()`** (kissassist.mac:2056): local helper; guards (no pet, pet in combat, DPSPaused, !combatOn); `combatTargetCheck(1)`; for pettank with ReturnToCamp uses camp-relative follow/attack logic; other roles attack if in `petAttackRange`, follow otherwise; sets `timers.petAttack + 3s`. BreakMez deferred M6.
+- **Inner while loop**: event drain each iteration; Burn dispatch via `_cast.doBurn` (stub); NamedWatch stub (sets `namedCheck`); dead/paused target → `combatReset + break`; `_cast.combatCast()` stub (returns `'tcnc'` to restart iteration); `combatTargetCheck(1)`; melee re-attack + `/attack on` when standing; pet re-check each iteration; target-switching MA path (acquire next target or reset); FeignAggroCheck + break if still feigning. MeshButtons/CastMana/WriteDebuffs/Bard/Cures/Heals deferred. ChainPull puller path deferred M5.
+- **Out-of-HP-range else-if** (inRange but HP > assistAt or corpse): burn check, `combatTargetCheck(1)`, `combatPet()`, `beforeAttack(myID, 2)` for `|cond` entries.
+- **New state fields**: `pet.assistAt = 100`, `pet.combatOn = false` (loaded from `[Pet]` INI in `Combat.init`).
+- `Combat.fight(fromWhere)` called from `checkForCombat` when `myTargetID ~= 0`.
 
-**Done when:** script attacks target with melee; `Attacking` flag set.
+**Done when:** script attacks target with melee; `Attacking` flag set. ✅
 
 ---
 
-#### Step 4.6 — CombatCast + CastDPSSpellCheck + MashButtons
+#### Step 4.6 — CombatCast + CastDPSSpellCheck + MashButtons ✅
 
 Mirrors `CombatCast` (kissassist.mac:1616) — DPS spell/AA rotation inside the combat loop.
 
-- Iterate DPS array entries (format `spell|target|cond|...`): call `Cast.castWhat` for each when ready
-- Parse target type from array entry (`Mob`, `Me`, `MA`, `Group1..5`, spawn name)
-- `CastDPSSpellCheck` (kissassist.mac:2919): check if spell/DoT already on target via `Target.MyBuff[name]` — fills the M4 stub in `Cast.castWhat`
-- `MashButtons` (kissassist.mac:1973): iterate `MashArray` for instant-cast AAs/abilities
+- **`castDPSSpellCheck(spellName)`** (kissassist.mac:2919): local helper in `modules/cast.lua`. Checks `Target.Buff[name].Caster == Me` to skip re-casting active DoTs. Also checks SPA-470 trigger chains (proc DoTs). Returns true if spell already on target by me.
+- **`mashButtons(_tarID)`** (kissassist.mac:1973): local helper in `modules/cast.lua`. Iterates `state.arrays.mashArray`; for each entry fires ready item/AA/disc/skill/command. Retargets if target drifted. Returns without cast if `dpsOn=false`, not in STAND/MOUNT state, no target, or corpse. Cond check deferred M5.
+- **`Cast.combatCast()`** (kissassist.mac:1616): public function in `modules/cast.lua`. Iterates `state.combat.dpsArray` starting at `debuffCount+1` (debuff slots handled by WriteDebuffs, deferred Step 4.8). For each entry:
+  - Drains events via EventFlag repeat loop before each entry.
+  - Validates target (not corpse/dead, not DPSPaused).
+  - Parses `|`-delimited entry: `spellName|hpThresh|targetType|opt4|opt5`. Breaks if `hpThresh` is missing/zero.
+  - Skips `|weave`, `|mash`, `|ambush` tagged entries (handled elsewhere).
+  - Checks readiness (SpellReady/AltAbilityReady/CombatAbilityReady/AbilityReady/ItemReady); skips if nothing ready.
+  - Mezzed guard: non-MA skips non-utility spells on mezzed targets.
+  - HP% gate: skips if `dpsOn` and target HP > `dpsAt` (per-entry threshold or `assistAt` for MA).
+  - Target resolution: `Me`/`Feign` → Me.ID; `MA`/`maonce` → MainAssist (or pet if pettank role); `Group1–5` → Group.Member; default → myTargetID.
+  - Self-buff skip: `Me` target already has buff/song → skips.
+  - Attack-off for self/MA spells when not MA (restores after cast).
+  - Spell cooldown skip: gem-spell while `SpellInCooldown` → `goto next_dps` (DPSOn==2 wait mode deferred).
+  - Calls `castDPSSpellCheck` for Mob/Target/default entries to skip active DoTs.
+  - Calls `Cast.castWhat(spellName, castTargetID, 'dps')`.
+  - Re-enables melee attack if dropped (`/squelch /attack on`).
+  - Returns `'tcnc'` if castWhat returns `'tcnc'` (propagates no-combat-restart signal to fight()).
+  - Sets `state.dps.lastCast`; echoes spell-on-target for SUCCESS; echoes RESISTED.
+  - Per-slot timers (ABTimer/DPSTimer/FDTimer), DAMod, DPSSkip lower bound, WeaveArray/CastWeave, ConOn/CondNo, WriteDebuffs, Feign-death sequence, DPSInterval, DPSOn==2 mode all deferred Step 4.8 / M5.
+  - Ends by calling `mashButtons(myTargetID)`.
+- `Cast.combatCast` is already wired in `Combat.fight()` inner loop via `if _cast.combatCast then _cast.combatCast() end` (Step 4.5 stub now live).
 
-**Done when:** script casts DPS spells and AAs during combat.
+**Done when:** script casts DPS spells and AAs during combat. ✅
 
 ---
 
-#### Step 4.7 — Burn sequence
+#### Step 4.7 — Burn sequence ✅
 
 Mirrors `Burn` (kissassist.mac:11770).
 
-- Iterate `Burn` array entries (same `spell|target|cond` format as DPS), call `Cast.castWhat`
-- Tribute activation (`/tribute personal on`) at burn start when `UseTribute` set
-- Auto-burn triggers: `/kaburn` bind (already stubbed in binds.lua), named-mob detection via `NamedWatch`/`NamedCheck` list, `AutoBurnTimer`
-- `BurnActive` flag; broadcast on burn start
+- **`Cast.doBurn()`** (cast.lua): guards (hovering/wrong zone/burnOn off); broadcast "BURN ACTIVATED" on first activation; tribute activation (`/tribute personal on` + `/trophy personal on`, sets `state.timers.tribute + 570s`) when `state.combat.useTribute` set; iterates `state.combat.burnArray` parsing `spell|target` entries, resolves target (Mob/Me/MA/Pet → targetID), calls `Cast.castWhat`; waits for cast window to close (non-bard); sets `state.combat.burnActive = true`. condNo/abortFlag deferred → Step 4.8.
+- **`NamedWatch` in `Combat.fight()`** (combat.lua): when `burnOnNamed` and not yet `namedCheck`, checks `sp.Named()` on current target; also walks `namedWatchList` for list-mode detection; on match echoes named alert, calls `Cast.doBurn()`, sets `namedCheck = true`.
+- **`state.combat.useTribute`** added to state.lua.
+- `/kaburn` bind already sets `state.combat.burnID` (binds.lua:98-114); fight loop clears it after dispatch.
+- `AutoBurnTimer` trigger deferred → Step 4.8. BroadCast deferred → M9.
 
 **Done when:** `/kaburn` triggers burn sequence in combat; named mobs auto-burn.
 
 ---
 
-#### Step 4.8 — WriteDebuffs + AggroCheck + in-game validation
+#### ✅ Step 4.8 — DoDebuffStuff + AggroCheck + in-game validation
 
-- **`WriteDebuffs`** (kissassist.mac:12569): iterate Debuff array, call `Cast.castWhat` for each when target lacks the debuff
-- **`AggroCheck`** (kissassist.mac:2373): tank roles — taunt if losing aggro; check `Me.CombatAbility[Taunt]`; broadcast aggro state
-- End-to-end validation: detect mob → assist MA → melee → DPS rotation → burn → debuffs → reset after kill
+- **`Cast.doDebuffStuff(firstMobID)`** (kissassist.mac:7613): guards (debuffAllOn, debuffCount, DPSPaused, DMZ, bard+MA bailout); cleans stale mob IDs from per-slot dboLists; calls `debuffCast(firstMobID, true)` for primary target; iterates XTarget auto-haters in range (LOS check, PC/PC-pet skip, distance guard), drops melee for off-target cast, calls `debuffCast(xtID, fwait)` for each; restores target + melee after loop.
+- **`debuffCast(targetID, fwait)`** (kissassist.mac:7714): local helper in cast.lua. Iterates DPS slots 1..debuffCount; per slot: checks dboTimer/dboList to skip recently-debuffed mobs; verifies cast range vs effective spell range; checks spell/AA/disc readiness (fwait=true waits up to 2s for primary mob); calls `Cast.castWhat`; on SUCCESS updates dboList[i] and sets dboTimer[i] from spell duration.
+- **`Combat.aggroCheck()`** (kissassist.mac:2373): guards (myTargetID, corpse check, MA target-sync); iterates `state.combat.aggroArray`; per entry: parses `spellName|pct|glt|target`; skips active self-disc; checks ability readiness; applies threshold (`<` gain / `<<` secondary / `>` lose); resolves target (null/Mob/INC → myTargetID, Me/MA/Pet); calls `_cast.castWhat(..., 'Aggro', ...)`; on SUCCESS echoes and breaks; sets aggroOff timer on lose-aggro cast if feigning/invis.
+- **`Combat.init` additions**: `debuffAllOn` from `[DPS] DebuffAllOn`; `debuffCount` computed from DPS array (entries with hp threshold ≥ 101 are debuff-all slots); `aggroOn` from `[Aggro] AggroOn`; `aggroArray` loaded from `Aggro1..AggroN`.
+- **State fields added**: `combat.aggroArray`, `combat.aggroOn`, `combat.debuffAllOn`, `combat.dboList`, `combat.dboTimer`.
+- **Wired into `Combat.fight()`**: `aggroCheck` called each inner loop iteration when `aggroOn`; `doDebuffStuff` called before `combatCast` when `debuffAllOn > 0`; `doDebuffStuff` called in out-of-HP-range block when `debuffAllOn == 2`.
+- **Note**: `Sub WriteDebuffs` at mac:12569 writes self-debuff status to `KissAssist_Buffs.ini` for healers — that belongs to the cures system (M5). Step 4.8's debuff-casting is `DoDebuffStuff` + `DebuffCast`.
 
-**Done when:** script fights end-to-end: detect → assist → melee → DPS → burn → reset.
+**Done when:** script fights end-to-end: detect → assist → melee → DPS → debuffs → burn → reset.
 
 ---
 

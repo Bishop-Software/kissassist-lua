@@ -5,6 +5,7 @@ local Config = require('modules.config')
 local Events = require('modules.events')
 local Binds  = require('modules.binds')
 local Cast   = require('modules.cast')
+local Combat = require('modules.combat')
 
 local VERSION = '1.0.0'
 
@@ -56,12 +57,16 @@ Config.checkPlugins()
 Events.register(State, Utils)
 Binds.register(State, Utils)
 Cast.init(State, Utils)
+Combat.init(State, Utils, Cast)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
 -- Main loop — mq.delay() processes events internally in MQ2Lua
 while not State.terminate do
     mq.doevents()
+    if State.combat.dpsOn or State.combat.meleeOn then
+        Combat.checkForCombat(0, 'main', 0)
+    end
     mq.delay(50)
 end
 
