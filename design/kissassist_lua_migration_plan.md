@@ -990,24 +990,348 @@ Wire `Pull` into `combat.lua` `checkForCombat()` for the ChainPull==2 exit path 
 ### Milestone 8 — Pet & Bard
 **Goal:** Pet classes and Bards function correctly.
 
-- `pet.lua` — `DoPetStuff`, `CheckPetBuffs`, `CastPetToys`, pet hold/resume
-- `bard.lua` — `DoBardStuff`, MQ2Medley integration, named medley sets per combat context
+- `pet.lua` — `DoPetStuff`, `PetToys` (item-giving cluster), `CheckRampPets`, pet hold/resume
+  - Note: `CheckPetBuffs` was already ported to `buffs.lua` in M6 Step 6.6
+- `bard.lua` — `DoBardStuff` translated to MQ2Medley API, context-based medley switching
   - Define medley sets in character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`, etc.)
   - Call `/medley <setname>` on context transitions; `/medley queue` for event-driven one-shot songs
   - Query `Medley.Active` / `Medley.TTQE` instead of `Twist.Twisting` / `Twist.Current`
   - Note: replaces MQ2Twist — Bard users must define `[MQ2Medley-*]` INI sections (one-time migration)
 
-**Done when:** Necro/Mage/BST pets engage; Bard cycles correct medley sets in and out of combat.
+**Done when:** Necro/Mage/BST pets summon and receive toys; `CheckRampPets` holds pulls until rampage pets poof; Bard switches medley sets correctly on combat state transitions; CastAA pauses medley before activating AAs.
 
 ---
 
-### Milestone 9 — Looting
-**Goal:** Loot system works with existing loot rules.
+#### Step 8.1 ✅ — `pet.lua` scaffold + INI wiring + state audit
 
-- `loot.lua` — port of `Ninjadvloot.inc`
-- Load per-item rules from existing `Loot.ini` format (preserve compatibility)
+Create `modules/pet.lua` with `Pet.init(state, utils, cast)`. Load all pet config not already loaded by M6 (`Buffs.init` already loads `on`, `shrinkOn`, `shrinkSpell`, `toysOn`, `toysArray` into `state.pet` — do not duplicate).
 
-**Done when:** Characters loot corpses per existing rules.
+**New INI fields to load** (from `[Pet]`):
+
+- `PetSpell` → `state.pet.spell`
+- `PetFocus` → `state.pet.focus` (pipe-delimited `focusItem|focusSlot|focusBuff`)
+- `PetFocusOn` → `state.pet.focusOn`
+- `PetHoldOn` → `state.pet.holdOn`
+- `PetSuspend` → `state.pet.suspend`
+- `PetSuspendState` → `state.pet.suspendState` (0=none, 1=suspended)
+- `PetTotCount` → `state.pet.totCount` (total pet slots including suspended)
+- `PetActiveState` → `state.pet.activeState` (0=no pet, 1=pet active)
+- `PetFocusOn` → `state.pet.focusOn`
+
+Audit `state.pet` in `state.lua` for any missing fields and add them. Wire `Pet.init(State, Utils, Cast)` into `init.lua` after `Buffs.init`. Add stub comments for Steps 8.2–8.4.
+
+**Done when:** module loads cleanly; `state.pet.spell`, `state.pet.focus`, `state.pet.holdOn` populated from INI.
+
+✅ **Implemented (2026-05-16):** `modules/pet.lua` created with `Pet.init(state, utils, cast)`. Loads `PetSpell`, `PetFocus`, `PetFocusOn`, `PetHoldOn`, `PetSuspend` from `[Pet]` INI section. `state.pet` audited — added `spell`, `focus`, `holdOn`, `suspend` fields (runtime fields `activeState`, `suspendState`, `totCount`, `focusOn` were already present). `Pet.init` wired into `init.lua` after `Buffs.init`. Stub comments for Steps 8.2–8.4 in place.
+
+---
+
+#### Step 8.2 — `Pet.doPetStuff` (summon + focus swap)
+
+Port `DoPetStuff` (kissassist.mac:5210–5401, ~191 lines) and the local helper `petStateCheck` (mac:5191–5209, 18 lines). Read both source blocks before implementing.
+
+**`petStateCheck()`** (local helper, mac:5191): checks `Me.Pet.ID` against expected states, echoes status, sets `state.pet.activeState` and `state.pet.suspendState` based on live pet presence vs `PetTotCount`.
+
+**`Pet.doPetStuff()`** (mac:5210):
+
+- **Entry guards** (mac:5211–5212): `!petOn`, `campZone != Zone.ID`, `aggroTargetID`, `Me.Invis`, `Me.Hovering` → return
+- **Event drain loop** (mac:5213–5217): drain `EventFlag` before any work
+- **Pet focus resolution** (mac:5220–5233): parse `state.pet.focus` (pipe-delimited `FocusPet|FocusSlot|FocusBuff`); if slot != `buff`, read `Me.Inventory[slot].Name` as `focusCurrent`; if slot == `buff`, `focusCurrent = focusBuff`
+- **Familiar banish** (mac:5234): if `Me.Pet.CleanName == Me.Name's familiar` → `/pet get lost`
+- **No-pet path** (mac:5237–5328): guard `!Me.Pet.ID && PetSpell.Mana <= CurrentMana`
+  - Reset `petActiveState = 0`, clear `g_PetToysGave`
+  - Focus item swap (non-buff slot): if cursor clear and focus item differs from current → `MQ2Exchange` equip via `mq.cmd('/exchange ...')`, set `focusSwitch = true`
+  - Focus buff path: if `focusBuff` not active → `_cast.castWhat(focusPet, Me.ID, 'DoPetStuff')`
+  - **Suspend path** (mac:5274–5306): if `petSuspend`: call `petStateCheck()`; if `totCount==1 && activeState==0 && suspendState==1` → echo + call `petStateCheck` to unsuspend; if `totCount < 2 && suspendState==0 && activeState==0` → summon loop
+  - **Normal summon loop** (mac:5307–5327): `CastWhat(petSpell, Me.ID, 'DoPetStuff')`; loop with 1s delay until `Me.Pet.ID` or `PetSummonTimer` expires; on `CAST_COMPONENTS` → echo + return; on pet appear: echo, set `activeState = 1`, call `_buffs.checkPetBuffs()`, call `Pet.petToys(petName)` if `toysOn`
+  - Focus swap-back (mac:5324–5327): if `focusSwitch` and cursor clear → exchange back to original item
+
+**Done when:** pet class with no pet casts `PetSpell`, pet appears, focus item swaps correctly.
+
+---
+
+#### Step 8.3 — `Pet.petToys` + item-giving helpers
+
+Port the `PetToys` cluster (mac:5586–6034). All functions are local helpers in `pet.lua` except `Pet.petToys` which is the public entry point. Read each sub before implementing.
+
+**Mac source ranges:**
+
+| Function | mac lines | Lines | Purpose |
+| --- | --- | --- | --- |
+| `CastPetToys` | 5521–5561 | 40 | Cast a toy spell/AA/disc on the pet |
+| `PickUpItem` | 5562–5585 | 23 | Move item from bag to cursor for giving |
+| `PetToys` | 5586–5835 | 249 | Main item-giving orchestration |
+| `OpenInvSlot` | 5836–5884 | 48 | Open a bag slot to make room for cursor |
+| `DestroyBag` | 5885–5922 | 37 | Destroy a bag if needed to free space |
+| `GiveTo` | 5923–6034 | 111 | Give cursor item to target NPC/pet |
+
+**`castPetToys(spell)`** (local, mac:5521): cast spell/AA/disc on pet via `_cast.castWhat(spell, Me.Pet.ID, 'Pet-nomem')`; guards on `CombatAbilityReady`/`AltAbilityReady`.
+
+**`pickUpItem(itemName, addToList)`** (local, mac:5562): find item in inventory by name; click to move to cursor; handle `addToList` flag for tracking.
+
+**`openInvSlot()`** (local, mac:5836): find an empty top-level inventory slot; open the bag in that slot if needed.
+
+**`destroyBag()`** (local, mac:5885): delete a bag item from cursor to free inventory space.
+
+**`giveTo(item, targetID, giveNow)`** (local, mac:5923): target NPC by ID, wait for target lock, give cursor item via `/itemnotify slot leftmouseup` + `/click right target`; poll trade window; confirm trade.
+
+**`Pet.petToys(petName)`** (public, mac:5586): guards (`toysOn`, pet present, `g_PetToysGave` not already given); iterates `state.pet.toysArray`; for each toy: check if pet already has it (scan `Me.PetBuff` slots); if not: `pickUpItem`, `giveTo(pet.ID)`; on success mark `g_PetToysGave`; call `castPetToys` for any toy-buff spells.
+
+**Done when:** pet toys are given to pet after summon; toy items move through cursor → pet trade window correctly.
+
+---
+
+#### Step 8.4 — `Pet.checkRampPets` + wire into main loop + pull module
+
+Port `CheckRampPets` (mac:9571–9585, 14 lines) and wire all pet functions into the main loop and pull system.
+
+**`Pet.checkRampPets()`** (mac:9571): if not in `COMBAT`, iterate `i` from 0–20; if `Spawn[Me.CleanName's_pet0{i}].ID` exists (rampage pet present), echo and loop with `mq.delay(100)` until OOC and pet gone or combat re-enters; releases when all rampage pets have poofed.
+
+**Main loop wiring** in `init.lua`: add after buff/heal section:
+```lua
+if State.pet.on and not State.combat.combatStart then
+    Pet.doPetStuff()
+end
+```
+
+(Note: `checkPetBuffs` and `checkBegforPetBuffs` are already wired from M6.)
+
+**Pull module wiring** in `pull.lua`: add `Pet.checkRampPets()` call in `Pull.pullCheck()` immediately before the pull method dispatch (mirrors mac:9569) — only called when `state.pet.on` and `petRampageOn` config is set.
+
+**Done when:** pet classes auto-summon pets in main loop; pulls wait for rampage pets to poof before executing.
+
+---
+
+#### Step 8.5 — `bard.lua` scaffold + MQ2Medley INI wiring + state audit
+
+Create `modules/bard.lua` with `Bard.init(state, utils, cast)`. Load all bard config from INI. Map `state.bard` fields from MQ2Twist terminology to MQ2Medley equivalents.
+
+**INI fields to load** (from `[General]` and `[Spells]`):
+
+- `TwistOn` → `state.bard.twistOn` (OOC medley enabled)
+- `MeleeTwistOn` → `state.bard.meleeTwistOn` (0=off, 1=swap to melee set, 2=swap when aggro without combatStart)
+- `TwistHold` → `state.bard.twistHold`
+- `PullTwistOn` → `state.bard.pullTwistOn` (pause medley during pull)
+- `OORMedley` → `state.bard.oorMedley` (medley set name for OOC: default `"oor"`)
+- `MeleeMedley` → `state.bard.meleeMedley` (medley set name for combat: default `"melee"`)
+- `BurnMedley` → `state.bard.burnMedley` (medley set name for burn: default `"burn"`)
+- `GoMMedley` → `state.bard.gomMedley` (one-shot song name for GoM proc: default `"gomSong"`)
+
+**State fields to audit** in `state.bard`: `twistOn`, `meleeTwistOn`, `twistHold`, `pullTwistOn`, `twisting` (bool: OOC medley active), `dpsTwisting` (bool: melee medley active), `gomActive` (already set by events.lua Step 2.3), `oorMedley`, `meleeMedley`, `burnMedley`, `gomMedley`. Add any missing fields.
+
+Wire `Bard.init(State, Utils, Cast)` into `init.lua` after `Pet.init`. `Bard.init` is a no-op for non-Bard classes (guard on `state.session.iAmABard`).
+
+**Done when:** module loads cleanly; `state.bard.twistOn`, `state.bard.meleeMedley` populated from INI for Bard characters.
+
+---
+
+#### Step 8.6 — `Bard.doBardStuff` (MQ2Medley context switching)
+
+Port `DoBardStuff` (kissassist.mac:6229–6331, ~103 lines) translated to MQ2Medley API. This is a semantic translation — do not use MQ2Twist TLOs. Read the full source before implementing.
+
+**MQ2Twist → MQ2Medley API translation:**
+
+| `.mac` (MQ2Twist) | Lua (MQ2Medley) |
+|---|---|
+| `${Twist}` | `mq.TLO.Medley.Active()` |
+| `/squelch /twist ${TwistWhat}` | `mq.cmdf('/medley %s', state.bard.oorMedley)` |
+| `/squelch /twist ${MeleeTwistWhat}` | `mq.cmdf('/medley %s', state.bard.meleeMedley)` |
+| `/stopsong` | `mq.cmd('/medley stop')` |
+| `Sub CastBardCheck` (check cast window) | `stopMedley()` local helper |
+| `Twist.List.Left[-1]` (current set name) | `mq.TLO.Medley.ActiveSet()` (or equivalent) |
+| `${Me.BardSongPlaying}` | `mq.TLO.Me.BardSongPlaying()` |
+
+**`stopMedley()`** (local): if `Medley.Active` → `/medley stop`; wait for `!Me.BardSongPlaying` up to 500ms. Replaces `CastBardCheck`.
+
+**`Bard.doBardStuff()`** (mac:6229):
+
+- **Class guard**: `not state.session.iAmABard` → return
+- **Twist disabled**: `!twistOn && !meleeTwistOn` → if `Medley.Active` call `stopMedley()`; return
+- **Invis/hold path** (mac:6248–6253): if `Me.Invis` or `twistHold` → if GoM active (`gomActive`), queue GoM song; return
+- **Combat path** (mac:6256–6302): `combatStart || (meleeTwistOn==2 && aggroTargetID)`:
+  - `meleeTwistOn && !dpsTwisting` → `stopMedley()` if wrong set active; `/medley <meleeMedley>`; set `dpsTwisting = true`, `twisting = false`
+- **OOC path** (mac:6303–6329): `!combatStart`:
+  - `twistOn && !twisting` → `stopMedley()` if wrong set active; `/medley <oorMedley>`; set `dpsTwisting = false`, `twisting = true`
+  - `!twistOn` → `stopMedley()`
+- **GoM handling**: when `state.bard.gomActive` and in OOC path → `/medley queue <gomMedley>`; clear `gomActive` after queuing
+
+**Done when:** Bard switches from OOR medley to melee medley when entering combat; switches back OOC; GoM queues one-shot song without disrupting active medley.
+
+---
+
+#### Step 8.7 — Wire bard + complete deferred M3/M4/M7 bard stubs
+
+Final wiring pass — connect `bard.lua` to all the deferred stub points across existing modules.
+
+**`init.lua` main loop**: add `Bard.doBardStuff()` call after `Heal.doWeMed()` and before movement section:
+
+```lua
+if State.session.iAmABard then Bard.doBardStuff() end
+```
+
+**`combat.lua` `fight()` inner loop** (deferred from Step 4.5): replace `-- Deferred M8: DoBardStuff` stub comment with `if _bard then _bard.doBardStuff() end` call each iteration. Pass `Bard` as 6th arg to `Combat.init`; store as `_bard` upvalue.
+
+**`combat.lua` `combatReset()`** (deferred from Step 4.4): replace `-- Deferred M8: bard` stub with `stopMedley` logic — when `combatReset` fires, switch back to OOR medley by forcing `dpsTwisting = false` and letting next `doBardStuff` tick detect the OOC transition.
+
+**`cast.lua` CastAA bard pause** (deferred from Step 3.3): before `/alt act ID` in `castAA()`, add:
+
+```lua
+if _state.session.iAmABard and _bard then _bard.pauseMedley() end
+```
+
+Add `Bard.pauseMedley()` public function: `/medley pause` if supported; else `stopMedley()`. Restore via `/medley resume` after cast returns.
+
+**`pull.lua` bard pull-pause** (deferred from M7, mirrors mac:9629–9631): in `Pull.pullCheck()` before execution, add:
+
+```lua
+if _state.session.iAmABard and not _state.bard.pullTwistOn and _bard then
+    _bard.stopMedley()
+end
+```
+
+**Done when:** Bard cycles medley sets throughout combat; CastAA pauses medley; pull stops medley when `PullTwistOn=0`; `combatReset` transitions back to OOR set.
+
+---
+
+**Deferred (not needed for M8):**
+
+| Feature | Deferred to |
+|---|---|
+| `GroupEscape` evac (mac:6335) | M10 full integration |
+| `MassGroupBuff` MGB helper | M10 (stub already returns nil) |
+| `SummonStuff` helper | M10 (stub with printf) |
+| Burn medley (`burnMedley`) auto-switch | M9 — triggered by burn activation in `cast.lua` |
+| DanNet cross-character pet toy request | M9 (comms.lua) |
+| ConOn condition evaluation for pet/bard entries | M10 |
+| `FindMobAdvPath` advpath mob discovery | M9 stretch (stub remains) |
+
+**Suggested order:** 8.1 → 8.2 → 8.3 → 8.4 (pet, sequential — each depends on previous). 8.5 can start in parallel with 8.1. 8.6 → 8.7 (bard, sequential). Pet and bard tracks are independent once 8.1/8.5 scaffolds are done.
+
+---
+
+### Milestone 9 — Looting (MQ2AutoLoot)
+
+**Goal:** Characters loot corpses automatically per `Loot.ini` rules, sell/deposit/barter on demand, without porting `Ninjadvloot.inc`.
+
+**Approach decision:** Delegate to the `MQ2AutoLoot` plugin instead of porting `Ninjadvloot.inc`. Rationale:
+
+- MQ2AutoLoot handles the entire Advanced Looting window in C++ (master looter assignment, need/greed/no voting, distribution, bag-space tracking, forage) — zero Lua looting loop code required.
+- Uses the **same `Loot.ini` format** as Ninjadvloot.inc (`=Keep`, `=Sell`, `=Destroy`, `=Quest|#n`, `=Ignore`). Existing user loot configs work without migration.
+- Adds richer actions Ninjadvloot.inc lacks: `=Deposit`, `=Barter|#n`, `=Gear|Classes|WAR|...|NumberToLoot|#n|`.
+- Sell/deposit/barter are one-liner `/autoloot sell|deposit|barter` slash commands.
+- Consistent with the project philosophy of delegating complex subsystems to maintained plugins (MQ2MoveUtils, MQ2Rez, MQ2Medley, MQ2Nav).
+
+---
+
+#### Step 9.1 — Plugin validation + `State.loot` INI wiring
+
+Add `MQ2AutoLoot` to the required plugin list in `Config.checkPlugins()`.
+
+New `state.loot` fields (wire from INI `[General]` section):
+
+| State field | INI key | Default | Purpose |
+| --- | --- | --- | --- |
+| `state.loot.on` | `LootOn` | `1` | Master enable; skip all loot activity if 0 |
+| `state.loot.radius` | `CorpseRadius` | `100` | Max range to consider corpses (informational; MQ2AutoLoot owns the actual check) |
+| `state.loot.spamInfo` | `SpamLootInfo` | `1` | Mirror of MQ2AutoLoot's SpamLootInfo for binds display |
+
+Wire in `init.lua` after `Config.load(State)` alongside the other INI blocks — no new module file needed for step 9.1.
+
+---
+
+#### Step 9.2 — `loot.lua` scaffold + `Loot.init`
+
+Create `modules/loot.lua` with the standard `init` + upvalue pattern:
+
+```lua
+local Loot = {}
+local _state, _utils
+
+function Loot.init(state, utils)
+    _state = state
+    _utils = utils
+end
+```
+
+`Loot.init` validates that MQ2AutoLoot is loaded:
+
+```lua
+if not mq.TLO.Plugin('MQ2AutoLoot').IsLoaded() then
+    _utils.warn('MQ2AutoLoot not loaded — looting disabled.')
+    _state.loot.on = 0
+end
+```
+
+Wire `require('modules.loot')` and `Loot.init(State, Utils)` into `init.lua` (after `Pull.init`).
+
+---
+
+#### Step 9.3 — Vendor/banker action helpers
+
+Add three public functions that wrap the plugin's slash commands:
+
+```lua
+function Loot.sell()    mq.cmd('/autoloot sell')    end
+function Loot.deposit() mq.cmd('/autoloot deposit') end
+function Loot.barter()  mq.cmd('/autoloot barter')  end
+```
+
+These are the entire implementation — MQ2AutoLoot handles targeting validation and iteration internally.
+
+---
+
+#### Step 9.4 — In-game command binds
+
+Add to `binds.lua` (alongside existing `/ka*` binds):
+
+| Bind command | Action |
+| --- | --- |
+| `/kalooton` | `State.loot.on = 1` |
+| `/kalootoff` | `State.loot.on = 0` |
+| `/kasell` | `Loot.sell()` |
+| `/kadeposit` | `Loot.deposit()` |
+| `/kabarter` | `Loot.barter()` |
+
+Update `Binds.register` / `Binds.unregister` accordingly. Pass `Loot` as a new argument to `Binds.register`.
+
+---
+
+#### Step 9.5 — Main loop guard (optional heartbeat)
+
+MQ2AutoLoot fires autonomously on each advloot window update — no polling call is needed in the main loop. The only main-loop addition is a guard so the sell/deposit binds respect `loot.on`:
+
+```lua
+-- (no loop addition required for looting itself)
+-- binds already check _state.loot.on before calling Loot.sell/deposit/barter
+```
+
+If future testing reveals the plugin needs a periodic nudge, add:
+
+```lua
+if State.loot.on and not State.combat.combatStart then
+    Loot.tick()   -- no-op stub; expands if needed
+end
+```
+
+---
+
+**Done when:**
+
+- Characters in a group auto-loot corpses per `Loot.ini` rules without any Lua polling.
+- `/kasell` targets a merchant and sells all `=Sell` items.
+- `/kadeposit` targets a banker and deposits all `=Deposit` / `=Keep` items.
+- `/kabarter` opens the barter window and lists all `=Barter|#n` items.
+- `LootOn=0` in INI (or `/kalootoff`) disables the binds without affecting MQ2AutoLoot's own config.
+- Existing `Loot.ini` files (from Ninjadvloot.inc users) work without modification.
+
+**Deferred:**
+
+| Feature | Reason |
+| --- | --- |
+| Non-advloot classic loot window (`LootMobs` path) | Legacy path; all modern MQ2 setups use Advanced Looting |
+| Forage item handling | MQ2AutoLoot handles forage events natively |
+| `GlobalLoot` cross-character list | Handled by MQ2AutoLoot's group distribution logic |
+| Per-character `LootOn` check for master looter selection | Handled internally by MQ2AutoLoot |
 
 ---
 

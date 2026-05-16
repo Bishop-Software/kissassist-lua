@@ -2169,6 +2169,41 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+## Section 8 — Pet & Bard (Milestone 8)
+
+### Section 8.1 — Pet.init + INI wiring (Step 8.1)
+
+#### 8.1.1 Module load
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| 8.1.1 | Script starts cleanly with `[Pet]` section absent from INI | No error; all `state.pet` fields retain defaults (`spell=''`, `focus=''`, `focusOn=false`, `holdOn=false`, `suspend=false`) |
+| 8.1.2 | Script starts with full `[Pet]` section in INI | `Pet.init` runs without error; debug line emitted when `debug.pet=true` |
+
+#### 8.1.2 INI field wiring
+
+| # | Scenario | INI value | Expected `state.pet` field |
+| --- | --- | --- | --- |
+| 8.1.3 | `PetSpell=Frenzied Burnout` | present | `state.pet.spell == 'Frenzied Burnout'` |
+| 8.1.4 | `PetSpell` absent | absent | `state.pet.spell == ''` |
+| 8.1.5 | `PetFocus=Summoner's Boon\|22\|Focus Buff` | present | `state.pet.focus == 'Summoner\'s Boon\|22\|Focus Buff'` |
+| 8.1.6 | `PetFocusOn=1` | present | `state.pet.focusOn == true` |
+| 8.1.7 | `PetFocusOn=0` | present | `state.pet.focusOn == false` |
+| 8.1.8 | `PetHoldOn=1` | present | `state.pet.holdOn == true` |
+| 8.1.9 | `PetHoldOn=0` | present | `state.pet.holdOn == false` |
+| 8.1.10 | `PetSuspend=1` | present | `state.pet.suspend == true` |
+| 8.1.11 | `PetSuspend=0` | present | `state.pet.suspend == false` |
+
+#### 8.1.3 Buffs.init fields not duplicated
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| 8.1.12 | `PetOn=1` in INI — loaded by Buffs.init | `state.pet.on == true`; Pet.init does not overwrite it |
+| 8.1.13 | `PetShrinkOn=1` in INI — loaded by Buffs.init | `state.pet.shrinkOn == true`; Pet.init does not touch it |
+| 8.1.14 | `PetToysOn=1` in INI — loaded by Buffs.init | `state.pet.toysOn == true`; Pet.init does not touch it |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -2245,4 +2280,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete. Sections 7.1–7.8 added (103 test cases total): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Known Deferred updated: DoWeMove/CheckStick/FaceMobOn/ChainPull/validateTarget pull checks all marked ✅.*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Step 8.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication.*
