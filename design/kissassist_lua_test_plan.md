@@ -1710,6 +1710,111 @@ end)
 
 ---
 
+### Section 6.6 — `CheckPetBuffs` + `CheckBegforPetBuffs`
+
+#### 6.6.1 — `checkPetBuffs` guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.1 | No pet summoned | `Me.Pet.ID() == 0` | Returns immediately; no iteration |
+| 6.6.2 | `pet.on == false` | Pet exists; `state.pet.on = false` | Returns immediately |
+| 6.6.3 | `petBuffsOn == false` | Pet exists; `state.buffs.petBuffsOn = false` | Returns immediately |
+| 6.6.4 | `combatStart == true` | `state.session.combatStart = true` | Returns immediately |
+| 6.6.5 | `pulling == true` | `state.combat.pulling = true` | Returns immediately |
+| 6.6.6 | Timer not expired | `state.timers.petBuffCheck = os.clock() + 30` | Returns immediately; no cast |
+| 6.6.7 | Invis active | `Me.Invis() == true` | Returns immediately |
+| 6.6.8 | All guards pass | Pet present; all flags clear; timer expired | Enters loop; sets `petBuffCheck = os.clock() + 60` |
+
+#### 6.6.2 — NULL entry skipping
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.9 | Entry is `NULL` | `petBuffsArray[1] = 'NULL'` | Entry skipped via `goto petcontinue`; no cast |
+| 6.6.10 | Entry is `null` (lowercase) | `petBuffsArray[1] = 'null'` | Same skip behavior via `.upper()` check |
+
+#### 6.6.3 — Aggro bail
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.11 | Aggro detected mid-loop | `aggroTargetID` becomes non-zero after first iteration | Returns from function immediately |
+
+#### 6.6.4 — Spell/AA path (book or AltAbility)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.12 | Spell in book; buff already on pet | `Me.PetBuff(j).Name` partial-matches `pTempBuff` | `foundPetBuff = true`; cast skipped |
+| 6.6.13 | Spell in book; buff not on pet | No PetBuff slot matches | `castWhat(part1, Pet.ID, 'Pet-nomem')` called |
+| 6.6.14 | CAST_SUCCESS | `castWhat` returns `'CAST_SUCCESS'` | `/echo Buffing <petName>, my pet, with <spell>` |
+| 6.6.15 | CAST_COMPONENTS | `castWhat` returns `'CAST_COMPONENTS'` | `/echo` missing-components message; `petBuffsArray[i] = 'NULL'` |
+| 6.6.16 | AltAbility entry | `Me.AltAbility(part1).ID()` non-zero | Same 50-slot scan and cast path as book spell |
+| 6.6.17 | Spell with ` Rk. II` suffix | `part1 = 'Example Rk. II'` | `pTempBuff` stripped to `'Example'`; slot scan uses stripped name |
+
+#### 6.6.5 — Item path (FindItem)
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.18 | Item found; buff already on pet | Slot scan matches `pTempBuff` | Cast skipped |
+| 6.6.19 | Item found; buff not on pet | No slot match | `castWhat(part1, Pet.ID, 'Pet')` called |
+| 6.6.20 | CAST_SUCCESS (item) | `castWhat` returns `'CAST_SUCCESS'` | `/echo Buffing <petName>, my pet, with (<part3>)` |
+| 6.6.21 | CAST_COMPONENTS (item) | `castWhat` returns `'CAST_COMPONENTS'` | Entry nulled; echo emitted |
+
+#### 6.6.6 — `|dual` tag
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.22 | Entry has `dual` as part2 | `entry = 'CastSpell\|dual\|CheckBuff'` | `pTempBuff` derived from `part3` (`CheckBuff`); `part1` used to cast |
+| 6.6.23 | No dual tag | `entry = 'MySpell\|something\|foo'` | `part3 = part1`; buff check and cast name are identical |
+
+#### 6.6.7 — `pettoys|begfor` path
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.24 | Timer expired; pet present | `entry = 'pettoys\|begfor'`; `_petBegTimers[i] <= os.clock()` | `/bc PetToysPlease <petName>` sent; `_petBegTimers[i] = os.clock() + 90`; `kaPetBegActive = true` |
+| 6.6.25 | Timer not yet expired | `_petBegTimers[i] > os.clock()` | Broadcast suppressed |
+
+#### 6.6.8 — Post-loop: shrink + target clear
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.26 | Pet too tall; shrink enabled | `Pet.Height() > 1.35`; `shrinkOn = true`; `shrinkSpell` set | `castWhat(shrinkSpell, Pet.ID, 'Pet')` called |
+| 6.6.27 | Pet height OK | `Pet.Height() <= 1.35` | No shrink cast |
+| 6.6.28 | `shrinkOn = false` | Height > 1.35 but flag off | No shrink cast |
+| 6.6.29 | Target is pet after loop | `Target.ID() == Me.Pet.ID()` | `/squelch /target clear` sent |
+| 6.6.30 | Target is not pet | `Target.ID()` differs | Target not cleared |
+
+#### 6.6.9 — `checkBegforPetBuffs` guards
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.31 | `toysOn == false` | `state.pet.toysOn = false` | Returns immediately |
+| 6.6.32 | Me.Invis | `Me.Invis() == true` | Returns immediately |
+| 6.6.33 | `kaBegForPetList == ''` | Empty list | Returns immediately |
+
+#### 6.6.10 — `checkBegforPetBuffs` list processing
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.34 | Entry `'group'` | `kaBegForPetList = 'group'` | Iterates members 1–5; casts toy on each pet-class member with active pet |
+| 6.6.35 | Group entry: member not pet class | `cls = 'war'` | Member skipped |
+| 6.6.36 | Group entry: member has no pet | `Pet.ID() == 0` | Member skipped |
+| 6.6.37 | Individual entry; pet found | `entry = 'Fluffy'`; `Spawn('pet Fluffy').ID() ~= 0` | `/echo Giving pet toys to (Fluffy).`; `castWhat` called |
+| 6.6.38 | Individual entry; pet not found | `Spawn('pet Fluffy').ID() == 0` | No cast; advances index |
+| 6.6.39 | CAST_SUCCESS | `castWhat` returns `'CAST_SUCCESS'` | Entry removed from `kaBegForPetList` |
+| 6.6.40 | List empty after removal | Only one entry; CAST_SUCCESS | `kaPetBegActive = false`; loop breaks |
+| 6.6.41 | CAST_CANCELLED | `castWhat` returns `'CAST_CANCELLED'` | Loop breaks immediately |
+| 6.6.42 | Other cast result | `castWhat` returns `'CAST_FIZZLE'` | Index advanced; next entry processed |
+| 6.6.43 | Invis becomes true mid-loop | `Me.Invis()` mid-iteration during group pass | Inner loop breaks; outer loop breaks |
+
+#### 6.6.11 — Main loop wiring
+
+| # | Scenario | Setup | Expected |
+|---|----------|-------|----------|
+| 6.6.44 | `pet.on == false` | `state.pet.on = false` | `checkPetBuffs` not called from main loop |
+| 6.6.45 | `pet.toysOn == false` | `state.pet.toysOn = false` | `checkBegforPetBuffs` not called |
+| 6.6.46 | `kaPetBegActive == false` | `toysOn = true`; `kaPetBegActive = false` | `checkBegforPetBuffs` not called |
+
+---
+
 ## Section 7 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
@@ -1789,8 +1894,8 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | CheckBuffs single-target group iteration + class filters | ✅ Step 6.4 |
 | CheckBuffs special action tags + CheckBegforBuffs | ✅ Step 6.5 |
 | WriteBuffs / WriteBuffsPet / WriteBuffsMerc | ✅ Step 6.2 |
-| CheckBegforBuffs / CheckBegforPetBuffs | M6 Step 6.6 |
-| CheckPetBuffs | M6 Step 6.7 |
+| CheckPetBuffs + CheckBegforPetBuffs | ✅ Step 6.6 |
+| CastBuffsSpellCheck + /buffgroup + /tbmanager | M6 Step 6.7 |
 | Stuck-gem detection in castWhat | M6 |
 | Condition evaluation (condNumber) | M10 |
 | Stop-moving before cast | M7 |
@@ -1801,4 +1906,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.5 complete. Section 6.5 added (57 test cases for structural ordering, Endgroup/Managroup regenOther, |mana thresholds, |End endurance disc, |Remove, global mana bail, |Aura checkAura, |Once buffOnce, |summon stub, |mgb stub, |begfor broadcast, |command: simplified target, checkBegforBuffs queue processing, and removeFromBegList dedup). CheckBuffs special action tags marked ✅ in Known Deferred.*
+*Last updated: 2026-05-16. Reflects Milestones 1–5 complete + M6 Steps 6.1–6.6 complete. Section 6.6 added (46 test cases for checkPetBuffs guards, NULL skip, aggro bail, spell/AA path, item path, dual tag, pettoys|begfor, post-loop shrink+target-clear, checkBegforPetBuffs guards and list processing, and main loop wiring). CheckPetBuffs + CheckBegforPetBuffs marked ✅ in Known Deferred.*

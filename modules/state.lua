@@ -267,11 +267,16 @@ local State = {
         combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
         focusOn       = false,
         globalToysGave = '',
+        on            = false, -- PetOn: pet features enabled (set from INI)
+        shrinkOn      = false, -- PetShrinkOn (set from INI)
+        shrinkSpell   = '',    -- PetShrinkSpell (set from INI)
         suspendState  = false,
         tanking       = false,
         targetSwitch  = false,
         totCount      = 0,
         toyList       = '',
+        toysArray     = {},    -- PetToys array (set from INI)
+        toysOn        = false, -- PetToysOn (set from INI)
     },
 
     mez = {

@@ -845,6 +845,161 @@ function Buffs.checkBegforBuffs()
     end
 end
 
+-- Per-entry pettoys|begfor timers (mac: PetBuff${i} timer outer 900).
+local _petBegTimers = {}
+
+-- Mirrors Sub CheckPetBuffs (mac:5402): apply pet buffs from petBuffsArray.
+function Buffs.checkPetBuffs()
+    if (mq.TLO.Me.Pet.ID() or 0) == 0 then return end
+    if not _state.pet.on then return end
+    if not _state.buffs.petBuffsOn then return end
+    if _state.session.combatStart then return end
+    if _state.combat.pulling then return end
+    if os.clock() < (_state.timers.petBuffCheck or 0) then return end
+    if mq.TLO.Me.Invis() then return end
+
+    _state.timers.petBuffCheck = os.clock() + 60
+
+    for i = 1, #_state.buffs.petBuffsArray do
+        mq.doevents()
+        if (_state.combat.aggroTargetID or 0) ~= 0 then return end
+
+        local entry = _state.buffs.petBuffsArray[i]
+        if not entry or entry:upper() == 'NULL' then goto petcontinue end
+
+        local part1 = getListArg(entry, 1)
+        local part2 = getListArg(entry, 2)
+        local part3 = getListArg(entry, 3)
+
+        if part2 ~= 'dual' then part3 = part1 end
+
+        local pTempBuff = part3:match('^(.-)%s+Rk%.') or part3
+
+        local foundPetBuff = false
+
+        if mq.TLO.Me.Book(part1)() or (mq.TLO.Me.AltAbility(part1).ID() or 0) ~= 0 then
+            for j = 1, 50 do
+                if (mq.TLO.Me.PetBuff(j).Name() or ''):find(pTempBuff, 1, true) then
+                    foundPetBuff = true
+                    break
+                end
+            end
+            if not foundPetBuff then
+                local result = _cast.castWhat(part1, mq.TLO.Me.Pet.ID(), 'Pet-nomem')
+                mq.delay(200)
+                if result == 'CAST_SUCCESS' then
+                    mq.cmd(string.format('/echo Buffing %s, my pet, with %s',
+                        mq.TLO.Me.Pet.CleanName() or 'pet', part1))
+                elseif result == 'CAST_COMPONENTS' then
+                    mq.cmd(string.format('/echo You are missing components. Turning off %s.', part1))
+                    _state.buffs.petBuffsArray[i] = 'NULL'
+                end
+            end
+        elseif (mq.TLO.FindItem('=' .. part1).ID() or 0) ~= 0 then
+            for j = 1, 50 do
+                if (mq.TLO.Me.PetBuff(j).Name() or ''):find(pTempBuff, 1, true) then
+                    foundPetBuff = true
+                    break
+                end
+            end
+            if not foundPetBuff then
+                local result = _cast.castWhat(part1, mq.TLO.Me.Pet.ID(), 'Pet')
+                mq.delay(200)
+                if result == 'CAST_SUCCESS' then
+                    mq.cmd(string.format('/echo Buffing %s, my pet, with (%s)',
+                        mq.TLO.Me.Pet.CleanName() or 'pet', part3))
+                elseif result == 'CAST_COMPONENTS' then
+                    mq.cmd(string.format('/echo You are missing components. Turning off %s.', part1))
+                    _state.buffs.petBuffsArray[i] = 'NULL'
+                end
+            end
+        elseif part1 == 'pettoys' and part2 == 'begfor' then
+            if (_petBegTimers[i] or 0) <= os.clock() then
+                mq.cmd(string.format('/bc PetToysPlease %s', mq.TLO.Me.Pet.Name() or ''))
+                _petBegTimers[i] = os.clock() + 90
+                _state.buffs.kaPetBegActive = true
+            end
+        end
+
+        ::petcontinue::
+    end
+
+    -- Shrink pet if too tall (mac:5510-5514)
+    local petHeight = tonumber(mq.TLO.Me.Pet.Height()) or 0
+    if petHeight > 1.35 and _state.pet.shrinkOn and (_state.pet.shrinkSpell or '') ~= '' then
+        _cast.castWhat(_state.pet.shrinkSpell, mq.TLO.Me.Pet.ID(), 'Pet')
+        mq.delay(200)
+    end
+
+    -- Clear pet target (mac:5515)
+    if (mq.TLO.Target.ID() or 0) == (mq.TLO.Me.Pet.ID() or -1) then
+        mq.cmd('/squelch /target clear')
+    end
+end
+
+-- Mirrors Sub CheckBegforPetBuffs (mac:13307): process cross-character pet toy requests.
+-- Each entry in kaBegForPetList is a pet name or "group" (pipe-delimited).
+function Buffs.checkBegforPetBuffs()
+    if not _state.pet.toysOn then return end
+    if mq.TLO.Me.Invis() then return end
+    if _state.buffs.kaBegForPetList == '' then return end
+
+    local PET_CLASSES = {shm=true, nec=true, mag=true, bst=true, dru=true, enc=true, shd=true}
+    local toySpell = _state.pet.toysArray[1] or ''
+
+    local idx = 1
+    while true do
+        local entry = getListArg(_state.buffs.kaBegForPetList, idx)
+        if entry == '' or entry:lower() == 'null' then
+            if _state.buffs.kaBegForPetList == '' then _state.buffs.kaPetBegActive = false end
+            break
+        end
+        if mq.TLO.Me.Invis() then break end
+
+        local result = 'CAST_FAILURE'
+
+        if entry == 'group' then
+            mq.cmd('/echo I am giving pet toys to every Pet in Group except mine.')
+            for i = 1, 5 do
+                local memberID = mq.TLO.Group.Member(i).ID() or 0
+                local petID    = mq.TLO.Group.Member(i).Pet.ID() or 0
+                local cls      = (mq.TLO.Group.Member(i).Class.ShortName() or ''):lower()
+                local petName  = mq.TLO.Group.Member(i).Pet.Name() or ''
+                if memberID ~= 0 and petID ~= 0 and PET_CLASSES[cls]
+                    and (mq.TLO.Spawn('pet ' .. petName).Type() or '') == 'Pet' then
+                    if mq.TLO.Me.Invis() then break end
+                    result = _cast.castWhat(toySpell, petID, 'Pet')
+                end
+            end
+        else
+            local petID = mq.TLO.Spawn('pet ' .. entry).ID() or 0
+            if petID ~= 0 then
+                mq.cmd(string.format('/echo Giving pet toys to (%s).', entry))
+                result = _cast.castWhat(toySpell, petID, 'Pet')
+            end
+        end
+
+        if result == 'CAST_SUCCESS' then
+            local entries = {}
+            for e in (_state.buffs.kaBegForPetList .. '|'):gmatch('([^|]+)|') do
+                entries[#entries + 1] = e
+            end
+            for k = 1, #entries do
+                if entries[k] == entry then table.remove(entries, k) break end
+            end
+            _state.buffs.kaBegForPetList = table.concat(entries, '|')
+            if _state.buffs.kaBegForPetList == '' then
+                _state.buffs.kaPetBegActive = false
+                break
+            end
+        elseif result == 'CAST_CANCELLED' then
+            break
+        else
+            idx = idx + 1
+        end
+    end
+end
+
 -- Mirrors Bind_Settings buff loading (kissassist.mac:14657-14671) and
 -- Pet buff loading from [Pet] INI section.
 function Buffs.init(state, utils, cast, heal)
@@ -885,6 +1040,20 @@ function Buffs.init(state, utils, cast, heal)
         for _, v in ipairs(petBuffsArr) do
             if v and v ~= '' then
                 _state.buffs.petBuffsArray[#_state.buffs.petBuffsArray + 1] = v
+            end
+        end
+    end
+
+    -- [Pet] on / shrink / toys fields
+    _state.pet.on          = Config.get('Pet', 'PetOn',          '0') == '1'
+    _state.pet.shrinkOn    = Config.get('Pet', 'PetShrinkOn',    '0') == '1'
+    _state.pet.shrinkSpell = Config.get('Pet', 'PetShrinkSpell', '') or ''
+    _state.pet.toysOn      = Config.get('Pet', 'PetToysOn',      '0') == '1'
+    local petToysArr = Config.get('Pet', 'PetToys', nil)
+    if type(petToysArr) == 'table' then
+        for _, v in ipairs(petToysArr) do
+            if v and v ~= '' then
+                _state.pet.toysArray[#_state.pet.toysArray + 1] = v
             end
         end
     end

@@ -653,7 +653,7 @@ Port the remaining `2ndPart` action branches and the beg-for-buffs subsystem (ma
 
 ---
 
-#### Step 6.6 — `CheckPetBuffs` + `CheckBegforPetBuffs`
+#### Step 6.6 ✅ — `CheckPetBuffs` + `CheckBegforPetBuffs`
 
 Port the pet-specific buff functions (mac:5402–5517, mac:13307+).
 
@@ -662,6 +662,8 @@ Port the pet-specific buff functions (mac:5402–5517, mac:13307+).
 - Wire both into `init.lua` main loop after pet check (matches mac:396–397)
 
 **Done when:** script buffs own pet from `petBuffsArray`; group pet toy requests processed.
+
+**Implemented:** `Buffs.checkPetBuffs()` added to modules/buffs.lua: guards on `Me.Pet.ID`, `state.pet.on`, `state.buffs.petBuffsOn`, `state.session.combatStart`, `state.combat.pulling`, `state.timers.petBuffCheck`, and `Me.Invis`; sets `petBuffCheck = os.clock() + 60`; iterates `petBuffsArray` with `mq.doevents()` and aggro bail per iteration; per-entry: parses `part1|part2|part3` via `getListArg`; `|dual` tag causes `part3` (buff check name) to differ from `part1` (cast name), otherwise `part3 = part1`; strips ` Rk.` suffix for pet buff slot scan; if spell in book or AltAbility: scans 50 `Me.PetBuff(j).Name` slots for partial match, casts via `castWhat(part1, Pet.ID, 'Pet-nomem')` if not found, echoes on SUCCESS, nulls entry on COMPONENTS; if item (FindItem): same 50-slot scan, casts via `castWhat(part1, Pet.ID, 'Pet')`; if `pettoys|begfor`: broadcasts `/bc PetToysPlease petName` + sets 90s `_petBegTimers[i]` + sets `kaPetBegActive = true`; after loop: shrinks pet if height > 1.35 and `shrinkOn`/`shrinkSpell` set; clears target if pet was targeted. `Buffs.checkBegforPetBuffs()` added: guards on `state.pet.toysOn`, `Me.Invis`, `kaBegForPetList` non-empty; iterates pipe-delimited `kaBegForPetList`; entry `"group"` iterates group members 1–5 filtering by `PET_CLASSES` and `Spawn.Type == Pet`, casts `toysArray[1]` on each qualifying pet; individual entry resolves pet ID via `Spawn('pet name').ID`, casts; on SUCCESS removes entry from list and clears `kaPetBegActive` when list empty; on CAST_CANCELLED breaks; otherwise advances index. Both wired into init.lua main loop: `if State.pet.on then checkPetBuffs() end` and `if State.pet.toysOn and kaPetBegActive then checkBegforPetBuffs() end`. `Buffs.init()` extended to load `state.pet.on`, `state.pet.shrinkOn`, `state.pet.shrinkSpell`, `state.pet.toysOn`, `state.pet.toysArray` from `[Pet]` INI. `state.lua` pet table extended with `on`, `shrinkOn`, `shrinkSpell`, `toysOn`, `toysArray` fields.
 
 ---
 

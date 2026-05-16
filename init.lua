@@ -75,6 +75,8 @@ while not State.terminate do
     Buffs.writeBuffsPet()
     Buffs.writeBuffsMerc()
     Buffs.checkBuffs()
+    if State.pet.on then Buffs.checkPetBuffs() end
+    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
