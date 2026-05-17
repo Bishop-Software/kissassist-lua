@@ -1129,6 +1129,8 @@ Wire `Bard.init(State, Utils, Cast)` into `init.lua` after `Pet.init`. `Bard.ini
 
 **Done when:** module loads cleanly; `state.bard.twistOn`, `state.bard.meleeMedley` populated from INI for Bard characters.
 
+> ✅ **Implemented (Step 8.5):** `modules/bard.lua` created with `Bard.init(state, utils, cast)` and a `Bard.doBardStuff()` stub for Step 8.6. `Bard.init` guards on `state.session.iAmABard` (no-op for non-Bard classes). Loads from `[General]` INI: `twistOn` (TwistOn), `meleeTwistOn` (MeleeTwistOn, numeric 0/1/2), `twistHold` (TwistHold), `pullTwistOn` (PullTwistOn), `oorMedley` (OORMedley, default `"oor"`), `meleeMedley` (MeleeMedley, default `"melee"`), `burnMedley` (BurnMedley, default `"burn"`), `gomMedley` (GoMMedley, default `"gomSong"`). `state.bard` audited: 7 missing fields added (`twistOn`, `meleeTwistOn`, `pullTwistOn`, `oorMedley`, `meleeMedley`, `burnMedley`, `gomMedley`) with defaults matching MQ2Medley conventions. `init.lua` updated: `require('modules.bard')` added; `Bard.init(State, Utils, Cast)` wired after `Pet.init`.
+
 ---
 
 #### Step 8.6 — `Bard.doBardStuff` (MQ2Medley context switching)

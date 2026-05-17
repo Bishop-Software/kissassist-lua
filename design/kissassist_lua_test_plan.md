@@ -2403,6 +2403,52 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+### Section 8.5 — Bard.init scaffold + MQ2Medley INI wiring (Step 8.5)
+
+#### 8.5.1 — Module load + non-Bard guard
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.5.1 | Non-Bard class calls `Bard.init` | `iAmABard = false` | Returns immediately; no INI reads; no `state.bard` fields mutated |
+| 8.5.2 | Bard class calls `Bard.init` with full `[General]` INI | `iAmABard = true` | Completes without error; debug line emitted when `debug.bard = true` |
+| 8.5.3 | Bard class calls `Bard.init` with empty INI | `iAmABard = true`, no `[General]` keys | All fields receive their defaults; no error |
+
+#### 8.5.2 — INI field wiring
+
+| ID | Scenario | INI value | Expected `state.bard` field |
+|----|----------|-----------|----------------------------|
+| 8.5.4 | `TwistOn=1` | `[General] TwistOn=1` | `twistOn == true` |
+| 8.5.5 | `TwistOn=0` or absent | `0` or missing | `twistOn == false` |
+| 8.5.6 | `MeleeTwistOn=2` | `[General] MeleeTwistOn=2` | `meleeTwistOn == 2` |
+| 8.5.7 | `MeleeTwistOn` absent | Missing | `meleeTwistOn == 0` |
+| 8.5.8 | `TwistHold=1` | `[General] TwistHold=1` | `twistHold == true` |
+| 8.5.9 | `PullTwistOn=1` | `[General] PullTwistOn=1` | `pullTwistOn == true` |
+| 8.5.10 | `OORMedley=myoor` | `[General] OORMedley=myoor` | `oorMedley == 'myoor'` |
+| 8.5.11 | `OORMedley` absent | Missing | `oorMedley == 'oor'` (default) |
+| 8.5.12 | `MeleeMedley=myfight` | `[General] MeleeMedley=myfight` | `meleeMedley == 'myfight'` |
+| 8.5.13 | `MeleeMedley` absent | Missing | `meleeMedley == 'melee'` (default) |
+| 8.5.14 | `BurnMedley=myburn` | `[General] BurnMedley=myburn` | `burnMedley == 'myburn'` |
+| 8.5.15 | `BurnMedley` absent | Missing | `burnMedley == 'burn'` (default) |
+| 8.5.16 | `GoMMedley=mygom` | `[General] GoMMedley=mygom` | `gomMedley == 'mygom'` |
+| 8.5.17 | `GoMMedley` absent | Missing | `gomMedley == 'gomSong'` (default) |
+
+#### 8.5.3 — state.bard audit (new fields)
+
+| ID | Scenario | Expected |
+|----|----------|---------|
+| 8.5.18 | Script starts; `state.bard` inspected before `Bard.init` | `twistOn`, `meleeTwistOn`, `pullTwistOn`, `oorMedley`, `meleeMedley`, `burnMedley`, `gomMedley` all present with defaults |
+| 8.5.19 | Pre-existing fields unchanged | `dpsTwisting`, `gomActive`, `twisting`, `twistHold`, `startTwist`, `wasTwisting`, `wasTwistingBool` retain their prior defaults |
+
+#### 8.5.4 — init.lua wiring
+
+| ID | Scenario | Expected |
+|----|----------|---------|
+| 8.5.20 | `require('modules.bard')` present in init.lua | Module loads without error on startup |
+| 8.5.21 | `Bard.init` called after `Pet.init` | Init order: Pet → Bard → Pull; no dependency errors |
+| 8.5.22 | `Bard.doBardStuff` stub exists | Callable without error; no-op until Step 8.6 |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -2479,4 +2525,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3).*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3).*

@@ -313,12 +313,19 @@ local State = {
     },
 
     bard = {
+        burnMedley     = 'burn',     -- MQ2Medley set name for burn phase (INI BurnMedley)
         dpsTwisting    = false,
         gomActive      = false,
         gomByPass      = false,
+        gomMedley      = 'gomSong',  -- MQ2Medley one-shot set for GoM proc (INI GoMMedley)
+        meleeMedley    = 'melee',    -- MQ2Medley set name for combat (INI MeleeMedley)
+        meleeTwistOn   = 0,          -- 0=off, 1=swap to melee set, 2=swap when aggro (INI MeleeTwistOn)
+        oorMedley      = 'oor',      -- MQ2Medley set name for OOC (INI OORMedley)
+        pullTwistOn    = false,      -- pause medley during pull (INI PullTwistOn)
         startTwist     = false,
-        twisting       = false,
         twistHold      = false,
+        twistOn        = false,      -- OOC medley enabled (INI TwistOn)
+        twisting       = false,
         wasTwisting    = 'null',
         wasTwistingBool = false,
     },
