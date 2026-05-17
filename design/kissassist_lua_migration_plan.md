@@ -1081,6 +1081,8 @@ Port the `PetToys` cluster (mac:5586–6034). All functions are local helpers in
 
 **Done when:** pet toys are given to pet after summon; toy items move through cursor → pet trade window correctly.
 
+✅ **Implemented (2026-05-16):** All six functions implemented in `modules/pet.lua`. `castPetToys(spell)` — retry loop up to 4 fizzles; handles `CAST_SUCCESS`/`CAST_FIZZLE`/`CAST_RECOVER`; returns `true` if cancelled. `pickUpItem(itemName)` — locates via `FindItem`, adjusts slot indices (>22 subtract 22; slot2 0→1-based), appends to module-level `_toyItems` table for return-on-reject tracking. `openInvSlot()` — two-pass search: pass 1 = completely empty slot, pass 2 = non-container slot with `FreeInventory > 1`; sets `_bagNum`/`_bagNumLast`. `destroyBag()` — verifies all contents are `NoRent` before `/destroy`ing known phantom/arcane pack names. `giveTo(gItem, gTarget, giveNow)` — targets pet, moves close, dismounts/removes-lev, confirms via `GiveWnd`; on rejection restores item to origin slot using `_toyItems` table. `Pet.petToys(petName)` — full 249-line orchestrator port: bag-slot acquisition, `toysGave`/`toysTemp` tracking, per-entry spell-in-book / inventory-item dispatch, bag-on-cursor placement loop, pipe-part iteration with skip-already-given and level-76 auto-equip guards, summoned-item re-cast loop, heirloom-bag (`castFlag1==2`) path, `destroyBag` on known pack names, inventory-window cleanup, `doWeMove` on `returnToCamp`. `Pet.init` signature updated to accept `movement` as 5th arg (needed for `doWeMove` call in petToys); `init.lua` updated. `condNo`/`|cond` condition evaluation deferred to M10.
+
 ---
 
 #### Step 8.4 — `Pet.checkRampPets` + wire into main loop + pull module

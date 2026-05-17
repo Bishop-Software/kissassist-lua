@@ -2280,6 +2280,82 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+### Section 8.3 — Pet.petToys + item-giving helpers (Step 8.3)
+
+#### 8.3.1 — openInvSlot
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.1 | Cursor has item when called | Item on cursor at petToys entry | `_bagNumLast` set to 99; `_bagNum` stays 0; petToys echoes "Inventory is full" and disables toysOn |
+| 8.3.2 | One completely empty top-level slot exists | Pack slot with no item ID | `_bagNum` set to that slot; echoes "Inventory slot N is empty, using that one." |
+| 8.3.3 | No empty slot but FreeInventory > 1 | All slots have non-container items | Pass-2 fires; `_bagNum` set to first non-container slot |
+| 8.3.4 | No usable slot at all | Inventory full | `_bagNumLast=99`; `_bagNum=0`; petToys echoes "No empty Top Inventory slot" and disables toysOn |
+
+#### 8.3.2 — castPetToys
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.5 | `castWhat` returns `CAST_SUCCESS` | Spell casts cleanly | Echoes `Casting pet toy spell >> SpellName <<`; returns false (not cancelled) |
+| 8.3.6 | `castWhat` returns `CAST_FIZZLE` ≤ 4 times then SUCCESS | Spell fizzles then lands | Retries; echoes success on landing; returns false |
+| 8.3.7 | `castWhat` returns `CAST_FIZZLE` 5+ times | Persistent fizzle | `retryCount > 4`; returns true (cancelled); caller skips to next toy entry |
+| 8.3.8 | `castWhat` returns `CAST_RECOVER` | Spell in global cooldown | `retryCount` not incremented; waits for cooldown then retries |
+| 8.3.9 | `castWhat` returns any other status | Unexpected return | Returns true (cancelled) immediately |
+
+#### 8.3.3 — pickUpItem
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.10 | Item not in inventory | `FindItemCount` returns 0 | Returns immediately; nothing added to `_toyItems`; cursor unchanged |
+| 8.3.11 | Item in top-level slot (slot ≤ 22) | Item in pack slot 3 | Slot stored as-is; `/nomodkey /itemnotify pack3 leftmouseup` sent; entry appended to `_toyItems` |
+| 8.3.12 | Item inside a bag (slot > 22) | Item in bag slot 28 | Slot adjusted to 28-22=6; correct `/itemnotify` sent |
+| 8.3.13 | Item in bag with slot2 ≥ 0 | Item at slot2=0 | slot2 adjusted to 1; `/nomodkey /itemnotify in packN 1 leftmouseup` sent |
+
+#### 8.3.4 — giveTo
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.14 | Pet not yet targeted | Target is someone else | `/target id petID` sent; waits up to 2 s for target lock |
+| 8.3.15 | Pet within range (dist ≤ 5) | Already adjacent to pet | No `/moveto` sent |
+| 8.3.16 | Pet within campRadius but dist > 5 | Pet across camp | `/moveto id petID mdist 5` sent; waits for `MoveTo.Stopped` |
+| 8.3.17 | Character is mounted | Mount active | `/dismount` sent; waits for mount to clear |
+| 8.3.18 | Character is levitating | Lev buff active | `/removelev` sent; waits for lev to clear |
+| 8.3.19 | Item on cursor, NoRent, correct ID | Summoned item ready | `/click left target` sent; `_itemsGiven` incremented |
+| 8.3.20 | GiveWnd opens; `giveNow=true` | Trade window opens | `/notify GiveWnd GVW_Give_Button leftmouseup` sent; `_itemsGiven` reset to 0 |
+| 8.3.21 | `_itemsGiven` reaches 4 | Four items in window | Give button triggered even without `giveNow` |
+| 8.3.22 | Pet rejects item (cursor has item after give) | Item returned by pet | Item returned to original slot via `_toyItems` tracking |
+| 8.3.23 | Returned item is NoRent and not in `_toyItems` | Unknown summoned item | `/destroy` called |
+| 8.3.24 | `gItem='giveitems'` | Flushing trade window | `giveNow` set true; no pickup attempted; trade confirmed |
+
+#### 8.3.5 — destroyBag
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.25 | Bag contains non-summoned (non-NoRent) item | Real item left in bag | Echoes abort message; `state.pet.toysOn` set to `false`; bag not destroyed |
+| 8.3.26 | Bag is a Phantom Weapon Pack (all contents NoRent) | Empty summoned bag | `/itemnotify pack<N> leftmouseup`; cursor checked; `/destroy` sent |
+| 8.3.27 | Bag name does not match any known pack name | Regular bag | No action taken |
+
+#### 8.3.6 — Pet.petToys orchestration
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.28 | No pet present | `Me.Pet.ID()=0` | Returns immediately; no toy logic runs |
+| 8.3.29 | `toysOn=false` | INI PetToysOn=0 | Returns after bag check; no toy loop |
+| 8.3.30 | Toy entry `== 'Null'` | Entry in toysArray is `'Null'` | Skipped silently |
+| 8.3.31 | Single spell entry (no pipe parts); spell in book | `toysArray[1]='Call of the Wild'` | `castPetToys` called; item lands on cursor; `castFlag1=2` path gives bag contents |
+| 8.3.32 | Spell + item: `'SpellName\|ItemName'`; spell in book | Standard toy entry | `castPetToys` called; `giveTo(ItemName, petID)` called; `toysTemp` updated with `:ItemName1` |
+| 8.3.33 | `'inventory\|ItemName'` entry; item in inventory | Pre-existing item | No cast; `giveTo(ItemName, petID)` called directly |
+| 8.3.34 | Toy already in `toysTemp` (`petToyCheck` found) | Same pet, already gave | Entry skipped; `giveTo` not called again |
+| 8.3.35 | `petLevel >= 76` and spell contains `'muzzle'` | High-level mage pet | Entry skipped (auto-equipped by game) |
+| 8.3.36 | Bag (container) appears on cursor after cast | Summoned container spell | Bag placed in `_bagNum` slot; bag opened; contents given individually |
+| 8.3.37 | Cursor name contains `'Summoned:'` after cast | Direct summoned item | `castFlag1=1`; GiveWnd flushed between items; `castPetToys` re-called for next pipe part |
+| 8.3.38 | Bag in `_bagNum` matches known phantom pack after giving | Post-give cleanup | `destroyBag()` called |
+| 8.3.39 | `isMyPet=false` (helping another player's pet) | `petName != Me.Pet.CleanName` | `toysTemp` starts empty; no INI write; items given without skip checks |
+| 8.3.40 | `returnToCamp=true` at end of petToys | Camp-return flag set | `_movement.doWeMove(0, 'PetToys')` called after toys complete |
+| 8.3.41 | InventoryWindow was closed before petToys | `invWasOpen=false` | Window closed via `/keypress inventory` after giving |
+| 8.3.42 | Entry has `&#124;cond` suffix | Conditional entry | `&#124;cond...` stripped from fullText; condition evaluation skipped (deferred M10) |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -2356,4 +2432,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.2. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3).*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.3. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15).*
