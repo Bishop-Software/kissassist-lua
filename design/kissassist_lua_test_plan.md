@@ -2154,18 +2154,18 @@ end)
 
 ---
 
-## Section 7 — Integration Smoke Test
+## Section 12 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 7.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 7.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 7.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 7.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 7.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 7.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 12.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 12.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 12.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 12.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 12.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 12.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
 
 ---
 
@@ -2356,6 +2356,53 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+### Section 8.4 — Pet.checkRampPets + main loop + pull wiring (Step 8.4)
+
+#### 8.4.1 — Pet.checkRampPets core logic
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.1 | In COMBAT at call time | `CombatState == 'COMBAT'` | Returns immediately; no spawn checks |
+| 8.4.2 | No rampage pets present | All `Me.CleanName's_pet0{i}` IDs == 0 | Loops 0–20, finds nothing, returns normally |
+| 8.4.3 | Rampage pet at slot 3, then disappears | `pet03.ID > 0` → then 0 | Echoes "HOLDING", waits in loop, exits when ID becomes 0 |
+| 8.4.4 | Rampage pet present, combat re-enters | `pet02.ID > 0` while waiting → `CombatState == 'COMBAT'` | Loop exits; function returns early without checking remaining slots |
+| 8.4.5 | Multiple rampage pets (slots 1 and 5) | Slot 1 ID > 0 then → 0; slot 5 ID > 0 then → 0 | Waits for slot 1 to poof, then waits for slot 5 to poof, returns normally |
+| 8.4.6 | Combat enters while waiting for second pet | Slot 1 poofs; slot 5 up when combat enters | Returns immediately after slot 1 clear; slot 5 skipped |
+
+#### 8.4.2 — state.pet.petRampageOn + INI wiring
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.7 | `PetRampPullWait=1` in INI | INI key present | `state.pet.petRampageOn == true` after `Pet.init` |
+| 8.4.8 | `PetRampPullWait=0` in INI | INI key present | `state.pet.petRampageOn == false` |
+| 8.4.9 | Key absent from INI | Key missing | `state.pet.petRampageOn == false` (default) |
+
+#### 8.4.3 — Pull.init extended signature
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.10 | `Pull.init` called with `Pet` as 6th arg | Valid Pet module | `_pet` upvalue assigned; no error |
+| 8.4.11 | `Pull.init` called without 6th arg | `pet = nil` | `_pet = nil`; pull.lua guard `if _pet and ...` prevents nil-call error |
+
+#### 8.4.4 — pullCheck rampage-pet guard
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.12 | `pet.on=false`, `petRampageOn=true` | Any | `checkRampPets` not called before `executePull` |
+| 8.4.13 | `pet.on=true`, `petRampageOn=false` | Any | `checkRampPets` not called |
+| 8.4.14 | `pet.on=true`, `petRampageOn=true`, in COMBAT | `CombatState == 'COMBAT'` | `checkRampPets` not called (guard blocks) |
+| 8.4.15 | `pet.on=true`, `petRampageOn=true`, OOC | All guards pass | `checkRampPets()` called before `executePull()` |
+
+#### 8.4.5 — init.lua main loop wiring
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.16 | `pet.on=false` in main loop | `State.pet.on == false` | `Pet.doPetStuff()` not called |
+| 8.4.17 | `pet.on=true`, `combatStart=true` | Pet on, in combat | `Pet.doPetStuff()` not called |
+| 8.4.18 | `pet.on=true`, `combatStart=false` | Pet on, OOC | `Pet.doPetStuff()` called each loop iteration |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -2432,4 +2479,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.3. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15).*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3).*

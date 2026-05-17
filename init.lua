@@ -67,7 +67,7 @@ Movement.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement)
 Buffs.init(State, Utils, Cast, Heal)
 Pet.init(State, Utils, Cast, Buffs, Movement)
-Pull.init(State, Utils, Cast, Movement, Combat)
+Pull.init(State, Utils, Cast, Movement, Combat, Pet)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -91,6 +91,7 @@ while not State.terminate do
     if State.buffs.kaBegActive then Buffs.checkBegforBuffs() end
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()

@@ -298,6 +298,7 @@ local State = {
         toyList       = '',
         toysArray     = {},    -- PetToys array (set from INI)
         toysOn        = false, -- PetToysOn (set from INI)
+        petRampageOn  = false, -- PetRampPullWait: wait for rampage pets before pulling (set from INI)
     },
 
     mez = {

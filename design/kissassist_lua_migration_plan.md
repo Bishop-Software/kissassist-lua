@@ -1104,6 +1104,8 @@ end
 
 **Done when:** pet classes auto-summon pets in main loop; pulls wait for rampage pets to poof before executing.
 
+> ✅ **Implemented (Step 8.4):** `Pet.checkRampPets()` (pet.lua) iterates spawn names `Me.CleanName's_pet0{i}` i=0–20; if out of combat and a rampage pet exists, echoes and loops with `mq.delay(100)` until the spawn disappears or combat resumes; returns early on combat re-entry. `state.pet.petRampageOn` added to `state.lua`; loaded from `[Pull] PetRampPullWait` INI key in `Pet.init`. `Pull.init` extended with a `pet` 6th parameter (`_pet` upvalue); `Pull.pullCheck()` calls `_pet.checkRampPets()` before `executePull()` when `pet.on` and `pet.petRampageOn` are set and not in combat. `init.lua` main loop wired: `if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end` (after begforPetBuffs check); `Pull.init` call updated to pass `Pet` as 6th arg.
+
 ---
 
 #### Step 8.5 — `bard.lua` scaffold + MQ2Medley INI wiring + state audit

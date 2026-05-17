@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Pull = {}
-local _state, _utils, _cast, _movement, _combat
+local _state, _utils, _cast, _movement, _combat, _pet
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -58,12 +58,13 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Pull.init(state, utils, cast, movement, combat)
+function Pull.init(state, utils, cast, movement, combat, pet)
     _state    = state
     _utils    = utils
     _cast     = cast
     _movement = movement
     _combat   = combat
+    _pet      = pet
 
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
@@ -1010,6 +1011,11 @@ function Pull.pullCheck()
 
     s.combat.myTargetID   = pullMob
     s.combat.myTargetName = mobName
+
+    -- Wait for rampage pets to poof before executing pull (mac:8964).
+    if _pet and s.pet.on and s.pet.petRampageOn and mq.TLO.Me.CombatState() ~= 'COMBAT' then
+        _pet.checkRampPets()
+    end
 
     executePull(pullMob)
 

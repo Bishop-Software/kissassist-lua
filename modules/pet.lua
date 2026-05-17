@@ -39,6 +39,7 @@ function Pet.init(state, utils, cast, buffs, movement)
     _state.pet.tauntOverride = Config.get('Pet', 'PetTauntOverride', '0') == '1'
     _state.pet.toysGave      = _state.pet.toysGave or ''
     _state.pet.toysDone      = false
+    _state.pet.petRampageOn  = Config.get('Pull', 'PetRampPullWait', '0') == '1'
 
     _utils.debug('pet', 'Pet.init: spell=%s focusOn=%d holdOn=%d suspend=%s',
         _state.pet.spell, _state.pet.focusOn,
@@ -822,11 +823,24 @@ function Pet.petToys(petName)
 end
 
 -- ---------------------------------------------------------------------------
--- Step 8.4: Pet.checkRampPets — rampage-pet wait (stub)
+-- Pet.checkRampPets — wait for rampage pets to poof before the next pull.
+-- Port of CheckRampPets (kissassist.mac:9571-9585).
 -- ---------------------------------------------------------------------------
 
 function Pet.checkRampPets()
-    -- TODO Step 8.4: port CheckRampPets (mac:9571-9585)
+    if mq.TLO.Me.CombatState() == 'COMBAT' then return end
+    local myName = mq.TLO.Me.CleanName() or ''
+    for i = 0, 20 do
+        local petSpawn = mq.TLO.Spawn(myName .. "'s_pet0" .. i)
+        if (petSpawn.ID() or 0) > 0 then
+            printf('\aw+++ My rampage pet is up: (%s|%d), HOLDING . . .',
+                petSpawn.Name() or '', petSpawn.ID() or 0)
+            while (petSpawn.ID() or 0) > 0 and mq.TLO.Me.CombatState() ~= 'COMBAT' do
+                mq.delay(100)
+            end
+            if mq.TLO.Me.CombatState() == 'COMBAT' then return end
+        end
+    end
 end
 
 return Pet
