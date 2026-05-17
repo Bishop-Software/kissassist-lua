@@ -387,7 +387,7 @@ end
 
 -- Validate required plugins. Mirrors InitPlugins() from kissassist.mac.
 local REQUIRED_PLUGINS = {
-    'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez',
+    'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez', 'MQ2AutoLoot',
 }
 
 function Config.checkPlugins()

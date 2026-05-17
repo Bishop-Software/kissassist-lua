@@ -1249,6 +1249,12 @@ New `state.loot` fields (wire from INI `[General]` section):
 
 Wire in `init.lua` after `Config.load(State)` alongside the other INI blocks — no new module file needed for step 9.1.
 
+**Implemented:**
+
+- `MQ2AutoLoot` added to `REQUIRED_PLUGINS` in `config.lua` — missing plugin now prints a warning at startup alongside MQ2Exchange/MQ2Rez/etc.
+- `state.loot.on`, `state.loot.radius`, `state.loot.spamInfo` added to `state.lua` with defaults `1`, `100`, `1`.
+- All three fields wired from INI `[General]` keys `LootOn`, `CorpseRadius`, `SpamLootInfo` in `init.lua` immediately after `Config.load(State)`.
+
 ---
 
 #### Step 9.2 — `loot.lua` scaffold + `Loot.init`

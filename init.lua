@@ -39,6 +39,11 @@ State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
 
+-- Wire loot settings from INI into State
+State.loot.on       = tonumber(Config.get('General', 'LootOn',       '1')) or 1
+State.loot.radius   = tonumber(Config.get('General', 'CorpseRadius', '100')) or 100
+State.loot.spamInfo = tonumber(Config.get('General', 'SpamLootInfo', '1')) or 1
+
 -- Wire cast gem settings from INI into State
 State.cast.miscGem      = tonumber(Config.get('SpellS', 'MiscGem',      '0')) or 0
 State.cast.miscGemLW    = tonumber(Config.get('SpellS', 'MiscGemLW',    '0')) or 0
