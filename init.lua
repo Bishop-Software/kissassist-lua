@@ -8,6 +8,8 @@ local Cast   = require('modules.cast')
 local Combat = require('modules.combat')
 local Heal     = require('modules.healing')
 local Buffs    = require('modules.buffs')
+local Pet      = require('modules.pet')
+local Bard     = require('modules.bard')
 local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
 
@@ -63,9 +65,12 @@ Binds.register(State, Utils, Buffs)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
-Combat.init(State, Utils, Cast, Heal, Movement)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard)
 Buffs.init(State, Utils, Cast, Heal)
-Pull.init(State, Utils, Cast, Movement, Combat)
+Pet.init(State, Utils, Cast, Buffs, Movement)
+Bard.init(State, Utils, Cast)
+Cast.setBard(Bard)
+Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -89,10 +94,12 @@ while not State.terminate do
     if State.buffs.kaBegActive then Buffs.checkBegforBuffs() end
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     Heal.writeDebuffs()
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
     Heal.doWeMed()
+    if State.session.iAmABard then Bard.doBardStuff() end
     if not State.combat.combatStart and State.movement.returnToCamp then
         Movement.doWeMove(0, 'mainloop')
     end

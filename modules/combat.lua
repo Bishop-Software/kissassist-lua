@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement
+local _state, _utils, _cast, _heal, _movement, _bard
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
 local function dist2D(y1, x1, y2, x2)
@@ -252,12 +252,13 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement)
+function Combat.init(state, utils, cast, heal, movement, bard)
     _state    = state
     _utils    = utils
     _cast     = cast
     _heal     = heal
     _movement = movement
+    _bard     = bard
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -927,7 +928,7 @@ function Combat.fight(fromWhere)
             _state.combat.combatStart    = true
             local tgtName = mq.TLO.Spawn('id ' .. myID).CleanName() or '?'
             mq.cmd('/echo  ATTACKING -> ' .. tgtName .. ' <-')
-            -- DoBardStuff (deferred bard module)
+            if _bard then _bard.doBardStuff() end
             -- BroadCast (deferred M9); echo locally for now
             if role == 'tank' or role == 'pullertank' or role == 'hunter' then
                 mq.cmd('/echo [KA] TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
@@ -1003,7 +1004,7 @@ function Combat.fight(fromWhere)
             -- Deferred: SwitchMA offtank (M9), MercsDoWhat (M6)
             -- Deferred: stick/distance maintenance (M7)
             -- Deferred: MezCheck, AECheck, CheckCures/CheckHealth (M5)
-            -- Deferred: DoBardStuff (M8)
+            if _bard then _bard.doBardStuff() end
             -- AggroCheck (mac:1165)
             if _state.combat.aggroOn and _cast and _cast.castWhat then
                 Combat.aggroCheck()
@@ -1392,6 +1393,8 @@ function Combat.combatReset(sFlag, calledFrom)
     _state.combat.validTarget     = false
     _state.combat.combatStart     = false
     _state.pull.pulled            = false
+    -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOR medley.
+    if _bard and _state.session.iAmABard then _state.bard.dpsTwisting = false end
 
     -- Stop attacking and clear target (mac:2247,2250)
     mq.cmd('/squelch /attack off')

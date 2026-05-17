@@ -282,18 +282,23 @@ local State = {
         assistAt      = 100,   -- PetAssistAt: mob HP% threshold to send pet (set from INI)
         attackRange   = 0,
         combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
-        focusOn       = false,
+        focus         = '',    -- PetFocus: pipe-delimited focusItem|focusSlot|focusBuff (set from INI)
+        focusOn       = false, -- PetFocusOn (set from INI)
         globalToysGave = '',
+        holdOn        = false, -- PetHoldOn: send /pet hold before summoning (set from INI)
         on            = false, -- PetOn: pet features enabled (set from INI)
         shrinkOn      = false, -- PetShrinkOn (set from INI)
         shrinkSpell   = '',    -- PetShrinkSpell (set from INI)
-        suspendState  = false,
+        spell         = '',    -- PetSpell: spell name used to summon pet (set from INI)
+        suspend       = false, -- PetSuspend: suspend pet when not in combat (set from INI)
+        suspendState  = false, -- runtime: true when pet is currently suspended
         tanking       = false,
         targetSwitch  = false,
         totCount      = 0,
         toyList       = '',
         toysArray     = {},    -- PetToys array (set from INI)
         toysOn        = false, -- PetToysOn (set from INI)
+        petRampageOn  = false, -- PetRampPullWait: wait for rampage pets before pulling (set from INI)
     },
 
     mez = {
@@ -308,12 +313,19 @@ local State = {
     },
 
     bard = {
+        burnMedley     = 'burn',     -- MQ2Medley set name for burn phase (INI BurnMedley)
         dpsTwisting    = false,
         gomActive      = false,
         gomByPass      = false,
+        gomMedley      = 'gomSong',  -- MQ2Medley one-shot set for GoM proc (INI GoMMedley)
+        meleeMedley    = 'melee',    -- MQ2Medley set name for combat (INI MeleeMedley)
+        meleeTwistOn   = 0,          -- 0=off, 1=swap to melee set, 2=swap when aggro (INI MeleeTwistOn)
+        oorMedley      = 'oor',      -- MQ2Medley set name for OOC (INI OORMedley)
+        pullTwistOn    = false,      -- pause medley during pull (INI PullTwistOn)
         startTwist     = false,
-        twisting       = false,
         twistHold      = false,
+        twistOn        = false,      -- OOC medley enabled (INI TwistOn)
+        twisting       = false,
         wasTwisting    = 'null',
         wasTwistingBool = false,
     },
