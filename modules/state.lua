@@ -418,6 +418,7 @@ local State = {
         searchType           = '',
         tempAmmo             = '',
         campfireOn           = false,
+        myCmd                = '',  -- custom command string from INI [General] MyCmd
         winTitleText         = 'null',
     },
 

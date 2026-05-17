@@ -4,6 +4,8 @@ local Config = {}
 
 -- Loaded config table (populated by Config.load, consumed by modules at startup).
 local _cfg = nil
+-- Path to the pickle file on disk; set by migrateIni so save() knows where to write.
+local _picklePath = nil
 
 local ROLES = {
     assist=true, manual=true, petassist=true, tank=true, pettank=true,
@@ -91,6 +93,7 @@ function Config.migrateIni(state)
         pf:close()
         local ok, cfg = pcall(dofile, picklePath)
         if ok and type(cfg) == 'table' then
+            _picklePath = picklePath
             printf('\agKissAssist: \awLoaded config from \at%s', pickleName)
             return cfg
         end
@@ -354,6 +357,7 @@ function Config.migrateIni(state)
 
     -- 3. Ensure output directory exists and write pickle.
     os.execute('if not exist "' .. pickleDir:gsub('/','\\') .. '" mkdir "' .. pickleDir:gsub('/','\\') .. '"')
+    _picklePath = picklePath
     mq.pickle(picklePath, cfg)
 
     -- 4. Rename original INI to .bak (INI lives in mq.configDir alongside other MQ2 configs).
@@ -377,6 +381,33 @@ function Config.get(section, key, default)
     local val = sec[key]
     if val == nil then return default end
     return val
+end
+
+-- Mutate a single key in the live config table (does not write to disk).
+function Config.set(section, key, value)
+    if not _cfg then return end
+    if not _cfg[section] then _cfg[section] = {} end
+    _cfg[section][key] = value
+end
+
+-- Flush the current in-memory config table back to its pickle file.
+-- No-op if the pickle path was never resolved (e.g. no INI and no pickle on first run).
+function Config.save()
+    if not _cfg or not _picklePath then return end
+    mq.pickle(_picklePath, _cfg)
+end
+
+-- Write the character's current memorised gem loadout into [Spells] and save.
+-- Mirrors Bind_WriteMySpells from kissassist.mac.
+function Config.writeSpells(state)
+    local gemSlots = state.cast.gemSlots or 8
+    for i = 1, gemSlots do
+        local spellName = mq.TLO.Me.Gem(i).Name() or ''
+        if spellName ~= '' then
+            Config.set('Spells', 'Gem' .. i, spellName)
+        end
+    end
+    Config.save()
 end
 
 -- Load config: resolve INI name, migrate if needed, store for Config.get().

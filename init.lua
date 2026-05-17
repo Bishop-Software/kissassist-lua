@@ -67,7 +67,7 @@ Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement)
-Binds.register(State, Utils, Buffs, Loot)
+Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
