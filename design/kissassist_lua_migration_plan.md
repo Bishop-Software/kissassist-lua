@@ -1322,6 +1322,14 @@ Add to `binds.lua` (alongside existing `/ka*` binds):
 
 Update `Binds.register` / `Binds.unregister` accordingly. Pass `Loot` as a new argument to `Binds.register`.
 
+**Implemented:**
+
+- `_loot` upvalue added to `binds.lua`; `Binds.register` signature extended to `(s, u, b, l)`.
+- `onLootOn` / `onLootOff` toggle `state.loot.on` and print a status line.
+- `onSell` / `onDeposit` / `onBarter` delegate directly to `_loot.sell/deposit/barter()`.
+- All five binds registered in a new `-- Loot` block at the end of `Binds.register`.
+- `init.lua` updated: `Binds.register(State, Utils, Buffs, Loot)`.
+
 ---
 
 #### Step 9.5 — Main loop guard (optional heartbeat)

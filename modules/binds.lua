@@ -9,7 +9,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
-local state, utils, _buffs
+local state, utils, _buffs, _loot
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -505,12 +505,29 @@ local function onMyCmds(_cmd, _p1, _p2, _p3)
     printf('>> MyCmds — M4+ (custom command pass-through)')
 end
 
+-- ─── Loot ─────────────────────────────────────────────────────────────────────
+
+local function onLootOn()
+    state.loot.on = 1
+    printf('\agLooting enabled.')
+end
+
+local function onLootOff()
+    state.loot.on = 0
+    printf('\ayLooting disabled.')
+end
+
+local function onSell()    _loot.sell()    end
+local function onDeposit() _loot.deposit() end
+local function onBarter()  _loot.barter()  end
+
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, u, b)
+function Binds.register(s, u, b, l)
     state  = s
     utils  = u
     _buffs = b
+    _loot  = l
 
     -- Debug / utility
     bind('/debug',          onDebug)
@@ -552,6 +569,13 @@ function Binds.register(s, u, b)
     bind('/addpull',        onAddPull)
     bind('/addignore',      onAddIgnore)
     bind('/addimmune',      onAddMezImmune)
+
+    -- Loot
+    bind('/kalooton',       onLootOn)
+    bind('/kalootoff',      onLootOff)
+    bind('/kasell',         onSell)
+    bind('/kadeposit',      onDeposit)
+    bind('/kabarter',       onBarter)
 end
 
 function Binds.unregister()
