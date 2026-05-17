@@ -331,11 +331,14 @@ local State = {
     },
 
     loot = {
-        bagNum        = 0,
-        bagNumLast    = 0,
-        cursorID      = 0,
-        cursorIDCount = 0,
-        dragCorpse    = false,
+        on             = 1,
+        radius         = 100,
+        spamInfo       = 1,
+        bagNum         = 0,
+        bagNumLast     = 0,
+        cursorID       = 0,
+        cursorIDCount  = 0,
+        dragCorpse     = false,
         looterAssigned = false,
     },
 
