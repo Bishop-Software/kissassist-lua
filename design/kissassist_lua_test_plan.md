@@ -2154,18 +2154,417 @@ end)
 
 ---
 
-## Section 7 — Integration Smoke Test
+## Section 12 — Integration Smoke Test
 
 Run after all individual tests pass to verify modules interact correctly.
 
 | # | Scenario | Steps | Expected |
 |---|----------|-------|----------|
-| 7.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 7.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 7.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 7.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 7.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 7.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+| 12.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 12.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 12.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 12.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
+| 12.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
+| 12.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
+
+---
+
+## Section 8 — Pet & Bard (Milestone 8)
+
+### Section 8.1 — Pet.init + INI wiring (Step 8.1)
+
+#### 8.1.1 Module load
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| 8.1.1 | Script starts cleanly with `[Pet]` section absent from INI | No error; all `state.pet` fields retain defaults (`spell=''`, `focus=''`, `focusOn=false`, `holdOn=false`, `suspend=false`) |
+| 8.1.2 | Script starts with full `[Pet]` section in INI | `Pet.init` runs without error; debug line emitted when `debug.pet=true` |
+
+#### 8.1.2 INI field wiring
+
+| # | Scenario | INI value | Expected `state.pet` field |
+| --- | --- | --- | --- |
+| 8.1.3 | `PetSpell=Frenzied Burnout` | present | `state.pet.spell == 'Frenzied Burnout'` |
+| 8.1.4 | `PetSpell` absent | absent | `state.pet.spell == ''` |
+| 8.1.5 | `PetFocus=Summoner's Boon\|22\|Focus Buff` | present | `state.pet.focus == 'Summoner\'s Boon\|22\|Focus Buff'` |
+| 8.1.6 | `PetFocusOn=1` | present | `state.pet.focusOn == 1` (pending; numeric 0/1/2) |
+| 8.1.7 | `PetFocusOn=0` | present | `state.pet.focusOn == 0` |
+| 8.1.8 | `PetHoldOn=1` | present | `state.pet.holdOn == 1` (pending; numeric 0/1/2) |
+| 8.1.9 | `PetHoldOn=0` | present | `state.pet.holdOn == 0` |
+| 8.1.10 | `PetSuspend=1` | present | `state.pet.suspend == true` |
+| 8.1.11 | `PetSuspend=0` | present | `state.pet.suspend == false` |
+
+#### 8.1.3 Buffs.init fields not duplicated
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| 8.1.12 | `PetOn=1` in INI — loaded by Buffs.init | `state.pet.on == true`; Pet.init does not overwrite it |
+| 8.1.13 | `PetShrinkOn=1` in INI — loaded by Buffs.init | `state.pet.shrinkOn == true`; Pet.init does not touch it |
+| 8.1.14 | `PetToysOn=1` in INI — loaded by Buffs.init | `state.pet.toysOn == true`; Pet.init does not touch it |
+
+---
+
+### Section 8.2 — Pet.doPetStuff (Step 8.2)
+
+#### 8.2.1 — Entry guards
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.1 | `state.pet.on = false` | PetOn=0 in INI | `Pet.doPetStuff` returns immediately; no cast, no echo |
+| 8.2.2 | `campZone` differs from current zone | Character zoned since startup | Returns immediately; no summon attempt |
+| 8.2.3 | `state.combat.aggroTargetID ~= 0` | In combat with aggro | Returns immediately |
+| 8.2.4 | `Me.Invis()` is true | Invis buff active | Returns immediately |
+| 8.2.5 | `Me.Hovering()` is true | Character is a ghost | Returns immediately |
+| 8.2.6 | `state.pet.spell == ''` | PetSpell absent from INI | Returns after event drain; no cast |
+
+#### 8.2.2 — Normal summon (no suspend)
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.7 | No pet; spell in book; mana sufficient | Pet class, no pet present | Prints `ARISE <spellname>`; `castWhat` called with petSpell; on pet appear: prints `My pet is now: ...`; `state.pet.activeState = 1` |
+| 8.2.8 | Summon returns `CAST_COMPONENTS` | Mage missing reagents | Prints "missing components"; function returns without setting `activeState` |
+| 8.2.9 | No pet; spell not in spellbook | Pet spell unscribed | No summon attempted (book guard fails) |
+| 8.2.10 | Summon timer expires (60 s) with no pet | `castWhat` never results in a pet | Loop exits cleanly; `activeState` remains 0 |
+
+#### 8.2.3 — Focus item swap
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.11 | `PetFocus=ItemName\|22\|` (item slot path); focus item not in slot | focusSlot is a bag slot | `/exchange "ItemName" 22` sent before summon; swap-back `/exchange "<original>" 22` sent after pet appears |
+| 8.2.12 | `PetFocus=SpellName\|buff\|BuffName`; buff not active | focusSlot=buff path | `castWhat(focusPet, Me.ID)` called to apply focus buff |
+| 8.2.13 | `PetFocus=''` (empty) | No focus configured | No exchange commands sent; no buff cast |
+| 8.2.14 | Focus item already equipped (`focusPet == focusCurrent`) | Correct item already in slot | No exchange sent; `focusSwitch` stays false; no swap-back |
+
+#### 8.2.4 — Suspend path
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.15 | `suspend=true`; `totCount=1`; `activeState=0`; `suspendState=1` | Suspended pet exists | Prints "I have a suspended pet, summoning it now!"; `petStateCheck` called to fire AA |
+| 8.2.16 | `suspend=true`; `totCount<2`; `suspendState=0`; `activeState=0` | No pet, no suspended pet | Summon loop runs; pet summoned via `castWhat` |
+| 8.2.17 | `petStateCheck`: `Companion's Suspension` AA known + ready | Suspend path active | `/alt act <ID>` fired; waits for `CastingWindow` to close; `activeState=1` if pet present after |
+| 8.2.18 | `petStateCheck`: `Companion's Suspension` AA not known | Suspend path active | Prints AA-not-found message; `state.pet.suspend` set to `false` |
+
+#### 8.2.5 — Pet stance management
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.19 | Pet present; `role=puller`; `petDist <= campRadius`; pet not guarding | Has-pet path | `/pet guard` sent |
+| 8.2.20 | Pet present; `role=puller`; `petDist > campRadius` | Has-pet path | `/pet follow` sent |
+| 8.2.21 | Pet present; `chaseAssist=true`; role in PULL_ROLES | Has-pet path | `/pet follow` sent regardless of distance |
+| 8.2.22 | `role=assist` (not in PULL_ROLES) | Has-pet path | No stance command sent |
+
+#### 8.2.6 — holdOn / focusOn one-shot send
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.23 | `state.pet.holdOn == 1` | PetHoldOn=1 in INI, first call with pet | `/pet hold on` sent; `state.pet.holdOn` set to `2` |
+| 8.2.24 | `state.pet.holdOn == 2` | Already sent this pet | `/pet hold on` NOT sent again |
+| 8.2.25 | `state.pet.focusOn == 1` | PetFocusOn=1 in INI, first call with pet | `/pet focus on` sent; `state.pet.focusOn` set to `2` |
+| 8.2.26 | Pet dies and no-pet path re-entered | `activeState` reset to 0 | `holdOn`/`focusOn` reset from `2` → `1`; commands fire again on next summon |
+
+#### 8.2.7 — Taunt management
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.27 | `role=pettank`; `Pet.Taunt()=false` | pettank with taunt off | `/pet taunt on` sent |
+| 8.2.28 | `role=assist`; `Pet.Taunt()=true` | assist with taunt on | `/pet taunt off` sent |
+| 8.2.29 | `state.pet.tauntOverride=true` | PetTauntOverride=1 in INI | No taunt command sent regardless of current state |
+
+#### 8.2.8 — checkPetBuffs + petToys
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.2.30 | Pet present | Any call with pet present | `_buffs.checkPetBuffs()` always called at end of function |
+| 8.2.31 | `toysOn=true`; `toysGave=''` | Pet present, toys not yet given | `Pet.petToys(petName)` called; `state.pet.toysGave` set to pet's CleanName |
+| 8.2.32 | `toysOn=true`; `toysGave` already contains pet's CleanName | Same pet still present | `Pet.petToys` NOT called again |
+
+---
+
+### Section 8.3 — Pet.petToys + item-giving helpers (Step 8.3)
+
+#### 8.3.1 — openInvSlot
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.1 | Cursor has item when called | Item on cursor at petToys entry | `_bagNumLast` set to 99; `_bagNum` stays 0; petToys echoes "Inventory is full" and disables toysOn |
+| 8.3.2 | One completely empty top-level slot exists | Pack slot with no item ID | `_bagNum` set to that slot; echoes "Inventory slot N is empty, using that one." |
+| 8.3.3 | No empty slot but FreeInventory > 1 | All slots have non-container items | Pass-2 fires; `_bagNum` set to first non-container slot |
+| 8.3.4 | No usable slot at all | Inventory full | `_bagNumLast=99`; `_bagNum=0`; petToys echoes "No empty Top Inventory slot" and disables toysOn |
+
+#### 8.3.2 — castPetToys
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.5 | `castWhat` returns `CAST_SUCCESS` | Spell casts cleanly | Echoes `Casting pet toy spell >> SpellName <<`; returns false (not cancelled) |
+| 8.3.6 | `castWhat` returns `CAST_FIZZLE` ≤ 4 times then SUCCESS | Spell fizzles then lands | Retries; echoes success on landing; returns false |
+| 8.3.7 | `castWhat` returns `CAST_FIZZLE` 5+ times | Persistent fizzle | `retryCount > 4`; returns true (cancelled); caller skips to next toy entry |
+| 8.3.8 | `castWhat` returns `CAST_RECOVER` | Spell in global cooldown | `retryCount` not incremented; waits for cooldown then retries |
+| 8.3.9 | `castWhat` returns any other status | Unexpected return | Returns true (cancelled) immediately |
+
+#### 8.3.3 — pickUpItem
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.10 | Item not in inventory | `FindItemCount` returns 0 | Returns immediately; nothing added to `_toyItems`; cursor unchanged |
+| 8.3.11 | Item in top-level slot (slot ≤ 22) | Item in pack slot 3 | Slot stored as-is; `/nomodkey /itemnotify pack3 leftmouseup` sent; entry appended to `_toyItems` |
+| 8.3.12 | Item inside a bag (slot > 22) | Item in bag slot 28 | Slot adjusted to 28-22=6; correct `/itemnotify` sent |
+| 8.3.13 | Item in bag with slot2 ≥ 0 | Item at slot2=0 | slot2 adjusted to 1; `/nomodkey /itemnotify in packN 1 leftmouseup` sent |
+
+#### 8.3.4 — giveTo
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.14 | Pet not yet targeted | Target is someone else | `/target id petID` sent; waits up to 2 s for target lock |
+| 8.3.15 | Pet within range (dist ≤ 5) | Already adjacent to pet | No `/moveto` sent |
+| 8.3.16 | Pet within campRadius but dist > 5 | Pet across camp | `/moveto id petID mdist 5` sent; waits for `MoveTo.Stopped` |
+| 8.3.17 | Character is mounted | Mount active | `/dismount` sent; waits for mount to clear |
+| 8.3.18 | Character is levitating | Lev buff active | `/removelev` sent; waits for lev to clear |
+| 8.3.19 | Item on cursor, NoRent, correct ID | Summoned item ready | `/click left target` sent; `_itemsGiven` incremented |
+| 8.3.20 | GiveWnd opens; `giveNow=true` | Trade window opens | `/notify GiveWnd GVW_Give_Button leftmouseup` sent; `_itemsGiven` reset to 0 |
+| 8.3.21 | `_itemsGiven` reaches 4 | Four items in window | Give button triggered even without `giveNow` |
+| 8.3.22 | Pet rejects item (cursor has item after give) | Item returned by pet | Item returned to original slot via `_toyItems` tracking |
+| 8.3.23 | Returned item is NoRent and not in `_toyItems` | Unknown summoned item | `/destroy` called |
+| 8.3.24 | `gItem='giveitems'` | Flushing trade window | `giveNow` set true; no pickup attempted; trade confirmed |
+
+#### 8.3.5 — destroyBag
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.25 | Bag contains non-summoned (non-NoRent) item | Real item left in bag | Echoes abort message; `state.pet.toysOn` set to `false`; bag not destroyed |
+| 8.3.26 | Bag is a Phantom Weapon Pack (all contents NoRent) | Empty summoned bag | `/itemnotify pack<N> leftmouseup`; cursor checked; `/destroy` sent |
+| 8.3.27 | Bag name does not match any known pack name | Regular bag | No action taken |
+
+#### 8.3.6 — Pet.petToys orchestration
+
+| # | Scenario | Setup | Expected |
+| --- | --- | --- | --- |
+| 8.3.28 | No pet present | `Me.Pet.ID()=0` | Returns immediately; no toy logic runs |
+| 8.3.29 | `toysOn=false` | INI PetToysOn=0 | Returns after bag check; no toy loop |
+| 8.3.30 | Toy entry `== 'Null'` | Entry in toysArray is `'Null'` | Skipped silently |
+| 8.3.31 | Single spell entry (no pipe parts); spell in book | `toysArray[1]='Call of the Wild'` | `castPetToys` called; item lands on cursor; `castFlag1=2` path gives bag contents |
+| 8.3.32 | Spell + item: `'SpellName\|ItemName'`; spell in book | Standard toy entry | `castPetToys` called; `giveTo(ItemName, petID)` called; `toysTemp` updated with `:ItemName1` |
+| 8.3.33 | `'inventory\|ItemName'` entry; item in inventory | Pre-existing item | No cast; `giveTo(ItemName, petID)` called directly |
+| 8.3.34 | Toy already in `toysTemp` (`petToyCheck` found) | Same pet, already gave | Entry skipped; `giveTo` not called again |
+| 8.3.35 | `petLevel >= 76` and spell contains `'muzzle'` | High-level mage pet | Entry skipped (auto-equipped by game) |
+| 8.3.36 | Bag (container) appears on cursor after cast | Summoned container spell | Bag placed in `_bagNum` slot; bag opened; contents given individually |
+| 8.3.37 | Cursor name contains `'Summoned:'` after cast | Direct summoned item | `castFlag1=1`; GiveWnd flushed between items; `castPetToys` re-called for next pipe part |
+| 8.3.38 | Bag in `_bagNum` matches known phantom pack after giving | Post-give cleanup | `destroyBag()` called |
+| 8.3.39 | `isMyPet=false` (helping another player's pet) | `petName != Me.Pet.CleanName` | `toysTemp` starts empty; no INI write; items given without skip checks |
+| 8.3.40 | `returnToCamp=true` at end of petToys | Camp-return flag set | `_movement.doWeMove(0, 'PetToys')` called after toys complete |
+| 8.3.41 | InventoryWindow was closed before petToys | `invWasOpen=false` | Window closed via `/keypress inventory` after giving |
+| 8.3.42 | Entry has `&#124;cond` suffix | Conditional entry | `&#124;cond...` stripped from fullText; condition evaluation skipped (deferred M10) |
+
+---
+
+### Section 8.4 — Pet.checkRampPets + main loop + pull wiring (Step 8.4)
+
+#### 8.4.1 — Pet.checkRampPets core logic
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.1 | In COMBAT at call time | `CombatState == 'COMBAT'` | Returns immediately; no spawn checks |
+| 8.4.2 | No rampage pets present | All `Me.CleanName's_pet0{i}` IDs == 0 | Loops 0–20, finds nothing, returns normally |
+| 8.4.3 | Rampage pet at slot 3, then disappears | `pet03.ID > 0` → then 0 | Echoes "HOLDING", waits in loop, exits when ID becomes 0 |
+| 8.4.4 | Rampage pet present, combat re-enters | `pet02.ID > 0` while waiting → `CombatState == 'COMBAT'` | Loop exits; function returns early without checking remaining slots |
+| 8.4.5 | Multiple rampage pets (slots 1 and 5) | Slot 1 ID > 0 then → 0; slot 5 ID > 0 then → 0 | Waits for slot 1 to poof, then waits for slot 5 to poof, returns normally |
+| 8.4.6 | Combat enters while waiting for second pet | Slot 1 poofs; slot 5 up when combat enters | Returns immediately after slot 1 clear; slot 5 skipped |
+
+#### 8.4.2 — state.pet.petRampageOn + INI wiring
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.7 | `PetRampPullWait=1` in INI | INI key present | `state.pet.petRampageOn == true` after `Pet.init` |
+| 8.4.8 | `PetRampPullWait=0` in INI | INI key present | `state.pet.petRampageOn == false` |
+| 8.4.9 | Key absent from INI | Key missing | `state.pet.petRampageOn == false` (default) |
+
+#### 8.4.3 — Pull.init extended signature
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.10 | `Pull.init` called with `Pet` as 6th arg | Valid Pet module | `_pet` upvalue assigned; no error |
+| 8.4.11 | `Pull.init` called without 6th arg | `pet = nil` | `_pet = nil`; pull.lua guard `if _pet and ...` prevents nil-call error |
+
+#### 8.4.4 — pullCheck rampage-pet guard
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.12 | `pet.on=false`, `petRampageOn=true` | Any | `checkRampPets` not called before `executePull` |
+| 8.4.13 | `pet.on=true`, `petRampageOn=false` | Any | `checkRampPets` not called |
+| 8.4.14 | `pet.on=true`, `petRampageOn=true`, in COMBAT | `CombatState == 'COMBAT'` | `checkRampPets` not called (guard blocks) |
+| 8.4.15 | `pet.on=true`, `petRampageOn=true`, OOC | All guards pass | `checkRampPets()` called before `executePull()` |
+
+#### 8.4.5 — init.lua main loop wiring
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.4.16 | `pet.on=false` in main loop | `State.pet.on == false` | `Pet.doPetStuff()` not called |
+| 8.4.17 | `pet.on=true`, `combatStart=true` | Pet on, in combat | `Pet.doPetStuff()` not called |
+| 8.4.18 | `pet.on=true`, `combatStart=false` | Pet on, OOC | `Pet.doPetStuff()` called each loop iteration |
+
+---
+
+### Section 8.5 — Bard.init scaffold + MQ2Medley INI wiring (Step 8.5)
+
+#### 8.5.1 — Module load + non-Bard guard
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.5.1 | Non-Bard class calls `Bard.init` | `iAmABard = false` | Returns immediately; no INI reads; no `state.bard` fields mutated |
+| 8.5.2 | Bard class calls `Bard.init` with full `[General]` INI | `iAmABard = true` | Completes without error; debug line emitted when `debug.bard = true` |
+| 8.5.3 | Bard class calls `Bard.init` with empty INI | `iAmABard = true`, no `[General]` keys | All fields receive their defaults; no error |
+
+#### 8.5.2 — INI field wiring
+
+| ID | Scenario | INI value | Expected `state.bard` field |
+|----|----------|-----------|----------------------------|
+| 8.5.4 | `TwistOn=1` | `[General] TwistOn=1` | `twistOn == true` |
+| 8.5.5 | `TwistOn=0` or absent | `0` or missing | `twistOn == false` |
+| 8.5.6 | `MeleeTwistOn=2` | `[General] MeleeTwistOn=2` | `meleeTwistOn == 2` |
+| 8.5.7 | `MeleeTwistOn` absent | Missing | `meleeTwistOn == 0` |
+| 8.5.8 | `TwistHold=1` | `[General] TwistHold=1` | `twistHold == true` |
+| 8.5.9 | `PullTwistOn=1` | `[General] PullTwistOn=1` | `pullTwistOn == true` |
+| 8.5.10 | `OORMedley=myoor` | `[General] OORMedley=myoor` | `oorMedley == 'myoor'` |
+| 8.5.11 | `OORMedley` absent | Missing | `oorMedley == 'oor'` (default) |
+| 8.5.12 | `MeleeMedley=myfight` | `[General] MeleeMedley=myfight` | `meleeMedley == 'myfight'` |
+| 8.5.13 | `MeleeMedley` absent | Missing | `meleeMedley == 'melee'` (default) |
+| 8.5.14 | `BurnMedley=myburn` | `[General] BurnMedley=myburn` | `burnMedley == 'myburn'` |
+| 8.5.15 | `BurnMedley` absent | Missing | `burnMedley == 'burn'` (default) |
+| 8.5.16 | `GoMMedley=mygom` | `[General] GoMMedley=mygom` | `gomMedley == 'mygom'` |
+| 8.5.17 | `GoMMedley` absent | Missing | `gomMedley == 'gomSong'` (default) |
+
+#### 8.5.3 — state.bard audit (new fields)
+
+| ID | Scenario | Expected |
+|----|----------|---------|
+| 8.5.18 | Script starts; `state.bard` inspected before `Bard.init` | `twistOn`, `meleeTwistOn`, `pullTwistOn`, `oorMedley`, `meleeMedley`, `burnMedley`, `gomMedley` all present with defaults |
+| 8.5.19 | Pre-existing fields unchanged | `dpsTwisting`, `gomActive`, `twisting`, `twistHold`, `startTwist`, `wasTwisting`, `wasTwistingBool` retain their prior defaults |
+
+#### 8.5.4 — init.lua wiring
+
+| ID | Scenario | Expected |
+|----|----------|---------|
+| 8.5.20 | `require('modules.bard')` present in init.lua | Module loads without error on startup |
+| 8.5.21 | `Bard.init` called after `Pet.init` | Init order: Pet → Bard → Pull; no dependency errors |
+| 8.5.22 | `Bard.doBardStuff` stub exists | Callable without error; no-op until Step 8.6 |
+
+---
+
+### Section 8.6 — Bard.doBardStuff MQ2Medley context switching (Step 8.6)
+
+#### 8.6.1 — Class guard + both-modes-off path
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.1 | Non-Bard calls `doBardStuff` | `iAmABard = false` | Returns immediately; no medley commands issued |
+| 8.6.2 | Both `twistOn=false`, `meleeTwistOn=0` with medley active | Both off | `stopMedley()` called; `/medley stop` issued; returns |
+| 8.6.3 | Both off, medley already stopped | Both off, `Medley.Active() = false` | Returns without any command |
+
+#### 8.6.2 — stopMedley helper
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.4 | Medley active when `stopMedley` called | `Medley.Active() = true` | `/medley stop` issued; waits up to 500ms for `BardSongPlaying` to clear |
+| 8.6.5 | Medley already stopped when `stopMedley` called | `Medley.Active() = false` | No command issued; returns immediately |
+
+#### 8.6.3 — Medley-not-running state reset (mac:6232-6236)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.6 | Medley not active | `Medley.Active() = false` | `twisting` and `dpsTwisting` reset to `false` |
+| 8.6.7 | Medley not active, song playing with closed casting window | `BardSongPlaying=true`, `Casting.ID>0`, `CastingWindow` closed | `/stopsong` issued |
+| 8.6.8 | Medley not active, casting window open | `CastingWindow.Open() = true` | `/stopsong` NOT issued |
+
+#### 8.6.4 — Invis/hold path (mac:6248-6253)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.9 | `Me.Invis = true`, no GoM pending | `Invis=true`, `gomActive=false` | Returns immediately; medley left as-is |
+| 8.6.10 | `twistHold = true`, GoM pending | `twistHold=true`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` cleared; returns |
+| 8.6.11 | `Me.Invis = true`, GoM pending | `Invis=true`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` cleared; returns |
+
+#### 8.6.5 — Combat path (mac:6256-6302)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.12 | `combatStart=true`, `meleeTwistOn=1`, `dpsTwisting=false`, wrong set active | `ActiveSet() != meleeMedley` | `stopMedley()` called; `/medley <meleeMedley>` issued; `dpsTwisting=true`, `twisting=false` |
+| 8.6.13 | `combatStart=true`, `meleeTwistOn=1`, `dpsTwisting=false`, correct set active | `ActiveSet() == meleeMedley` | No stop; no new `/medley` call; `dpsTwisting=true`, `twisting=false` |
+| 8.6.14 | `combatStart=true`, `dpsTwisting=true` already | `dpsTwisting=true` | No action; medley left running |
+| 8.6.15 | `meleeTwistOn=2`, `aggroID>0`, OOC | `combatStart=false`, `meleeTwistOn=2`, `aggroTargetID='123'` | Combat path entered; melee medley started |
+| 8.6.16 | `meleeTwistOn=2`, `aggroID=0`, OOC | `combatStart=false`, `meleeTwistOn=2`, `aggroTargetID=''` | Combat path NOT entered; falls to OOC path |
+| 8.6.17 | `meleeTwistOn=0`, `combatStart=true` | `meleeTwistOn=0` | Combat path guard fails; no medley switch |
+
+#### 8.6.6 — OOC path (mac:6303-6329)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.18 | `combatStart=false`, `twistOn=true`, `twisting=false`, wrong set | `ActiveSet() != oorMedley` | `stopMedley()` called; `/medley <oorMedley>` issued; `dpsTwisting=false`, `twisting=true` |
+| 8.6.19 | `combatStart=false`, `twistOn=true`, `twisting=false`, correct set | `ActiveSet() == oorMedley` | No stop; no new `/medley` call; `dpsTwisting=false`, `twisting=true` |
+| 8.6.20 | `combatStart=false`, `twistOn=true`, `twisting=true` already | `twisting=true` | No action; OOR medley left running |
+| 8.6.21 | `combatStart=false`, `twistOn=false`, medley active | `twistOn=false`, `Medley.Active()=true` | `stopMedley()` called |
+| 8.6.22 | `combatStart=false`, `twistOn=false`, medley not active | `twistOn=false`, `Medley.Active()=false` | No command issued |
+
+#### 8.6.7 — GoM one-shot queue (OOC path)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.23 | `gomActive=true` in OOC path | `combatStart=false`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` set to `false` |
+| 8.6.24 | `gomActive=true` in combat path | `combatStart=true`, `gomActive=true` | GoM NOT queued (OOC-only; queued via invis/hold path if twistHold) |
+| 8.6.25 | `gomActive=false` in OOC path | `combatStart=false`, `gomActive=false` | No queue command issued |
+
+---
+
+### Section 8.7 — Bard wiring: cast pause, combat loop, pull stop, combatReset (Step 8.7)
+
+#### 8.7.1 — Bard.pauseMedley / resumeMedley / stopMedley (public)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.1 | `pauseMedley` with medley active | `Medley.Active() = true` | `/medley pause` issued; waits up to 300ms for `BardSongPlaying` to clear |
+| 8.7.2 | `pauseMedley` with medley not active | `Medley.Active() = false` | No command issued |
+| 8.7.3 | `resumeMedley` called | Any | `/medley resume` issued unconditionally |
+| 8.7.4 | `Bard.stopMedley` is public alias of local `stopMedley` | Called from pull.lua | Same behavior as local `stopMedley`; stops medley and waits 500ms |
+
+#### 8.7.2 — cast.lua CastAA bard pause/resume
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.5 | Non-bard calls `castAA` | `iAmABard = false` | `pauseMedley` and `resumeMedley` not called |
+| 8.7.6 | Bard calls `castAA`, `_bard` set | `iAmABard = true`, `_bard` wired | `pauseMedley()` called before `/alt act`; `resumeMedley()` called after cast completes |
+| 8.7.7 | `Cast.setBard(bard)` wires `_bard` | Called from init.lua after `Bard.init` | `_bard` upvalue set; subsequent `castAA` calls use pause/resume |
+| 8.7.8 | `Cast.setBard` not yet called | `_bard = nil` | Guard `if _bard then` prevents nil-call; no error |
+
+#### 8.7.3 — combat.lua fight loop + CombatStart
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.9 | Combat loop iteration, `_bard` set, bard class | `iAmABard = true`, `_bard` wired | `_bard.doBardStuff()` called each inner fight-loop iteration |
+| 8.7.10 | CombatStart fires, `_bard` set | `combatStart` transitions false→true | `_bard.doBardStuff()` called immediately on first engage |
+| 8.7.11 | `_bard = nil` (non-bard) | `_bard` not set | `if _bard then` guard prevents call; no error |
+| 8.7.12 | `Combat.init` receives `Bard` as 6th arg | Valid Bard module | `_bard` upvalue set correctly |
+
+#### 8.7.4 — combatReset bard transition
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.13 | `combatReset` called, bard class, `_bard` set | `iAmABard = true`, `dpsTwisting = true` | `dpsTwisting` set to `false`; next `doBardStuff` tick enters OOC path and starts OOR medley |
+| 8.7.14 | `combatReset` called, non-bard | `iAmABard = false` | `dpsTwisting` not touched |
+
+#### 8.7.5 — pull.lua bard pull-pause
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.15 | Bard puller, `pullTwistOn = false`, `_bard` set | `iAmABard = true`, `pullTwistOn = false` | `_bard.stopMedley()` called before `executePull` |
+| 8.7.16 | Bard puller, `pullTwistOn = true` | `pullTwistOn = true` | Medley NOT stopped; bard keeps singing during pull |
+| 8.7.17 | Non-bard puller | `iAmABard = false` | `stopMedley` not called |
+| 8.7.18 | `Pull.init` receives `Bard` as 7th arg | Valid Bard module | `_bard` upvalue set; pull-pause active for bard pullers |
+
+#### 8.7.6 — init.lua wiring
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.7.19 | Main loop, bard class | `iAmABard = true` | `Bard.doBardStuff()` called once per loop iteration after `Heal.doWeMed()` |
+| 8.7.20 | Main loop, non-bard class | `iAmABard = false` | `Bard.doBardStuff()` not called |
+| 8.7.21 | `Cast.setBard(Bard)` called after `Bard.init` | Startup sequence | `_bard` in cast.lua wired before any AA cast can occur |
 
 ---
 
@@ -2245,4 +2644,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete. Sections 7.1–7.8 added (103 test cases total): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Known Deferred updated: DoWeMove/CheckStick/FaceMobOn/ChainPull/validateTarget pull checks all marked ✅.*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3).*
