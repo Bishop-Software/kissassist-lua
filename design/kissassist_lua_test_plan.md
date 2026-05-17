@@ -2449,6 +2449,70 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+### Section 8.6 — Bard.doBardStuff MQ2Medley context switching (Step 8.6)
+
+#### 8.6.1 — Class guard + both-modes-off path
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.1 | Non-Bard calls `doBardStuff` | `iAmABard = false` | Returns immediately; no medley commands issued |
+| 8.6.2 | Both `twistOn=false`, `meleeTwistOn=0` with medley active | Both off | `stopMedley()` called; `/medley stop` issued; returns |
+| 8.6.3 | Both off, medley already stopped | Both off, `Medley.Active() = false` | Returns without any command |
+
+#### 8.6.2 — stopMedley helper
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.4 | Medley active when `stopMedley` called | `Medley.Active() = true` | `/medley stop` issued; waits up to 500ms for `BardSongPlaying` to clear |
+| 8.6.5 | Medley already stopped when `stopMedley` called | `Medley.Active() = false` | No command issued; returns immediately |
+
+#### 8.6.3 — Medley-not-running state reset (mac:6232-6236)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.6 | Medley not active | `Medley.Active() = false` | `twisting` and `dpsTwisting` reset to `false` |
+| 8.6.7 | Medley not active, song playing with closed casting window | `BardSongPlaying=true`, `Casting.ID>0`, `CastingWindow` closed | `/stopsong` issued |
+| 8.6.8 | Medley not active, casting window open | `CastingWindow.Open() = true` | `/stopsong` NOT issued |
+
+#### 8.6.4 — Invis/hold path (mac:6248-6253)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.9 | `Me.Invis = true`, no GoM pending | `Invis=true`, `gomActive=false` | Returns immediately; medley left as-is |
+| 8.6.10 | `twistHold = true`, GoM pending | `twistHold=true`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` cleared; returns |
+| 8.6.11 | `Me.Invis = true`, GoM pending | `Invis=true`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` cleared; returns |
+
+#### 8.6.5 — Combat path (mac:6256-6302)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.12 | `combatStart=true`, `meleeTwistOn=1`, `dpsTwisting=false`, wrong set active | `ActiveSet() != meleeMedley` | `stopMedley()` called; `/medley <meleeMedley>` issued; `dpsTwisting=true`, `twisting=false` |
+| 8.6.13 | `combatStart=true`, `meleeTwistOn=1`, `dpsTwisting=false`, correct set active | `ActiveSet() == meleeMedley` | No stop; no new `/medley` call; `dpsTwisting=true`, `twisting=false` |
+| 8.6.14 | `combatStart=true`, `dpsTwisting=true` already | `dpsTwisting=true` | No action; medley left running |
+| 8.6.15 | `meleeTwistOn=2`, `aggroID>0`, OOC | `combatStart=false`, `meleeTwistOn=2`, `aggroTargetID='123'` | Combat path entered; melee medley started |
+| 8.6.16 | `meleeTwistOn=2`, `aggroID=0`, OOC | `combatStart=false`, `meleeTwistOn=2`, `aggroTargetID=''` | Combat path NOT entered; falls to OOC path |
+| 8.6.17 | `meleeTwistOn=0`, `combatStart=true` | `meleeTwistOn=0` | Combat path guard fails; no medley switch |
+
+#### 8.6.6 — OOC path (mac:6303-6329)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.18 | `combatStart=false`, `twistOn=true`, `twisting=false`, wrong set | `ActiveSet() != oorMedley` | `stopMedley()` called; `/medley <oorMedley>` issued; `dpsTwisting=false`, `twisting=true` |
+| 8.6.19 | `combatStart=false`, `twistOn=true`, `twisting=false`, correct set | `ActiveSet() == oorMedley` | No stop; no new `/medley` call; `dpsTwisting=false`, `twisting=true` |
+| 8.6.20 | `combatStart=false`, `twistOn=true`, `twisting=true` already | `twisting=true` | No action; OOR medley left running |
+| 8.6.21 | `combatStart=false`, `twistOn=false`, medley active | `twistOn=false`, `Medley.Active()=true` | `stopMedley()` called |
+| 8.6.22 | `combatStart=false`, `twistOn=false`, medley not active | `twistOn=false`, `Medley.Active()=false` | No command issued |
+
+#### 8.6.7 — GoM one-shot queue (OOC path)
+
+| ID | Scenario | Input state | Expected outcome |
+|----|----------|-------------|-----------------|
+| 8.6.23 | `gomActive=true` in OOC path | `combatStart=false`, `gomActive=true` | `/medley queue <gomMedley>` issued; `gomActive` set to `false` |
+| 8.6.24 | `gomActive=true` in combat path | `combatStart=true`, `gomActive=true` | GoM NOT queued (OOC-only; queued via invis/hold path if twistHold) |
+| 8.6.25 | `gomActive=false` in OOC path | `combatStart=false`, `gomActive=false` | No queue command issued |
+
+---
+
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
@@ -2525,4 +2589,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3).*
+*Last updated: 2026-05-16. Reflects Milestones 1–7 complete + M8 Steps 8.1–8.4. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3).*

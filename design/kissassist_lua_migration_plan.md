@@ -1165,6 +1165,8 @@ Port `DoBardStuff` (kissassist.mac:6229–6331, ~103 lines) translated to MQ2Med
 
 **Done when:** Bard switches from OOR medley to melee medley when entering combat; switches back OOC; GoM queues one-shot song without disrupting active medley.
 
+> ✅ **Implemented (Step 8.6):** `Bard.doBardStuff()` fully ported in `modules/bard.lua`. `mq.TLO.Medley` aliased as `local Medley` with a single `---@diagnostic disable-next-line` suppression (plugin TLO not in type definitions). Local `stopMedley()` helper: calls `/medley stop` if `Medley.Active()`, waits up to 500ms for `BardSongPlaying` to clear — replaces `Sub CastBardCheck` and inline `/stopsong` patterns. Logic paths: (1) class guard; (2) both modes off → `stopMedley()` + return; (3) medley not running → reset `twisting`/`dpsTwisting`, `/stopsong` if casting window closed; (4) invis/hold → queue GoM if `gomActive`, return; (5) combat path (`combatStart` or `meleeTwistOn==2 && aggroID>0`) — if `meleeTwistOn!=0 && !dpsTwisting`: stop if wrong set, `/medley <meleeMedley>`, set `dpsTwisting=true`, `twisting=false`; (6) OOC path — if `twistOn && !twisting`: stop if wrong set, `/medley <oorMedley>`, set `dpsTwisting=false`, `twisting=true`; if `!twistOn`: `stopMedley()`; GoM queue in OOC path. MQ2Twist Continuous/non-Continuous distinction collapses into single `/medley <set>` call. `_cast` upvalue retained for Step 8.7 `pauseMedley`.
+
 ---
 
 #### Step 8.7 — Wire bard + complete deferred M3/M4/M7 bard stubs
