@@ -13,4 +13,8 @@ function Loot.init(state, utils)
     end
 end
 
+function Loot.sell()    mq.cmd('/autoloot sell')    end
+function Loot.deposit() mq.cmd('/autoloot deposit') end
+function Loot.barter()  mq.cmd('/autoloot barter')  end
+
 return Loot

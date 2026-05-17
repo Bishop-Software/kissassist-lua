@@ -1302,6 +1302,10 @@ function Loot.barter()  mq.cmd('/autoloot barter')  end
 
 These are the entire implementation — MQ2AutoLoot handles targeting validation and iteration internally.
 
+**Implemented:**
+
+- `Loot.sell()`, `Loot.deposit()`, `Loot.barter()` added to `modules/loot.lua` — each is a single `mq.cmd('/autoloot <action>')` call.
+
 ---
 
 #### Step 9.4 — In-game command binds
