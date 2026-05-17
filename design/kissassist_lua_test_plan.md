@@ -1,4 +1,4 @@
-# KissAssist Lua — In-Game Test Plan (Milestones 1–5)
+# KissAssist Lua — In-Game Test Plan (Milestones 1–10)
 
 All tests are manual and in-game. No automated test framework exists.
 Tests are ordered from cheapest (startup/config) to most interactive (casting).
@@ -17,7 +17,7 @@ Tests are ordered from cheapest (startup/config) to most interactive (casting).
 
 ---
 
-## Section 1 — Startup & Config (Milestone 1)
+## Section 1 — Startup & Config (Milestone 1) ✅ COMPLETE
 
 ### 1.1 Basic startup
 
@@ -115,7 +115,7 @@ local s = require('modules.state'); return tostring(s.debug.general)
 
 ---
 
-## Section 2 — Events (Milestone 2)
+## Section 2 — Events (Milestone 2) ✅ COMPLETE
 
 **Setup for all 2.x tests:** Script running with debug cast enabled: `/debug cast on`
 
@@ -229,7 +229,7 @@ These fire from game text. Trigger each by causing the condition in-game or by l
 
 ---
 
-## Section 3 — Casting Engine (Milestone 3)
+## Section 3 — Casting Engine (Milestone 3) ✅ COMPLETE
 
 **Setup:** Script running. Character is a caster class with spells in gem slots.
 Enable cast debug throughout: `/debug cast on`
@@ -393,7 +393,7 @@ For each type, verify the correct sub-function is invoked and returns expected s
 
 ---
 
-## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.8)
+## Section 4 — Combat Core (Milestone 4 — Steps 4.1–4.8) ✅ COMPLETE
 
 ---
 
@@ -856,7 +856,7 @@ end)
 
 ---
 
-## Section 5 — Healing & Recovery (Milestone 5)
+## Section 5 — Healing & Recovery (Milestone 5) ✅ COMPLETE
 
 ---
 
@@ -1246,7 +1246,7 @@ end)
 
 ---
 
-## Section 6 — Buff System (Milestone 6)
+## Section 6 — Buff System (Milestone 6) ✅ COMPLETE
 
 ---
 
@@ -1920,7 +1920,7 @@ end)
 
 ---
 
-## Section 7 — Movement & Pull (Milestone 7)
+## Section 7 — Movement & Pull (Milestone 7) ✅ COMPLETE
 
 ### Section 7.1 — Movement.init + INI wiring (Step 7.1)
 
@@ -2154,22 +2154,7 @@ end)
 
 ---
 
-## Section 12 — Integration Smoke Test
-
-Run after all individual tests pass to verify modules interact correctly.
-
-| # | Scenario | Steps | Expected |
-|---|----------|-------|----------|
-| 12.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
-| 12.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted → observe | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
-| 12.3 | Bind + cast interaction | `/burn on doburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
-| 12.4 | Camp set + zone | `/makecamphere` → zone away → zone back to same zone | Camp location restored; `returnToCamp = true` |
-| 12.5 | Debug round-trip | `/debug all on` → cast a failing spell → observe debug output | All cast debug lines printed in chat |
-| 12.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further event callbacks fire |
-
----
-
-## Section 8 — Pet & Bard (Milestone 8)
+## Section 8 — Pet & Bard (Milestone 8) ✅ COMPLETE
 
 ### Section 8.1 — Pet.init + INI wiring (Step 8.1)
 
@@ -2568,7 +2553,7 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Section 9 — Looting (Milestone 9)
+## Section 9 — Looting (Milestone 9) ✅ COMPLETE
 
 ### Section 9.1 — Plugin validation + `State.loot` INI wiring (Step 9.1)
 
@@ -2685,7 +2670,91 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
-## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
+## Section 10 — Full Integration & Parallel Validation (Milestone 10)
+
+> Tests to be run as steps 10.1–10.6 are implemented.
+
+### 10.1 — Stub binds
+
+| # | Bind | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.1.1 | `/kisscheck` | Run `/kisscheck` | Prints role, MA, assist-at %, key system on/off state; no error |
+| 10.1.2 | `/writespells` | Run `/writespells` | Current spell set written to pickle; no Lua error |
+| 10.1.3 | `/iniwrite` | Run `/iniwrite` | Config pickle flushed to disk; no Lua error |
+| 10.1.4 | `/changevarint AssistAt 90` | Run command | `State.session.assistAt` updated to 90; confirmed via `/kisscheck` |
+| 10.1.5 | `/togglevariable HealsOn` | Run command | `State.heal.healsOn` toggled; confirmation printed |
+| 10.1.6 | `/kisscast <SpellName>` | Run with a memmed spell | Spell cast immediately; bypasses rotation |
+| 10.1.7 | `/switchma <Name>` | Run with a valid player name | `State.session.mainAssist` updated; MA reassigned |
+| 10.1.8 | `/campfire` | Stand at target spot; run command | Campfire placed; `state.misc.campfireOn = true` |
+| 10.1.9 | `/parse Me.Level` | Run command | Current level printed to chat |
+| 10.1.10 | `/mycmds` | Set `MyCmd` in INI; run command | Custom command string executed |
+
+### 10.2 — comms.lua
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.2.1 | Module loads | Start script | `Comms.init()` runs; backend detected (actors or DanNet); no error |
+| 10.2.2 | `/stayhere` broadcast | Run `/stayhere` on one Lua char | Other Lua chars set `returnToCamp = true`; chase cleared |
+| 10.2.3 | `/chaseme` broadcast | Run `/chaseme` on MA | Other Lua chars begin chasing MA |
+| 10.2.4 | Camp broadcast | Run `/makecamphere` | Other Lua chars receive and store camp coordinates |
+| 10.2.5 | Buff broadcast | Wait one buff cycle | `State.buffs.remote[charName]` populated on all Lua chars |
+| 10.2.6 | DanNet shim | One char on `.mac`, one on Lua | `.mac` DanNet messages received and acted on by Lua char |
+| 10.2.7 | Clean shutdown | `/lua stop` | Comms mailbox unregistered; no orphaned actors or handlers |
+
+### 10.3 — Main loop order
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.3.1 | Heal fires before buff cycle | Drop group member HP below heal threshold mid-buff-cycle | Heal fires on current tick; buff cycle resumes after |
+| 10.3.2 | Pull phase is last | Observe tick order with `/debug all on` | Pull phase runs after all other phases; order matches `.mac` source |
+
+### 10.4 — Single-character integration
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.4.1 | Full startup | `/lua run kissassist-lua assist MA 90` | Script starts; all modules load; no errors in console |
+| 10.4.2 | Combat loop | Engage an NPC via MA | Assist, melee, and spell rotation all fire |
+| 10.4.3 | Camp return | `/makecamphere`; pull mob; kill it | Character returns to camp radius after combat ends |
+| 10.4.4 | Burn window | `/kaburn`; engage NPC | Burn spells fire during burn window only |
+| 10.4.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
+
+### 10.5 — Multi-character parallel validation
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.5.1 | MA on `.mac`, assist on Lua | `.mac` MA engages target | Lua assist char attacks MA's target |
+| 10.5.2 | Healer on Lua | Group member takes damage | Lua healer heals `.mac` group members |
+| 10.5.3 | Puller on `.mac` | Puller initiates pull | Lua assist chars engage pulled mob correctly |
+| 10.5.4 | Cross-char buff sharing | Buff expires on `.mac` char | Lua buff char rebuffs `.mac` char |
+
+### 10.6 — INI backward compatibility
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 10.6.1 | First-run migration | Start with existing `.ini`, no pickle present | Pickle created; `.ini.bak` written; no data loss |
+| 10.6.2 | All 18 sections round-trip | Compare pickle values to original `.ini` | No keys dropped; no defaults incorrectly applied |
+| 10.6.3 | Second run loads pickle | Run again after migration | Loads `.lua` directly; `.ini.bak` untouched |
+| 10.6.4 | `/iniwrite` safety | Run `/iniwrite` after runtime config changes | Pickle updated; no data loss |
+| 10.6.5 | Role coverage | Test with melee, pet, puller, healer INIs | All role configs migrate and load correctly |
+
+---
+
+## Section 12 — Integration Smoke Test
+
+Run after all individual section tests pass to verify modules interact correctly end-to-end.
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.1 | Full startup to casting | Start → `/memmyspells` → `/kisscast <MemedSpell>` | Spell cast; returns `CAST_SUCCESS` |
+| 12.2 | Cast event round-trip | Start with `/debug cast on` → cast a spell that gets interrupted | `castReturn` set to `CAST_INTERRUPTED`; castSpell returns that value |
+| 12.3 | Bind + cast interaction | `/kaburn` (NPC targeted) → observe `burnID` set | `state.combat.burnCalled = true`; `state.combat.burnID = <mobID>` |
+| 12.4 | Camp set + zone | `/makecamphere` → zone away → zone back | Camp location restored; `returnToCamp = true` |
+| 12.5 | Debug round-trip | `/debug all on` → cast a failing spell | All cast debug lines printed in chat |
+| 12.6 | Clean shutdown | Any active test → `/lua stop kissassist-lua` | Prints stopped message; all binds and events unregistered; no further callbacks fire |
+
+---
+
+## Known Deferred / Out of Scope for M1–M9
 
 The following are **stubs** — they respond but don't have full logic yet. Do not test for full behavior:
 
@@ -2755,10 +2824,10 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 | Condition evaluation (condNumber) | M10 |
 | Stop-moving before cast | M7 |
 | Bard: twist pause/resume in all cast functions | M8 |
-| Cross-char comms (EQBC/DanNet stubs) | M9 |
+| Cross-char comms — `comms.lua` (actors + DanNet shim) | M10 |
 | KT task events (KTTarget, KTHail, etc.) | M7 |
 | GoM cast loop | M8 |
 
 ---
 
-*Last updated: 2026-05-17. Reflects Milestones 1–8 complete + M9 Step 9.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3). Section 9.1 added (14 test cases): MQ2AutoLoot plugin validation (3), state.loot defaults (1), INI wiring for LootOn/CorpseRadius/SpamLootInfo (10). Section 9.2 added (6 test cases): module load (2), plugin runtime check in Loot.init (4). Section 9.3 added (4 test cases): Loot.sell/deposit/barter dispatch + no-internal-guard note. Section 9.4 added (9 test cases): toggle binds /kalooton /kalootoff (4), action binds /kasell /kadeposit /kabarter (3), registration/unregister (2). Section 9.5 added (8 test cases): bind guards when loot.on=0 (4), Loot.tick stub (1), main loop wiring (3).*
+*Last updated: 2026-05-17. Milestones 1–9 complete (all PRs merged to main). Section 10 added for Milestone 10 — tests to be filled as steps 10.1–10.6 are implemented. Section 12 (Integration Smoke Test) moved to follow Section 10.*
