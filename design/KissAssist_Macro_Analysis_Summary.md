@@ -1,6 +1,7 @@
 # KissAssist Macro Analysis Summary
 
 ## Executive Summary
+
 Your macro is a large, mature, all-in-one automation framework for EverQuest boxing, not just a simple assist script. The main file kissassist.mac is about 934 KB and includes:
 
 - 290 subroutines
@@ -11,6 +12,7 @@ Your macro is a large, mature, all-in-one automation framework for EverQuest box
 It is effectively a state machine that loops continuously, reacts to game text events, and orchestrates combat, movement, pull logic, healing, buffs, mez, pet management, looting, communication, and plugin coordination.
 
 ## What This Build Is
+
 Based on the header in kissassist.mac, this is:
 
 - KissAssist v12.002
@@ -19,6 +21,7 @@ Based on the header in kissassist.mac, this is:
 - Tightly integrated with MacroQuest plugins and RedGuides ecosystem
 
 ## Core Control Flow
+
 The macro boot sequence starts in Main and does this in order:
 
 - Unloads MQ2Bucles if found to avoid while-loop conflicts
@@ -40,52 +43,64 @@ Main-loop cadence:
 - Sleep briefly and repeat
 
 ## Major Systems Mapped
+
 ### Combat and targeting
+
 - CheckForCombat, Combat, GetCombatTarget
 - MA and raid targeting and switch logic in CombatTargetCheck, CombatTargetCheckRaid, Bind_Switch, Bind_SwitchMA
 
 ### Casting engine
+
 - Readiness and dispatch: CastReady, CastWhat
 - Per-channel casts: CastAA, CastItem, CastDisc, CastCommand, CastSpell
 - Interrupt and remem support: CastInteruptHeals, CastInteruptDPS, CastReMem
 
 ### Movement and navigation
+
 - Return, chase, and stuck handling in DoWeMove, DoWeChase, Stuck
 - Supports LOS movement, MQ2Nav, and MQ2AdvPath fallback and selection
 
 ### Pulling stack
+
 - Discovery and validation: FindMobToPull, PullValidate, PullCheck
 - Pull methods: PullWithMelee, PullWithRanged, PullWithCast, PullWithPet, PullUsingNav, PullUsingAdvPath
 - Pull ranking and arc controls: Bind_SetPullRanking, UpdatePullRanking, Bind_SetPullArc
 
 ### Heals, cures, and rez
+
 - Health and triage in CheckHealth, SingleHeal, DoGroupHealStuff
 - Cures in CheckCures
 - Rez logic in RezCheck and RezWithCheck
 
 ### Buff system
+
 - Core buffing in CheckBuffs and CheckIniBuffs
 - Cross-character state writes in WriteBuffs, plus WriteBuffsMerc and WriteBuffsPet
 - Supports buff requests and conditional or targeted buff flags
 
 ### Pet system
+
 - Main pet orchestration in DoPetStuff and CheckPetBuffs
 - Pet toys pipeline in CastPetToys and PetToys
 - Includes pet mez-break logic in BreakMez
 
 ### Mez and control
+
 - DoMezStuff, MezMobs, MezMobsAE
 - Mez immunity maintenance in AddMezImmune and Bind_AddMezImmune
 
 ### Looting
+
 - Main macro includes Ninjadvloot.inc at load time
 - Loot entrypoint in LootStuff
 - Advanced Loot module has its own full logic set, initialized by SetupAdvLootVars
 
 ## Plugin and Integration Dependencies
+
 Documented by the file itself and enforced by InitPlugins.
 
 ### Required behavior-critical plugins
+
 - MQ2Exchange
 - MQ2MoveUtils
 - MQ2Posse
@@ -95,12 +110,15 @@ Documented by the file itself and enforced by InitPlugins.
 - Ninjadvloot include file
 
 ### Optional or conditional plugins
+
 - MQ2Melee, MQ2Cast, MQ2DanNet, MQ2EQBC, MQ2Nav, MQ2AdvPath, MQ2DPSAdv, MQ2Map, MQ2Notepad, MQ2SpawnMaster, MQ2Log
 
 Important behavior note:
+
 - The macro can unload and reload some plugins during runtime and startup depending on settings (for example MQ2Melee and MQ2Cast), which is powerful but can surprise users running multiple scripts.
 
 ## How It Aligns With the Wiki
+
 The macro matches the wiki’s major architecture and sections:
 
 - General
@@ -128,6 +146,7 @@ Notable implementation-specific defaults in this build:
 - Header wiki URL points to an older path, while modern docs use redguides.com/docs/projects/kissassist
 
 ## Operational Caveats and Risk Points
+
 - Very high complexity and global-state density means small setting changes can create non-obvious side effects
 - Chain pull requires multiple autohater x-target slots; macro exits if not configured
 - PullPath key is marked placeholder or not fully implemented in settings text
@@ -136,9 +155,11 @@ Notable implementation-specific defaults in this build:
 - The macro is strongly event-text-driven; chat filters, localization, or format changes can affect event triggers
 
 ## Bottom Line
+
 This is a production-grade, feature-rich KissAssist branch with broad role support and substantial resilience tooling. It is closest to a configurable automation platform rather than a single-purpose combat macro. The architecture is robust but monolithic, so maintainability and troubleshooting depend heavily on disciplined INI management and plugin consistency.
 
 ## Optional Next Steps
+
 - Build a practical safe baseline INI profile from this exact build (by role and class)
 - Produce a subsystem call graph (combat, pull, heal, buff) with hot paths for debugging
 - Audit your current INI against this code’s defaults and flag likely bad interactions

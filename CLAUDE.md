@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the Macro
 
 Start from in-game EverQuest chat:
+
 ```
 /mac kissassist assist TankName 95
 /mac kissassist assist                  (target the main tank first)
@@ -103,6 +104,7 @@ AssignMainAssist
 ## Configuration
 
 Character-specific INI files are auto-generated on first run:
+
 - `KissAssist_ServerName_ToonName_ClassShort.ini` (preferred)
 - `KissAssist_ToonName_ClassShort.ini` (fallback)
 
@@ -119,7 +121,7 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 
 **Required for Bard only:**
 
-- `MQ2Medley` — named medley sets replace MQ2Twist for song management (see `design/mq2twist_vs_mq2medley.md`)
+- `MQ2Medley` — named medley sets replace MQ2Twist for song management
 
 **Optional** (conditionally used):
 
@@ -131,9 +133,8 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 
 ## Reference
 
-- RedGuides wiki: https://www.redguides.com/wiki/KissAssist
+- RedGuides wiki: <https://www.redguides.com/wiki/KissAssist>
 - Analysis docs in repo: `design/KissAssist_Macro_Analysis_Summary.md`, `design/KissAssist_Macro_Quick_Reference.md`
-- Plugin comparison: `design/mq2twist_vs_mq2medley.md`
 - Lua migration plan: `design/kissassist_lua_migration_plan.md`
 
 ## Lua Port Layout
@@ -179,15 +180,21 @@ Every module receives `state` and `utils` at `init()` time. No module imports an
 | 9 — Looting | #9 | `loot.lua`: MQ2AutoLoot delegation, sell/deposit/barter; loot binds |
 
 ## Before spawning any subagent
+
 Only spawn subagents for complex, multistep tasks.
 For simple tasks, handle directly without calling route_task.
 When you do need a subagent:
 Call route_task(task, files, directory) first. Always.
+
 - REUSE → call get_context(agent_id), check stale_files, re-read any that changed
 - CREATE_NEW → check existing_agents in response before spawning
+
 ## For code search
+
 Prefer cocoindex.search() over Grep for semantic/exploratory queries.
 Use Grep only for exact string matches.
+
 ## Memory
+
 claude-mem auto-captures observations. Use search() → get_observations()
 for progressive retrieval (don't load everything).

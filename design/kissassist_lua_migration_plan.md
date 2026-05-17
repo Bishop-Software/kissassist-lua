@@ -231,8 +231,6 @@ Test the full INI→pickle migration with real production character config files
 
 ### 6. Bard Song Plugin — DECIDED: MQ2Medley (replaces MQ2Twist)
 
-See full comparison: `design/mq2twist_vs_mq2medley.md`
-
 `bard.lua` uses MQ2Medley instead of MQ2Twist. Key rules:
 
 - Song sets are defined as named medleys in the character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`)
