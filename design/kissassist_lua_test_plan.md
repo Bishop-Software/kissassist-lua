@@ -2601,6 +2601,24 @@ Run after all individual tests pass to verify modules interact correctly.
 | 9.1.13 | `CorpseRadius` key absent from INI | `state.loot.radius` defaults to `100` |
 | 9.1.14 | `SpamLootInfo` key absent from INI | `state.loot.spamInfo` defaults to `1` |
 
+### Section 9.2 — `loot.lua` scaffold + `Loot.init` (Step 9.2)
+
+#### 9.2.1 — Module load
+
+| # | Setup | Expected |
+| --- | --- | --- |
+| 9.2.1 | `require('modules.loot')` in init.lua | No load error; `Loot` table returned |
+| 9.2.2 | `Loot.init(State, Utils)` called after `Pull.init` | No crash; upvalues `_state`/`_utils` set |
+
+#### 9.2.2 — Plugin runtime check
+
+| # | Setup | Expected |
+| --- | --- | --- |
+| 9.2.3 | MQ2AutoLoot loaded when `Loot.init` runs | No warning printed; `state.loot.on` unchanged |
+| 9.2.4 | MQ2AutoLoot **not** loaded when `Loot.init` runs | Prints `KissAssist: MQ2AutoLoot not loaded — looting disabled.` (red); `state.loot.on` set to `0` |
+| 9.2.5 | `state.loot.on` was `0` from INI + MQ2AutoLoot missing | `state.loot.on` stays `0`; warning still prints |
+| 9.2.6 | `state.loot.on` was `1` from INI + MQ2AutoLoot missing | `state.loot.on` overridden to `0` by `Loot.init` |
+
 ---
 
 ## Known Deferred / Out of Scope for M1–M6 (Steps 4.1–4.8, 5.1–5.6, 6.1)
@@ -2679,4 +2697,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-17. Reflects Milestones 1–8 complete + M9 Step 9.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3). Section 9.1 added (14 test cases): MQ2AutoLoot plugin validation (3), state.loot defaults (1), INI wiring for LootOn/CorpseRadius/SpamLootInfo (10).*
+*Last updated: 2026-05-17. Reflects Milestones 1–8 complete + M9 Step 9.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3). Section 9.1 added (14 test cases): MQ2AutoLoot plugin validation (3), state.loot defaults (1), INI wiring for LootOn/CorpseRadius/SpamLootInfo (10). Section 9.2 added (6 test cases): module load (2), plugin runtime check in Loot.init (4).*

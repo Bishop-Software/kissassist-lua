@@ -12,6 +12,7 @@ local Pet      = require('modules.pet')
 local Bard     = require('modules.bard')
 local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
+local Loot     = require('modules.loot')
 
 local VERSION = '1.0.0'
 
@@ -76,6 +77,7 @@ Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
+Loot.init(State, Utils)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 

@@ -1282,6 +1282,12 @@ end
 
 Wire `require('modules.loot')` and `Loot.init(State, Utils)` into `init.lua` (after `Pull.init`).
 
+**Implemented:**
+
+- `modules/loot.lua` created with standard `init` + upvalue pattern (`_state`, `_utils`).
+- `Loot.init` checks `mq.TLO.Plugin('MQ2AutoLoot').IsLoaded()`; on failure prints red warning and sets `state.loot.on = 0`.
+- `require('modules.loot')` and `Loot.init(State, Utils)` wired into `init.lua` after `Pull.init`.
+
 ---
 
 #### Step 9.3 — Vendor/banker action helpers
