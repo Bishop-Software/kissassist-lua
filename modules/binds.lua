@@ -9,7 +9,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
-local state, utils, _buffs, _loot, _cast, _combat, _config
+local state, utils, _buffs, _loot, _cast, _combat, _config, _comms
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -219,17 +219,29 @@ local function onMakeCampHere()
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
-    -- Cross-char broadcast in M9 (comms.lua)
+    if _comms then
+        _comms.broadcast('CAMP', {
+            x    = state.movement.campX,
+            y    = state.movement.campY,
+            z    = state.movement.campZ,
+            zone = state.movement.campZone,
+        })
+    end
 end
 
 local function onStayHere()
-    printf('\ay>> StayHere — cross-char broadcast in M9 (comms.lua)')
-    -- /dgge /waithere
+    state.movement.returnToCamp = true
+    state.session.chaseAssist   = false
+    printf('\ay>> StayHere — camp mode on.')
+    if _comms then _comms.broadcast('STAY', {}) end
 end
 
 local function onChaseMe()
-    printf('\ay>> ChaseMe %s — cross-char broadcast in M9 (comms.lua)', mq.TLO.Me.CleanName())
-    -- /dgge /chase on Me.CleanName
+    local myName = mq.TLO.Me.CleanName() or ''
+    state.movement.whoToChase  = myName
+    state.session.chaseAssist  = true
+    printf('\ay>> ChaseMe %s', myName)
+    if _comms then _comms.broadcast('CHASE', { who = myName }) end
 end
 
 -- Mirrors Bind_TrackMeDown (kissassist.mac). Sets chase target; no arg toggles off.
@@ -616,7 +628,7 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, u, b, l, cast, combat, config)
+function Binds.register(s, u, b, l, cast, combat, config, comms)
     state   = s
     utils   = u
     _buffs  = b
@@ -624,6 +636,7 @@ function Binds.register(s, u, b, l, cast, combat, config)
     _cast   = cast
     _combat = combat
     _config = config
+    _comms  = comms
 
     -- Debug / utility
     bind('/debug',          onDebug)

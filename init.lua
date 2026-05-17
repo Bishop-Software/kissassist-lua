@@ -13,6 +13,7 @@ local Bard     = require('modules.bard')
 local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
 local Loot     = require('modules.loot')
+local Comms    = require('modules.comms')
 
 local VERSION = '1.0.0'
 
@@ -67,17 +68,18 @@ Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement)
-Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard)
-Buffs.init(State, Utils, Cast, Heal)
+Comms.init(State, Utils)
+Buffs.init(State, Utils, Cast, Heal, Comms)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
+Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -119,6 +121,7 @@ while not State.terminate do
             State.pull.mob = 0
         end
     end
+    Comms.tick()
     mq.delay(50)
 end
 
