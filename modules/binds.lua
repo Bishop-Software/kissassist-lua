@@ -517,9 +517,18 @@ local function onLootOff()
     printf('\ayLooting disabled.')
 end
 
-local function onSell()    _loot.sell()    end
-local function onDeposit() _loot.deposit() end
-local function onBarter()  _loot.barter()  end
+local function onSell()
+    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
+    _loot.sell()
+end
+local function onDeposit()
+    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
+    _loot.deposit()
+end
+local function onBarter()
+    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
+    _loot.barter()
+end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 

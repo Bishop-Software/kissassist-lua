@@ -13,6 +13,8 @@ function Loot.init(state, utils)
     end
 end
 
+function Loot.tick() end  -- no-op; placeholder if plugin needs a periodic nudge
+
 function Loot.sell()    mq.cmd('/autoloot sell')    end
 function Loot.deposit() mq.cmd('/autoloot deposit') end
 function Loot.barter()  mq.cmd('/autoloot barter')  end

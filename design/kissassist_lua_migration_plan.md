@@ -1349,6 +1349,12 @@ if State.loot.on and not State.combat.combatStart then
 end
 ```
 
+**Implemented:**
+
+- `onSell`/`onDeposit`/`onBarter` in `binds.lua` now guard on `state.loot.on == 0`; print a yellow warning and return early when looting is disabled.
+- `Loot.tick()` no-op stub added to `loot.lua` as a future expansion point.
+- Main loop in `init.lua` calls `Loot.tick()` when `State.loot.on == 1` and not in combat.
+
 ---
 
 **Done when:**

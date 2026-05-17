@@ -2647,6 +2647,33 @@ Run after all individual tests pass to verify modules interact correctly.
 
 ---
 
+### Section 9.5 — Main loop guard + `Loot.tick` stub (Step 9.5)
+
+#### 9.5.1 — Bind guards when looting disabled
+
+| # | Setup | Command | Expected |
+| --- | --- | --- | --- |
+| 9.5.1 | `state.loot.on = 0` | `/kasell` | Prints `Looting is disabled` (yellow); `/autoloot sell` NOT issued |
+| 9.5.2 | `state.loot.on = 0` | `/kadeposit` | Prints `Looting is disabled` (yellow); `/autoloot deposit` NOT issued |
+| 9.5.3 | `state.loot.on = 0` | `/kabarter` | Prints `Looting is disabled` (yellow); `/autoloot barter` NOT issued |
+| 9.5.4 | `state.loot.on = 1` | `/kasell` | No warning; `/autoloot sell` issued |
+
+#### 9.5.2 — `Loot.tick` stub
+
+| # | Setup | Expected |
+| --- | --- | --- |
+| 9.5.5 | Call `Loot.tick()` directly | No crash, no side effects |
+
+#### 9.5.3 — Main loop wiring
+
+| # | Setup | Expected |
+| --- | --- | --- |
+| 9.5.6 | `state.loot.on = 1`, not in combat | `Loot.tick()` called each main loop iteration |
+| 9.5.7 | `state.loot.on = 0` | `Loot.tick()` NOT called |
+| 9.5.8 | `state.loot.on = 1`, `state.combat.combatStart = true` | `Loot.tick()` NOT called |
+
+---
+
 ### Section 9.3 — Vendor/banker action helpers (Step 9.3)
 
 | # | Action | Expected |
@@ -2734,4 +2761,4 @@ The following are **stubs** — they respond but don't have full logic yet. Do n
 
 ---
 
-*Last updated: 2026-05-17. Reflects Milestones 1–8 complete + M9 Step 9.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3). Section 9.1 added (14 test cases): MQ2AutoLoot plugin validation (3), state.loot defaults (1), INI wiring for LootOn/CorpseRadius/SpamLootInfo (10). Section 9.2 added (6 test cases): module load (2), plugin runtime check in Loot.init (4). Section 9.3 added (4 test cases): Loot.sell/deposit/barter dispatch + no-internal-guard note. Section 9.4 added (9 test cases): toggle binds /kalooton /kalootoff (4), action binds /kasell /kadeposit /kabarter (3), registration/unregister (2).*
+*Last updated: 2026-05-17. Reflects Milestones 1–8 complete + M9 Step 9.1. Sections 7.1–7.8 added (103 test cases): 7.1 Movement.init INI wiring (8), 7.2 doWeMove guards + nav modes (10), 7.3 doWeChase + stuck + zAxisCheck (9), 7.4 checkStick + event completions + loop wiring (11), 7.5 Pull.init INI wiring (8), 7.6 Pull.pullValidate all 13 reject conditions (14), 7.7 Pull.findMobToPull guards + discovery (13), 7.8 Pull.pullCheck + executePull + bind completions (32). Section 8.1 added (14 test cases): Pet.init module load, INI field wiring, Buffs.init non-duplication. Section 8.2 added (32 test cases): entry guards (6), normal summon (4), focus swap (4), suspend path (4), pet stance (4), holdOn/focusOn one-shot (4), taunt management (3), checkPetBuffs + petToys (3). Section 8.3 added (42 test cases): openInvSlot (4), castPetToys (5), pickUpItem (4), giveTo (11), destroyBag (3), Pet.petToys orchestration (15). Section 8.4 added (18 test cases): checkRampPets core logic (6), petRampageOn INI wiring (3), Pull.init extended signature (2), pullCheck rampage-pet guard (4), init.lua main loop wiring (3). Section 8.5 added (22 test cases): module load + non-Bard guard (3), INI field wiring (14), state.bard audit (2), init.lua wiring (3). Section 8.6 added (25 test cases): class guard + both-off path (3), stopMedley helper (2), medley-not-running state reset (3), invis/hold path (3), combat path (6), OOC path (5), GoM one-shot queue (3). Section 8.7 added (21 test cases): pauseMedley/resumeMedley/stopMedley public (4), cast.lua CastAA pause/resume (4), combat.lua fight loop + CombatStart (4), combatReset bard transition (2), pull.lua bard pull-pause (4), init.lua wiring (3). Section 9.1 added (14 test cases): MQ2AutoLoot plugin validation (3), state.loot defaults (1), INI wiring for LootOn/CorpseRadius/SpamLootInfo (10). Section 9.2 added (6 test cases): module load (2), plugin runtime check in Loot.init (4). Section 9.3 added (4 test cases): Loot.sell/deposit/barter dispatch + no-internal-guard note. Section 9.4 added (9 test cases): toggle binds /kalooton /kalootoff (4), action binds /kasell /kadeposit /kabarter (3), registration/unregister (2). Section 9.5 added (8 test cases): bind guards when loot.on=0 (4), Loot.tick stub (1), main loop wiring (3).*

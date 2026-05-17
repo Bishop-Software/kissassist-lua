@@ -111,6 +111,7 @@ while not State.terminate do
         Movement.doWeMove(0, 'mainloop')
     end
     if State.session.chaseAssist then Movement.doWeChase() end
+    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
     if PULLER_ROLES[State.session.role] then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
