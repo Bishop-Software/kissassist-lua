@@ -1249,6 +1249,12 @@ New `state.loot` fields (wire from INI `[General]` section):
 
 Wire in `init.lua` after `Config.load(State)` alongside the other INI blocks — no new module file needed for step 9.1.
 
+**Implemented:**
+
+- `MQ2AutoLoot` added to `REQUIRED_PLUGINS` in `config.lua` — missing plugin now prints a warning at startup alongside MQ2Exchange/MQ2Rez/etc.
+- `state.loot.on`, `state.loot.radius`, `state.loot.spamInfo` added to `state.lua` with defaults `1`, `100`, `1`.
+- All three fields wired from INI `[General]` keys `LootOn`, `CorpseRadius`, `SpamLootInfo` in `init.lua` immediately after `Config.load(State)`.
+
 ---
 
 #### Step 9.2 — `loot.lua` scaffold + `Loot.init`
@@ -1276,6 +1282,12 @@ end
 
 Wire `require('modules.loot')` and `Loot.init(State, Utils)` into `init.lua` (after `Pull.init`).
 
+**Implemented:**
+
+- `modules/loot.lua` created with standard `init` + upvalue pattern (`_state`, `_utils`).
+- `Loot.init` checks `mq.TLO.Plugin('MQ2AutoLoot').IsLoaded()`; on failure prints red warning and sets `state.loot.on = 0`.
+- `require('modules.loot')` and `Loot.init(State, Utils)` wired into `init.lua` after `Pull.init`.
+
 ---
 
 #### Step 9.3 — Vendor/banker action helpers
@@ -1289,6 +1301,10 @@ function Loot.barter()  mq.cmd('/autoloot barter')  end
 ```
 
 These are the entire implementation — MQ2AutoLoot handles targeting validation and iteration internally.
+
+**Implemented:**
+
+- `Loot.sell()`, `Loot.deposit()`, `Loot.barter()` added to `modules/loot.lua` — each is a single `mq.cmd('/autoloot <action>')` call.
 
 ---
 
@@ -1305,6 +1321,14 @@ Add to `binds.lua` (alongside existing `/ka*` binds):
 | `/kabarter` | `Loot.barter()` |
 
 Update `Binds.register` / `Binds.unregister` accordingly. Pass `Loot` as a new argument to `Binds.register`.
+
+**Implemented:**
+
+- `_loot` upvalue added to `binds.lua`; `Binds.register` signature extended to `(s, u, b, l)`.
+- `onLootOn` / `onLootOff` toggle `state.loot.on` and print a status line.
+- `onSell` / `onDeposit` / `onBarter` delegate directly to `_loot.sell/deposit/barter()`.
+- All five binds registered in a new `-- Loot` block at the end of `Binds.register`.
+- `init.lua` updated: `Binds.register(State, Utils, Buffs, Loot)`.
 
 ---
 
@@ -1324,6 +1348,12 @@ if State.loot.on and not State.combat.combatStart then
     Loot.tick()   -- no-op stub; expands if needed
 end
 ```
+
+**Implemented:**
+
+- `onSell`/`onDeposit`/`onBarter` in `binds.lua` now guard on `state.loot.on == 0`; print a yellow warning and return early when looting is disabled.
+- `Loot.tick()` no-op stub added to `loot.lua` as a future expansion point.
+- Main loop in `init.lua` calls `Loot.tick()` when `State.loot.on == 1` and not in combat.
 
 ---
 

@@ -12,6 +12,7 @@ local Pet      = require('modules.pet')
 local Bard     = require('modules.bard')
 local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
+local Loot     = require('modules.loot')
 
 local VERSION = '1.0.0'
 
@@ -39,6 +40,11 @@ State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
 
+-- Wire loot settings from INI into State
+State.loot.on       = tonumber(Config.get('General', 'LootOn',       '1')) or 1
+State.loot.radius   = tonumber(Config.get('General', 'CorpseRadius', '100')) or 100
+State.loot.spamInfo = tonumber(Config.get('General', 'SpamLootInfo', '1')) or 1
+
 -- Wire cast gem settings from INI into State
 State.cast.miscGem      = tonumber(Config.get('SpellS', 'MiscGem',      '0')) or 0
 State.cast.miscGemLW    = tonumber(Config.get('SpellS', 'MiscGemLW',    '0')) or 0
@@ -61,7 +67,7 @@ Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement)
-Binds.register(State, Utils, Buffs)
+Binds.register(State, Utils, Buffs, Loot)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
@@ -71,6 +77,7 @@ Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
+Loot.init(State, Utils)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -104,6 +111,7 @@ while not State.terminate do
         Movement.doWeMove(0, 'mainloop')
     end
     if State.session.chaseAssist then Movement.doWeChase() end
+    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
     if PULLER_ROLES[State.session.role] then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
