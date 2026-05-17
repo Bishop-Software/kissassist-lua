@@ -1201,6 +1201,8 @@ end
 
 **Done when:** Bard cycles medley sets throughout combat; CastAA pauses medley; pull stops medley when `PullTwistOn=0`; `combatReset` transitions back to OOR set.
 
+> ✅ **Implemented (Step 8.7):** `bard.lua` — added `Bard.stopMedley` (public alias of local `stopMedley`), `Bard.pauseMedley()` (`/medley pause` + 300ms wait if active), `Bard.resumeMedley()` (`/medley resume`). `cast.lua` — added `local _bard` + `Cast.setBard(bard)` setter; replaced `-- Bard twist-pause stub → M8` with `if state.session.iAmABard and _bard then _bard.pauseMedley() end`; replaced `-- Bard cleanup stub → M8` with `_bard.resumeMedley()`. `combat.lua` — `_bard` upvalue added; `Combat.init` extended to 6th `bard` param; CombatStart announce stub replaced with `if _bard then _bard.doBardStuff() end`; inner fight-loop stub replaced with same; `combatReset` clears `state.bard.dpsTwisting = false` when bard so next `doBardStuff` tick re-enters OOC path. `pull.lua` — `_bard` upvalue added; `Pull.init` extended to 7th `bard` param; bard pull-pause added before `executePull`: stops medley when `iAmABard && !pullTwistOn`. `init.lua` — `Combat.init` updated to pass `Bard` (6th); `Cast.setBard(Bard)` called after `Bard.init`; `Pull.init` updated to pass `Bard` (7th); main loop wired: `if State.session.iAmABard then Bard.doBardStuff() end` after `Heal.doWeMed()`.
+
 ---
 
 **Deferred (not needed for M8):**

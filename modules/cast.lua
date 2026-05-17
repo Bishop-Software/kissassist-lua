@@ -6,11 +6,16 @@ local mq = require('mq')
 
 local Cast = {}
 
-local state, utils
+local state, utils, _bard
 
 function Cast.init(s, u)
     state = s
     utils = u
+end
+
+-- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
+function Cast.setBard(bard)
+    _bard = bard
 end
 
 -- ─── Primitives ───────────────────────────────────────────────────────────────
@@ -196,7 +201,7 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard twist-pause stub → M8
+    if state.session.iAmABard and _bard then _bard.pauseMedley() end
 
     local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
     local castTime = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
@@ -240,7 +245,7 @@ local function castAA(whatAA, sentFrom)
         end
     end
 
-    -- Bard cleanup stub → M8
+    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastAA result: %s', castResult)
     return castResult
 end

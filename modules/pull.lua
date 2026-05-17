@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Pull = {}
-local _state, _utils, _cast, _movement, _combat, _pet
+local _state, _utils, _cast, _movement, _combat, _pet, _bard
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -58,13 +58,14 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Pull.init(state, utils, cast, movement, combat, pet)
+function Pull.init(state, utils, cast, movement, combat, pet, bard)
     _state    = state
     _utils    = utils
     _cast     = cast
     _movement = movement
     _combat   = combat
     _pet      = pet
+    _bard     = bard
 
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
@@ -1011,6 +1012,11 @@ function Pull.pullCheck()
 
     s.combat.myTargetID   = pullMob
     s.combat.myTargetName = mobName
+
+    -- Bard: stop medley before pull when pullTwistOn=0 (mac:9629-9631)
+    if _bard and s.session.iAmABard and not s.bard.pullTwistOn then
+        _bard.stopMedley()
+    end
 
     -- Wait for rampage pets to poof before executing pull (mac:8964).
     if _pet and s.pet.on and s.pet.petRampageOn and mq.TLO.Me.CombatState() ~= 'COMBAT' then

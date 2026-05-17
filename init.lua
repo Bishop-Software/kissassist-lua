@@ -65,11 +65,12 @@ Binds.register(State, Utils, Buffs)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
-Combat.init(State, Utils, Cast, Heal, Movement)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard)
 Buffs.init(State, Utils, Cast, Heal)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
-Pull.init(State, Utils, Cast, Movement, Combat, Pet)
+Cast.setBard(Bard)
+Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -98,6 +99,7 @@ while not State.terminate do
     Heal.checkHealth('MainLoop')
     Heal.checkCures()
     Heal.doWeMed()
+    if State.session.iAmABard then Bard.doBardStuff() end
     if not State.combat.combatStart and State.movement.returnToCamp then
         Movement.doWeMove(0, 'mainloop')
     end

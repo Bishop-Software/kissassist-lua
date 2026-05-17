@@ -135,4 +135,24 @@ function Bard.doBardStuff()
         tostring(s.bard.dpsTwisting), tostring(s.bard.twisting))
 end
 
+-- ---------------------------------------------------------------------------
+-- Public helpers used by cast.lua and pull.lua (Step 8.7)
+-- ---------------------------------------------------------------------------
+
+-- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
+Bard.stopMedley = stopMedley
+
+-- Pause the active medley before an AA cast; uses /medley pause.
+function Bard.pauseMedley()
+    if Medley.Active() then
+        mq.cmd('/medley pause')
+        mq.delay(300, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
+    end
+end
+
+-- Resume a paused medley after an AA cast.
+function Bard.resumeMedley()
+    mq.cmd('/medley resume')
+end
+
 return Bard
