@@ -85,12 +85,23 @@ printf('\agKissAssist ready. \awEntering main loop.')
 
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
 
--- Main loop — mq.delay() processes events internally in MQ2Lua
+-- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block.
+-- .mac order: combat → heal/cure → move → pet → write-buffs → check-buffs → bard → med → pull → loot
 while not State.terminate do
     mq.doevents()
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    Heal.writeDebuffs()
+    Heal.checkHealth('MainLoop')
+    Heal.checkCures()
+    if not State.combat.combatStart and State.movement.returnToCamp then
+        Movement.doWeMove(0, 'mainloop')
+    end
+    if State.session.chaseAssist then Movement.doWeChase() end
+    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
+    if State.pet.on then Buffs.checkPetBuffs() end
+    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
     if not State.combat.combatStart and not State.session.danNetOn then
         Buffs.writeBuffs()
         Buffs.writeBuffsPet()
@@ -101,19 +112,8 @@ while not State.terminate do
         State.buffs.forceBuffs = false
     end
     if State.buffs.kaBegActive then Buffs.checkBegforBuffs() end
-    if State.pet.on then Buffs.checkPetBuffs() end
-    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
-    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
-    Heal.writeDebuffs()
-    Heal.checkHealth('MainLoop')
-    Heal.checkCures()
-    Heal.doWeMed()
     if State.session.iAmABard then Bard.doBardStuff() end
-    if not State.combat.combatStart and State.movement.returnToCamp then
-        Movement.doWeMove(0, 'mainloop')
-    end
-    if State.session.chaseAssist then Movement.doWeChase() end
-    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
+    Heal.doWeMed()
     if PULLER_ROLES[State.session.role] then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
@@ -121,6 +121,7 @@ while not State.terminate do
             State.pull.mob = 0
         end
     end
+    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
     Comms.tick()
     mq.delay(50)
 end
