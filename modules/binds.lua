@@ -449,14 +449,6 @@ local function onAddFriend()
     printf('>> Added %s to Posse list.', name)
 end
 
-local function onKissEdit()
-    if not mq.TLO.Plugin('MQ2Notepad')() then
-        printf('KissEdit requires MQ2Notepad to be loaded.')
-        return
-    end
-    mq.cmd('/notepad ' .. state.session.iniFileName)
-end
-
 local function onKissCheck()
     printf('----------- KissAssist Config Check -----------')
     printf('Role: \at%-12s\aw  MA: \at%-20s\aw  AssistAt: \at%d%%',
@@ -610,11 +602,13 @@ end
 
 local function onLootOn()
     state.loot.on = 1
+    mq.cmd('/autoloot turn on')
     printf('\agLooting enabled.')
 end
 
 local function onLootOff()
     state.loot.on = 0
+    mq.cmd('/autoloot turn off')
     printf('\ayLooting disabled.')
 end
 
@@ -652,7 +646,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/writespells',    onWriteSpells)
     bind('/memmyspells',    onMemMySpells)
     bind('/mycmd',          onMyCmds)
-    bind('/kissedit',       onKissEdit)
+
     bind('/kisscheck',      onKissCheck)
     bind('/kasettings',     onKaSettings)
     bind('/togglevariable', onToggleVariable)

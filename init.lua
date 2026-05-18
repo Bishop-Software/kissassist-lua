@@ -15,6 +15,7 @@ local Pull     = require('modules.pull')
 local Loot     = require('modules.loot')
 local Comms    = require('modules.comms')
 local Cond     = require('modules.cond')
+local Mez      = require('modules.mez')
 
 local VERSION = '1.0.0'
 
@@ -100,6 +101,7 @@ Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
+Mez.init(State, Utils, Cast)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
