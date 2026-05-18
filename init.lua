@@ -14,6 +14,7 @@ local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
 local Loot     = require('modules.loot')
 local Comms    = require('modules.comms')
+local Cond     = require('modules.cond')
 
 local VERSION = '1.0.0'
 
@@ -56,6 +57,10 @@ State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
 
+-- Load condition expressions from [KConditions] INI section
+Cond.init(State, Utils)
+Cond.load()
+
 -- Wire loot settings from INI into State
 State.loot.on       = tonumber(Config.get('General', 'LootOn',       '1')) or 1
 State.loot.radius   = tonumber(Config.get('General', 'CorpseRadius', '100')) or 100
@@ -84,11 +89,12 @@ Config.checkPlugins()
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement)
 Cast.init(State, Utils)
-Heal.init(State, Utils, Cast)
+Cast.setCond(Cond)
+Heal.init(State, Utils, Cast, Cond)
 Movement.init(State, Utils)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond)
 Comms.init(State, Utils)
-Buffs.init(State, Utils, Cast, Heal, Comms)
+Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)

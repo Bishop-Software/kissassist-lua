@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Buffs = {}
-local _state, _utils, _cast, _heal, _comms
+local _state, _utils, _cast, _heal, _comms, _cond
 
 -- Dual tag set used in buffToCheck resolution and target-type dispatch.
 local DUAL_TAGS = {
@@ -388,7 +388,9 @@ function Buffs.checkBuffs(forceGroup)
     end
 
     -- Per-entry loop (mac:4207)
-    for i, entry in ipairs(_state.buffs.buffsArray) do
+    for i, slot in ipairs(_state.buffs.buffsArray) do
+        if not slot then goto continue end
+        local entry = slot.name or ''
         if mq.TLO.Me.Invis() then return end
 
         -- Drain events (mac:4208-4211)
@@ -490,8 +492,8 @@ function Buffs.checkBuffs(forceGroup)
         if _state.misc.iAmDead or mq.TLO.Me.Invis() then return end
         if _state.timers.readBuffs > os.clock() then return end
 
-        -- Condition check: ConOn deferred to M10 — condNo always 0 (mac:4311-4315)
-        local condNo = 0  -- luacheck: ignore (used when ConOn implemented)
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto continue end
 
         -- Target-type resolution: prefer book TT, fall back to direct spell TT (mac:4491, 4640)
         local spellTT  = mq.TLO.Spell(spellToCast).TargetType() or ''
@@ -532,7 +534,7 @@ function Buffs.checkBuffs(forceGroup)
                 local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'Mana')
                 if result == 'CAST_COMPONENTS' then
                     mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
-                    _state.buffs.buffsArray[i] = 'NULL'
+                    _state.buffs.buffsArray[i].name = 'NULL'
                 end
             end
             goto continue
@@ -568,7 +570,7 @@ function Buffs.checkBuffs(forceGroup)
         elseif p2 == 'Once' then
             -- |Once: cast once; disable entry on success (mac:4356-4361)
             if buffOnce(spellToCast) then
-                _state.buffs.buffsArray[i] = spellToCast .. '|0'
+                _state.buffs.buffsArray[i].name = spellToCast .. '|0'
                 mq.cmd(string.format('/echo Buffing Once with %s.', spellToCast))
             end
             goto continue
@@ -601,7 +603,7 @@ function Buffs.checkBuffs(forceGroup)
                         end
                     else
                         mq.cmd(string.format('/echo Invalid Option %s for Alias. Turning Option off.', p5))
-                        _state.buffs.buffsArray[i] = 'NULL'
+                        _state.buffs.buffsArray[i].name = 'NULL'
                     end
                 end
             end
@@ -627,7 +629,7 @@ function Buffs.checkBuffs(forceGroup)
                 Buffs.writeBuffs()
             elseif result == 'CAST_COMPONENTS' then
                 mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
-                _state.buffs.buffsArray[i] = 'NULL'
+                _state.buffs.buffsArray[i].name = 'NULL'
                 goto continue
             elseif result == 'CAST_TAKEHOLD' then
                 local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
@@ -648,7 +650,7 @@ function Buffs.checkBuffs(forceGroup)
             local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
             if result == 'CAST_COMPONENTS' then
                 mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
-                _state.buffs.buffsArray[i] = 'NULL'
+                _state.buffs.buffsArray[i].name = 'NULL'
             end
             goto continue
         end
@@ -739,7 +741,7 @@ function Buffs.checkBuffs(forceGroup)
                         timers_i[j] = os.clock() + dur
                     elseif result == 'CAST_COMPONENTS' then
                         mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
-                        _state.buffs.buffsArray[i] = 'NULL'
+                        _state.buffs.buffsArray[i].name = 'NULL'
                         goto jcontinue
                     elseif result == 'CAST_TAKEHOLD' then
                         local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
@@ -767,7 +769,7 @@ function Buffs.checkBuffs(forceGroup)
                         timers_i[0] = os.clock() + dur
                     elseif result == 'CAST_COMPONENTS' then
                         mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
-                        _state.buffs.buffsArray[i] = 'NULL'
+                        _state.buffs.buffsArray[i].name = 'NULL'
                     end
                 end
             end
@@ -829,8 +831,9 @@ function Buffs.checkBegforBuffs()
         local part3 = entry:match(':([^:]*)$')        or ''
 
         -- Resolve buffToCast from buffsArray[part3]
-        local buffIdx   = tonumber(part3) or 0
-        local buffEntry = (buffIdx > 0 and _state.buffs.buffsArray[buffIdx]) or ''
+        local buffIdx    = tonumber(part3) or 0
+        local _bslot     = buffIdx > 0 and _state.buffs.buffsArray[buffIdx] or nil
+        local buffEntry  = _bslot and _bslot.name or ''
         local buffToCast = buffEntry:match('^([^|]*)') or buffEntry
 
         -- Determine spell type (mac:13222-13228)
@@ -879,8 +882,12 @@ function Buffs.checkPetBuffs()
         mq.doevents()
         if (_state.combat.aggroTargetID or 0) ~= 0 then return end
 
-        local entry = _state.buffs.petBuffsArray[i]
-        if not entry or entry:upper() == 'NULL' then goto petcontinue end
+        local pslot  = _state.buffs.petBuffsArray[i]
+        if not pslot then goto petcontinue end
+        local pcondNo = pslot.condNo or 0
+        if pcondNo > 0 and _cond and not _cond.eval(pcondNo) then goto petcontinue end
+        local entry = pslot.name or ''
+        if entry:upper() == 'NULL' then goto petcontinue end
 
         local part1 = getListArg(entry, 1)
         local part2 = getListArg(entry, 2)
@@ -907,7 +914,7 @@ function Buffs.checkPetBuffs()
                         mq.TLO.Me.Pet.CleanName() or 'pet', part1))
                 elseif result == 'CAST_COMPONENTS' then
                     mq.cmd(string.format('/echo You are missing components. Turning off %s.', part1))
-                    _state.buffs.petBuffsArray[i] = 'NULL'
+                    _state.buffs.petBuffsArray[i].name = 'NULL'
                 end
             end
         elseif (mq.TLO.FindItem('=' .. part1).ID() or 0) ~= 0 then
@@ -925,7 +932,7 @@ function Buffs.checkPetBuffs()
                         mq.TLO.Me.Pet.CleanName() or 'pet', part3))
                 elseif result == 'CAST_COMPONENTS' then
                     mq.cmd(string.format('/echo You are missing components. Turning off %s.', part1))
-                    _state.buffs.petBuffsArray[i] = 'NULL'
+                    _state.buffs.petBuffsArray[i].name = 'NULL'
                 end
             end
         elseif part1 == 'pettoys' and part2 == 'begfor' then
@@ -1017,12 +1024,13 @@ end
 
 -- Mirrors Bind_Settings buff loading (kissassist.mac:14657-14671) and
 -- Pet buff loading from [Pet] INI section.
-function Buffs.init(state, utils, cast, heal, comms)
+function Buffs.init(state, utils, cast, heal, comms, cond)
     _state = state
     _utils = utils
     _cast  = cast
     _heal  = heal
     _comms = comms  -- nil when Comms not yet init'd; writeBuffs guards with `if _comms`
+    _cond  = cond
 
     -- Cross-char comms flag (guards all write functions)
     _state.session.danNetOn = Config.get('General', 'DanNetOn', '0') == '1'
@@ -1035,9 +1043,9 @@ function Buffs.init(state, utils, cast, heal, comms)
 
     local buffsArr = Config.get('Buffs', 'Buffs', nil)
     if type(buffsArr) == 'table' then
-        for _, v in ipairs(buffsArr) do
-            if v and v ~= '' then
-                _state.buffs.buffsArray[#_state.buffs.buffsArray + 1] = v
+        for _, slot in ipairs(Config.parseCondArray(buffsArr)) do
+            if slot and slot.name and slot.name ~= '' then
+                _state.buffs.buffsArray[#_state.buffs.buffsArray + 1] = slot
             end
         end
     end
@@ -1053,9 +1061,9 @@ function Buffs.init(state, utils, cast, heal, comms)
     _state.buffs.petBuffsOn = Config.get('Pet', 'PetBuffsOn', '0') == '1'
     local petBuffsArr = Config.get('Pet', 'PetBuffs', nil)
     if type(petBuffsArr) == 'table' then
-        for _, v in ipairs(petBuffsArr) do
-            if v and v ~= '' then
-                _state.buffs.petBuffsArray[#_state.buffs.petBuffsArray + 1] = v
+        for _, slot in ipairs(Config.parseCondArray(petBuffsArr)) do
+            if slot and slot.name and slot.name ~= '' then
+                _state.buffs.petBuffsArray[#_state.buffs.petBuffsArray + 1] = slot
             end
         end
     end
