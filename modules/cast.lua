@@ -6,7 +6,7 @@ local mq = require('mq')
 
 local Cast = {}
 
-local state, utils, _bard
+local state, utils, _bard, _cond
 
 function Cast.init(s, u)
     state = s
@@ -16,6 +16,11 @@ end
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
 function Cast.setBard(bard)
     _bard = bard
+end
+
+-- Wire Cond module after Cond.init; called from init.lua (Step 11.3).
+function Cast.setCond(cond)
+    _cond = cond
 end
 
 -- ─── Primitives ───────────────────────────────────────────────────────────────
@@ -897,7 +902,14 @@ local function mashButtons(_tarID)
         if name == '' or name == 'null' then return end
         if (mq.TLO.Target.ID() or 0) == 0 then return end
         if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
-        -- |cond evaluation deferred → M5 (ConOn/CondNo system)
+        -- Condition guard
+        if _cond then
+            local cp = entry:find('|cond', 1, true)
+            if cp then
+                local condNo = tonumber(entry:sub(cp + 5, cp + 7)) or 0
+                if condNo > 0 and not _cond.eval(condNo) then goto next_mash end
+            end
+        end
         if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
             mq.cmd('/useitem "' .. name .. '"')
             mq.delay(100)
@@ -937,6 +949,7 @@ local function mashButtons(_tarID)
             mq.cmdf('/docommand %s', name:sub(9))
             mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
         end
+        ::next_mash::
     end
 end
 
@@ -979,8 +992,12 @@ function Cast.combatCast()
             return
         end
 
-        local entry = dpsArr[i]
-        if not entry or entry == 'null' or entry == '' then break end
+        local slot = dpsArr[i]
+        if not slot then break end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_dps end
+        local entry = slot.name or ''
+        if entry == 'null' or entry == '' then break end
 
         -- Skip weave/mash/ambush-tagged entries (handled by other subsystems)
         if entry:find('|weave', 1, true) or entry:find('|mash', 1, true)

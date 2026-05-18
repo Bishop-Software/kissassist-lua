@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard
+local _state, _utils, _cast, _heal, _movement, _bard, _cond
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -27,7 +27,14 @@ local function beforeAttack(_tarID, condCheck)
         if not entry:find('|cond', 1, true) and condCheck == 2 then
             goto next_before
         end
-        -- ConOn condition evaluation (deferred — conditions module)
+        -- Condition guard: skip if this entry's condition evaluates false
+        if _cond then
+            local cp = entry:find('|cond', 1, true)
+            if cp then
+                local condNo = tonumber(entry:sub(cp + 5, cp + 7)) or 0
+                if condNo > 0 and not _cond.eval(condNo) then goto next_before end
+            end
+        end
 
         -- Item
         local item = mq.TLO.FindItem('=' .. name)
@@ -256,13 +263,14 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard)
+function Combat.init(state, utils, cast, heal, movement, bard, cond)
     _state    = state
     _utils    = utils
     _cast     = cast
     _heal     = heal
     _movement = movement
     _bard     = bard
+    _cond     = cond
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -280,13 +288,12 @@ function Combat.init(state, utils, cast, heal, movement, bard)
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
     -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
 
-    -- DPS spell/AA/disc array — entries may carry type suffixes (e.g. "Roar|disc")
-    -- castWhat() reads from this array and dispatches by type.
-    local dpsArr = Config.get('DPS', 'DPS', nil)
-    if type(dpsArr) == 'table' then
-        for _, v in ipairs(dpsArr) do
-            if v and v ~= '' then
-                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = v
+    -- DPS spell/AA/disc array — parsed into { name, condNo } slots.
+    local rawDps = Config.get('DPS', 'DPS', nil)
+    if type(rawDps) == 'table' then
+        for _, slot in ipairs(Config.parseCondArray(rawDps)) do
+            if slot and slot.name and slot.name ~= '' then
+                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
             end
         end
     end
@@ -305,7 +312,7 @@ function Combat.init(state, utils, cast, heal, movement, bard)
     _state.combat.debuffAllOn = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
     local debuffCount = 0
     for _, dpsEntry in ipairs(_state.combat.dpsArray) do
-        local thresh = tonumber(dpsEntry:match('^[^|]*|([^|]*)') or '') or 0
+        local thresh = tonumber(dpsEntry.name:match('^[^|]*|([^|]*)') or '') or 0
         if thresh >= 101 then
             debuffCount = debuffCount + 1
         else
@@ -314,13 +321,13 @@ function Combat.init(state, utils, cast, heal, movement, bard)
     end
     _state.mez.debuffCount = debuffCount
 
-    -- Aggro management array — from [Aggro] section, entries Aggro1..AggroN
+    -- Aggro management array — parsed into { name, condNo } slots.
     _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
-    local aggroArr = Config.get('Aggro', 'Aggro', nil)
-    if type(aggroArr) == 'table' then
-        for _, v in ipairs(aggroArr) do
-            if v and v ~= '' then
-                _state.combat.aggroArray[#_state.combat.aggroArray + 1] = v
+    local rawAggro = Config.get('Aggro', 'Aggro', nil)
+    if type(rawAggro) == 'table' then
+        for _, slot in ipairs(Config.parseCondArray(rawAggro)) do
+            if slot and slot.name and slot.name ~= '' then
+                _state.combat.aggroArray[#_state.combat.aggroArray + 1] = slot
             end
         end
     end
@@ -1283,19 +1290,21 @@ function Combat.aggroCheck()
     if _state.combat.myTargetID == 0 then return end
 
     for _, entry in ipairs(_state.combat.aggroArray) do
-        if not entry or entry == 'null' or entry == '' then break end
+        if not entry then break end
+        local condNo = entry.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_aggro end
+        local rawEntry = entry.name or ''
+        if rawEntry == 'null' or rawEntry == '' then break end
 
         -- Parse: spellName|pct|glt|target
         local parts = {}
-        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        for p in (rawEntry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
         local spellName  = parts[1] or ''
         local pct        = tonumber(parts[2] or '') or 0
         local glt        = parts[3] or ''
         local targetType = parts[4] or ''
 
         if spellName == '' or spellName == 'null' then goto next_aggro end
-        -- cond-tagged target type: skip (ConOn deferred M10)
-        if targetType:lower():sub(1, 4) == 'cond' then targetType = '' end
 
         -- Skip active self-disc (mac:2410)
         if (mq.TLO.Me.CombatAbility(spellName).ID() or 0) ~= 0 then
