@@ -473,6 +473,32 @@ function Config.defaultCfg()
     }
 end
 
+-- Parse a single INI entry that may carry a |condNNN suffix.
+-- Returns stripped name and condition slot number (0 = no condition).
+-- e.g. "Harm Touch|cond001" → "Harm Touch", 1
+local function extractCond(entry)
+    local pos = entry:find('|cond')
+    if not pos then return entry, 0 end
+    local condNo = tonumber(entry:sub(pos + 5, pos + 7)) or 0
+    return entry:sub(1, pos - 1), condNo
+end
+
+-- Convert a raw string array (as loaded from the pickle) into an array of
+-- { name, condNo } slot tables.  Nil/absent entries are preserved as
+-- { name = entry, condNo = 0 } so index positions stay stable.
+-- Used by combat, buffs, healing, and cast modules at init time.
+function Config.parseCondArray(arr)
+    if not arr then return {} end
+    local out = {}
+    for i, v in ipairs(arr) do
+        if v then
+            local name, condNo = extractCond(v)
+            out[i] = { name = name, condNo = condNo }
+        end
+    end
+    return out
+end
+
 -- Read a value from the loaded config. Returns default if section/key absent.
 -- All values are stored as strings (matching INI); callers convert types as needed.
 function Config.get(section, key, default)
