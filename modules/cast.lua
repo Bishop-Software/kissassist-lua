@@ -661,7 +661,7 @@ end
 -- Determines what type of ability castWhat is, checks readiness, acquires target,
 -- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
 -- StopMoving, and bard twist-restart are stubbed → M4/M5/M6/M7/M8.
-function Cast.castWhat(castWhat, whatID, sentFrom)
+function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     -- Non-bard: bail immediately if already casting with the window open
     if not state.session.iAmABard then
         if (mq.TLO.Me.Casting.ID() or 0) ~= 0
@@ -731,8 +731,9 @@ function Cast.castWhat(castWhat, whatID, sentFrom)
         strTargetType = mq.TLO.FindItem('=' .. castWhat).Spell.TargetType() or 'null'
     end
 
-    -- Condition check stub → M5 (conditions system)
-    -- condNumber > 0 would evaluate Cond[condNumber] here and return CAST_COND_FAILED
+    if condNumber and condNumber > 0 and _cond then
+        if not _cond.eval(condNumber) then return 'CAST_COND_FAILED' end
+    end
 
     -- Target acquisition for non-self spells
     if strTargetType ~= 'Self' then
