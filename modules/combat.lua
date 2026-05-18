@@ -969,11 +969,15 @@ function Combat.fight(fromWhere)
         end
 
         -- Look level when not underwater (mac:1095)
-        if not mq.TLO.Me.FeetWet() then mq.cmd('/look 0') end
+        if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 
         -- Initiate attack (mac:1097-1127); AutoFireOn treated as always off (deferred)
         if not _state.combat.attacking then
             if _state.combat.meleeOn then
+                if (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                        or mq.TLO.Window('CastingWindow').Open() then
+                    goto skip_first_engage
+                end
                 _state.combat.attacking = true
                 if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
                 -- Taunt for tank/hunter on first engage (mac:1105)
@@ -1009,6 +1013,7 @@ function Combat.fight(fromWhere)
                 end
             end
         end
+        ::skip_first_engage::
 
         -- Enable mez-mob scan for tank roles (mac:1131)
         if role == 'tank' or role == 'pullertank'
@@ -1023,6 +1028,13 @@ function Combat.fight(fromWhere)
                 _state.combat.eventFlag = false
                 mq.doevents()
             until not _state.combat.eventFlag
+
+            -- Pause all commands while player or script is casting
+            if (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                    or mq.TLO.Window('CastingWindow').Open() then
+                mq.delay(50)
+                goto continue_fight
+            end
 
             -- Burn if flagged (mac:1139-1141)
             if _state.combat.burnOn and _state.combat.burnID ~= 0 then

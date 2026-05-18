@@ -236,6 +236,11 @@ local function onStayHere()
     if _comms then _comms.broadcast('STAY', {}) end
 end
 
+local function onCampOff()
+    state.movement.returnToCamp = false
+    printf('\ay>> Camp mode off.')
+end
+
 local function onChaseMe()
     local myName = mq.TLO.Me.CleanName() or ''
     state.movement.whoToChase  = myName
@@ -663,6 +668,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)
     bind('/stayhere',       onStayHere)
+    bind('/campoff',        onCampOff)
     bind('/chaseme',        onChaseMe)
     bind('/trackmedown',    onTrackMeDown)
     bind('/SetPullArc',     onSetPullArc)

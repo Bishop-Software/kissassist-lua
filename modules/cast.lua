@@ -117,6 +117,7 @@ local function castSpell(spellName, sentFrom)
         end
 
         -- Arm cast state; onCastBegin event will also set SUCCESS optimistically
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
         state.cast.castReturn = 'CAST_SUCCESS'
         mq.cmdf('/cast "%s"', spellName)
         utils.debug('cast', 'CastSpell: /cast "%s"', spellName)
@@ -212,6 +213,7 @@ local function castAA(whatAA, sentFrom)
         while os.clock() < t and mq.TLO.Me.Sitting() do mq.delay(50) end
     end
 
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
     state.cast.castReturn = 'CAST_SUCCESS'
     mq.cmdf('/alt act %d', aaID)
     utils.debug('cast', 'CastAA: /alt act %d (%s)', aaID, whatAA)
@@ -289,6 +291,7 @@ local function castDisc(whatDisc, sentFrom)
     local timeout = os.clock() + waitSec
 
     while mq.TLO.Me.CombatAbilityReady(whatDisc)() and os.clock() < timeout do
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
         if not isEmu then
             local ranked = mq.TLO.Me.CombatAbility(whatDisc)() or whatDisc
             local discID = mq.TLO.Me.CombatAbility(ranked).ID() or 0
@@ -946,6 +949,7 @@ end
 --           WriteDebuffs, Feign-death sequence, DPSSkip min-HP gate, DPSInterval, DPSOn==2.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
     local debuffCount = state.mez.debuffCount or 0
     local dpsStart    = debuffCount + 1
