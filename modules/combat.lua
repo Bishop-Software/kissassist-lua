@@ -975,6 +975,12 @@ function Combat.fight(fromWhere)
             -- Hunter LOS position (deferred M7)
         end
 
+        -- Face mob every tick when enabled (mac:1094)
+        if _state.movement.faceMobOn and (mq.TLO.Target.ID() or 0) ~= 0
+           and (mq.TLO.Me.Standing() or mq.TLO.Me.Mount.ID()) then
+            mq.cmd('/squelch /face fast nolook')
+        end
+
         -- Look level when not underwater (mac:1095)
         if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 

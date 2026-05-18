@@ -31,10 +31,10 @@ function Movement.init(state, utils)
     _state.movement.stayPut          = Config.get('General', 'StayPut',          '0') == '1'
     _state.movement.stickDist        = tonumber(Config.get('General', 'StickDist',        '13')) or 13
     _state.movement.stickDistUW      = tonumber(Config.get('General', 'StickDistUW',      '10')) or 10
-    _state.movement.dStickHow        = Config.get('General', 'StickHow',         '0') or '0'
+    _state.movement.dStickHow        = Config.get('Melee',   'StickHow',         '0') or '0'
     _state.movement.navPathHelper    = Config.get('General', 'NavPathHelper',    '1') ~= '0'
     _state.movement.locDelayCheckUW  = Config.get('General', 'LocDelayCheckUW',  '0') == '1'
-    _state.movement.faceMobOn        = Config.get('General', 'FaceMobOn',        '0') == '1'
+    _state.movement.faceMobOn        = Config.get('Melee',   'FaceMobOn',        '0') == '1'
     _state.movement.scatterOn        = Config.get('General', 'ScatterOn',        '0') == '1'
     _state.movement.scatterDistance  = tonumber(Config.get('General', 'ScatterDistance',  '20')) or 20
 
