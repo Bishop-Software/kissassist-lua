@@ -14,6 +14,7 @@ local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
 local Loot     = require('modules.loot')
 local Comms    = require('modules.comms')
+local Cond     = require('modules.cond')
 
 local VERSION = '1.0.0'
 
@@ -55,6 +56,10 @@ State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
 
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
+
+-- Load condition expressions from [KConditions] INI section
+Cond.init(State, Utils)
+Cond.load()
 
 -- Wire loot settings from INI into State
 State.loot.on       = tonumber(Config.get('General', 'LootOn',       '1')) or 1
