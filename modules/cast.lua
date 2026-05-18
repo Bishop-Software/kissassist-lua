@@ -872,6 +872,7 @@ end
 -- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
 local function mashButtons(_tarID)
     if not state.combat.dpsOn then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     local meState = mq.TLO.Me.State() or ''
     if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
 
@@ -886,6 +887,7 @@ local function mashButtons(_tarID)
 
     local mashArr = state.arrays.mashArray
     for i = 1, #mashArr do
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
         local entry = mashArr[i]
         if not entry or entry == 'null' then return end
         local name = entry:match('^([^|]+)') or entry
@@ -901,7 +903,7 @@ local function mashButtons(_tarID)
                 and mq.TLO.Me.AltAbilityReady(name)()
                 and (mq.TLO.Me.AltAbility(name).Type() or 0) ~= 5
                 and name:lower() ~= 'twincast' then
-            mq.cmdf('/alt act %d', mq.TLO.Me.AltAbility(name).ID() or 0)
+            mq.cmdf('/squelch /alt act %d', mq.TLO.Me.AltAbility(name).ID() or 0)
             mq.delay(100)
             if not mq.TLO.Me.AltAbilityReady(name)() then
                 mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
@@ -914,16 +916,16 @@ local function mashButtons(_tarID)
             local isEmu = (mq.TLO.MacroQuest.Build() or 0) == 4
             if not isEmu then
                 local ranked = mq.TLO.Me.CombatAbility(name)() or name
-                mq.cmdf('/disc %d', mq.TLO.Me.CombatAbility(ranked).ID() or 0)
+                mq.cmdf('/squelch /disc %d', mq.TLO.Me.CombatAbility(ranked).ID() or 0)
             else
-                mq.cmdf('/disc "%s"', name)
+                mq.cmdf('/squelch /disc "%s"', name)
             end
             mq.delay(100)
             if not mq.TLO.Me.CombatAbilityReady(name)() then
                 mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
             end
         elseif (mq.TLO.Me.Skill(name)() or 0) > 0 and mq.TLO.Me.AbilityReady(name)() then
-            mq.cmdf('/doability "%s"', name)
+            mq.cmdf('/squelch /doability "%s"', name)
             mq.delay(100)
             if not mq.TLO.Me.AbilityReady(name)() then
                 mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')

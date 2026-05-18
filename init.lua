@@ -28,6 +28,21 @@ Config.parseArgs(State, args)
 
 printf('\agKissAssist \aw%s starting... Role: \at%s', VERSION, State.session.role)
 
+-- Mirrors Sub AssignMainAssist (kissassist.mac): tank roles are their own MA.
+-- Must run before Config.load so mainAssist is set when Combat.init reads it.
+do
+    local TANK_ROLES = {tank=true, pullertank=true, pettank=true, pullerpettank=true, hunterpettank=true}
+    local myName = mq.TLO.Me.CleanName() or ''
+    if TANK_ROLES[State.session.role] then
+        State.session.iAmMA = true
+        if State.session.mainAssist == '' then
+            State.session.mainAssist = myName
+        end
+    else
+        State.session.iAmMA = (State.session.mainAssist:lower() == myName:lower())
+    end
+end
+
 -- Seed camp location and runtime identity from live TLO
 State.movement.campX   = mq.TLO.Me.X()
 State.movement.campY   = mq.TLO.Me.Y()

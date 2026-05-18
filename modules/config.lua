@@ -103,8 +103,13 @@ function Config.migrateIni(state)
     -- 2. Check INI exists via TLO (handles path resolution automatically).
     local ver = mq.TLO.Ini(iniFile, 'General', 'KissAssistVer')()
     if not ver then
-        printf('\ayKissAssist: \awNo INI found (%s) — using defaults.', iniFile)
-        return nil
+        local cfg = Config.defaultCfg()
+        os.execute('if not exist "' .. pickleDir:gsub('/','\\') .. '" mkdir "' .. pickleDir:gsub('/','\\') .. '"')
+        _picklePath = picklePath
+        mq.pickle(picklePath, cfg)
+        printf('\agKissAssist: \awNo INI found — created starter config at \at%s', pickleName)
+        printf('\awEdit %s to configure spells, heals, and buffs for this character.', pickleName)
+        return cfg
     end
 
     printf('\agKissAssist: \awMigrating \at%s\aw to pickle...', iniFile)
@@ -370,6 +375,102 @@ function Config.migrateIni(state)
     end
 
     return cfg
+end
+
+-- Returns a role-neutral starter config table with empty/zero values for all sections.
+-- Used when no INI and no pickle exist so the character gets a persistent file on first run.
+function Config.defaultCfg()
+    local function emptyArr(n) local t = {} for i = 1, n do t[i] = 'null' end return t end
+    return {
+        General = {
+            KissAssistVer    = '1.0.0',
+            Role             = '', CampRadius = '40', CampRadiusExceed = '0',
+            ReturnToCamp     = '0', ChaseAssist = '0', ChaseDistance = '40',
+            MedOn            = '1', MedStart = '40', MedStop = '90', MedCombat = '0',
+            LootOn           = '1', RezAcceptOn = '1', AcceptInvitesOn = '0',
+            GroupWatchOn     = '0', GroupWatchCheck = '20', CorpseRecoveryOn = '0',
+            EQBCOn           = '0', DanNetOn = '1', DanNetDelay = '25',
+            IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
+            DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
+            UseSpawnMaster   = '0', TwistOn = '0', TwistMed = '0', TwistWhat = '',
+            MountOn          = '0', MountSpell = '',
+        },
+        SpellS = {
+            MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
+            LoadSpellSet = '0', SpellSetName = '',
+        },
+        Spells = {
+            CastingInterruptOn = '0', CheckStuckGem = '0',
+        },
+        Melee = {
+            AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
+            StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
+            TargetSwitchingOn = '0', AutoHide = '0', MeleeTwistOn = '0',
+            MeleeTwistWhat = '', PetTauntOverride = '0',
+        },
+        DPS = {
+            DPSOn = '1', DPSSize = '20', DPSSkip = '0', DPSInterval = '0',
+            DebuffAllOn = '0', DPS = emptyArr(20),
+        },
+        Buffs = {
+            BuffsOn = '1', BuffsSize = '20', RebuffOn = '1', CheckBuffsTimer = '60',
+            PowerSource = '', Buffs = emptyArr(20),
+        },
+        Heals = {
+            HealsOn = '0', HealsSize = '15', HealInterval = '0', AutoRezOn = '0',
+            XTarHeal = '0', XTarHealList = '', HealGroupPetsOn = '0',
+            RezMeLast = '0', Heals = emptyArr(15),
+        },
+        Cures = {
+            CuresOn = '0', CuresSize = '5', Cures = emptyArr(5),
+        },
+        Pet = {
+            PetOn = '0', PetSpell = '', PetFocus = '', PetShrinkOn = '0',
+            PetShrinkSpell = '', PetBuffsOn = '0', PetBuffsSize = '8',
+            PetBuffs = emptyArr(8), PetCombatOn = '0', PetAssistAt = '100',
+            PetAttackDistance = '60', PetToysSize = '6', PetToysOn = '0',
+            PetToysGave = '0', PetToys = emptyArr(6), PetBreakMezSpell = '',
+            PetRampPullWait = '0', PetSuspend = '0', MoveWhenHit = '0',
+            PetHoldOn = '0', PetForceHealOnMed = '0',
+        },
+        Mez = {
+            MezOn = '0', MezRadius = '40', MezMinLevel = '1', MezMaxLevel = '115',
+            MezStopHPs = '50', MezSpell = '', MezDebuffOnResist = '0',
+            MezDebuffSpell = '', MezAESpell = '',
+        },
+        Burn = {
+            BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
+        },
+        Aggro = {
+            AggroOn = '0', AggroSize = '10', Aggro = emptyArr(10),
+        },
+        GoM = {
+            GoMSHelp = '0', GoMSize = '3', GoMSpell = emptyArr(3),
+        },
+        AE = {
+            AEOn = '0', AESize = '10', AERadius = '40', AE = emptyArr(10),
+        },
+        Pull = {
+            PullWith = '', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
+            UseWayPointZ = '0', PullWait = '5', PullRadiusToUse = '1',
+            PullRoleToggle = '0', ChainPull = '0', ChainPullHP = '80',
+            PullPause = '0', PullLevel = '0', PullArcWidth = '0',
+            PullTwistOn = '0', PullOnReturn = '0',
+        },
+        PullAdvanced = {
+            PullLocsOn = '0', PullLocs = emptyArr(5),
+        },
+        Merc = {
+            MercOn = '0', MercAssistAt = '95',
+        },
+        AFKTools = {
+            AFKToolsOn = '0', AFKGMAction = '0', AFKPCRadius = '30',
+            CampOnDeath = '0', ClickBacktoCamp = '0',
+        },
+        KConditions = {
+            ConOn = '1', CondSize = '5', Cond = emptyArr(5),
+        },
+    }
 end
 
 -- Read a value from the loaded config. Returns default if section/key absent.

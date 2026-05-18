@@ -103,31 +103,157 @@ All nine milestones merged to `main` via PRs. Individual test cases from the ori
 
 ---
 
+## Section 11 — Condition Evaluation (Milestone 11)
+
+> Tests to be written when M11 implementation is complete.
+
+### 11.1 — Core condition engine
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 11.1.1 | `ConOn=0` bypasses all conditions | Set `ConOn=0`; add `\|cond` to a DPS slot | Slot fires regardless of condition value |
+| 11.1.2 | True condition allows cast | Set `Cond1=${Me.PctHPs}>1`; tag DPS slot `\|cond001` | Slot fires normally |
+| 11.1.3 | False condition skips cast | Set `Cond1=${Me.PctHPs}>999`; tag DPS slot `\|cond001` | Slot is skipped that tick |
+| 11.1.4 | `TARGETCHECK` sentinel | Set `Cond1=TARGETCHECK`; tag a CastWhat entry | Target validity check fires; invalid target skips cast |
+
+### 11.2 — `\|cond` gating per system
+
+| # | System | Steps | Expected |
+| --- | --- | --- | --- |
+| 11.2.1 | DPS rotation | Tag DPS slot with false condition | Slot skipped in combatCast |
+| 11.2.2 | MashButtons | Tag melee ability with false condition | Ability skipped in MashButtons |
+| 11.2.3 | Buffs | Tag buff slot with false condition | Buff skipped in CheckBuffs |
+| 11.2.4 | Pet buffs | Tag pet buff with false condition | Pet buff skipped |
+| 11.2.5 | Single heal | Tag heal slot with false condition | Heal skipped |
+| 11.2.6 | Group heal | Tag group heal with false condition | Group heal skipped |
+| 11.2.7 | Cures | Tag cure with false condition | Cure skipped |
+| 11.2.8 | AutoRez | Tag rez with false condition | Rez skipped |
+| 11.2.9 | Burn entries | Tag burn entry with false condition | Burn entry skipped |
+| 11.2.10 | Bard GoMSpell | Tag GoM spell with false condition | GoM spell skipped |
+| 11.2.11 | Bard WeaveArray | Tag weave entry with false condition | Weave entry skipped |
+
+### 11.3 — `/togglevariable ConOn`
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 11.3.1 | Toggle off | `/togglevariable ConOn` when on | `state.cond.on = false`; conditions ignored |
+| 11.3.2 | Toggle on | `/togglevariable ConOn` when off | `state.cond.on = true`; conditions evaluated |
+| 11.3.3 | `/kisscheck` output | Run `/kisscheck` | Prints current `ConOn` state |
+
+---
+
+## Section 12 — Mez System (Milestone 12)
+
+> Tests to be written when M12 implementation is complete.
+
+### 12.1 — Module loads
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.1.1 | Module init | Start script with `MezOn=0` | `Mez.init()` runs; no error; mez check is a no-op |
+| 12.1.2 | Config loads | Set `MezSpell` and `MezOn=1` in INI | `state.mez.spell` and `state.mez.on` populated correctly |
+
+### 12.2 — Single mez
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.2.1 | Add gets mezzed | Two mobs aggro; `MezOn=1`; mob count ≥ `MezSingleCount` | Second mob mezzed automatically |
+| 12.2.2 | Mezzed mob not attacked | Non-MA char has mezzed mob as target | Cast skipped; mezzed mob not woken |
+| 12.2.3 | HP threshold skip | Mob HP below `MezPct` | Mez skipped for that mob |
+| 12.2.4 | Mana check | Char below mana to cast mez spell | Mez skipped |
+| 12.2.5 | Spell not ready | Mez spell on cooldown | Mez skipped until ready |
+
+### 12.3 — AE mez
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.3.1 | AE mez fires | Mob count in AE range ≥ `MezAECount`; `MezOn=1` or `3` | AE mez spell cast |
+| 12.3.2 | AE mez suppressed | `MezOn=2` (single only) | AE mez does not fire |
+| 12.3.3 | AE timer cooldown | AE mez just cast | AE mez does not fire again until timer expires |
+
+### 12.4 — MezBroke event and re-mez
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.4.1 | Mob wakes | Mezzed mob wakes naturally or is woken | `MezBroke` event fires; `state.mez.broke = true` |
+| 12.4.2 | Re-mez fires | After MezBroke | Mez check re-fires on next tick; mob re-mezzed if eligible |
+
+### 12.5 — `/addimmune` bind
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.5.1 | Add to immune list | Target a mob; run `/addimmune` | Mob ID added to `state.mez.immuneIDs`; confirmation printed |
+| 12.5.2 | Immune mob skipped | Immune mob aggros | Mez not cast on that mob |
+| 12.5.3 | Dead immune cleared | Immune mob dies | ID pruned from immune list on next cycle |
+
+### 12.6 — BreakMez (pettank role)
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 12.6.1 | BreakMez fires | Pettank role; mezzed mob in camp | `PetBreakMezSpell` cast on mob to wake it for pet |
+| 12.6.2 | Non-pettank skips | Assist or tank role | BreakMez not called |
+
+---
+
+## Section 13 — Advanced Combat Rotation (Milestone 13)
+
+> Tests to be run after M13 implementation is complete.
+
+### 13.1 — Per-slot timers
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 13.1.1 | ABTimer gates ability | Set ABTimer on a MashButton slot | Ability not re-cast until timer expires; fires again after |
+| 13.1.2 | DPSTimer gates spell | Set DPSTimer on a DPS slot | Spell not re-cast until timer expires; fires again after |
+| 13.1.3 | FDTimer controls FD cycle | Set FDTimer; enable FD cycling | FD re-fires after timer, not immediately on next tick |
+
+### 13.2 — Advanced rotation modes
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 13.2.1 | DPSSkip skips N ticks | Set DPSSkip=2 on a slot | Slot fires every 3rd tick; skipped 2 ticks between fires |
+| 13.2.2 | DPSOn==2 out-of-combat | Set DPSOn=2 on a slot | Slot fires outside combat; other slots do not |
+| 13.2.3 | DPSInterval cadence | Set DPSInterval=500 | No two casts occur within 500 ms of each other |
+| 13.2.4 | DAMod suppresses on DA | Set DAMod on a slot; activate a DA disc | Slot skipped while disc is active; resumes after disc drops |
+
+### 13.3 — Feign-death sequence
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 13.3.1 | FD fires and waits | Enable FD cycling; engage NPC | FD cast; FDTimer wait; character re-engages after timer |
+| 13.3.2 | FD abort on death | Character dies mid-FD cycle | Sequence aborts cleanly; no Lua error |
+
+### 13.4 — Target switching
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 13.4.1 | MA retargets mid-rotation | MA switches target during rotation | Assist char switches to new target within same rotation cycle |
+| 13.4.2 | TargetSwitchingOn=0 suppresses | Set TargetSwitchingOn=0; MA switches target | Assist char does not switch until next rotation cycle starts |
+
+### 13.5 — Stuck-gem detection
+
+| # | Scenario | Steps | Expected |
+| --- | --- | --- | --- |
+| 13.5.1 | Wrong spell in gem | Gem slot contains wrong spell | `castWhat` detects mismatch; re-mems correct spell; cast proceeds |
+| 13.5.2 | Empty gem recovery | Gem slot unexpectedly empty mid-combat | `castWhat` mems spell; cast proceeds; warning logged |
+
+---
+
 ## Known Deferred / Out of Scope
 
 Features present in `.mac` that are not yet ported. Do not test for these behaviors.
 
 | Area | Notes |
-|------|-------|
-| Mez system (`MezCheck`, `AECheck`, `BreakMez`) | Not ported; would require a mez module |
+| --- | --- |
 | `CombatTargetCheckRaid` | Raid/cross-char target selection; not ported |
 | `MercsDoWhat` | Merc control; not ported |
 | `AutoFireOn` branches | Ranged auto-fire logic; not ported |
 | `namedWatchList` from `KissAssist_Info.ini` | Named mob watch list; INI loader not implemented |
 | `SwitchMA` on offtank / MA-dead path | Cross-char MA failover; not ported |
 | `BroadCast` burn/add/tank-announce | In-group announce on burn/add events; not ported |
-| Condition evaluation (`condNumber`, `\|cond`) | Per-spell condition gating; M11 candidate |
-| `doBurn`: per-entry `condNo` / `abortFlag` | Condition-gated burn entries; blocked on condition eval |
-| `mashButtons`: `ConOn` condition path | Condition-gated melee abilities; blocked on condition eval |
-| `combatCast`: per-slot timers (`ABTimer`, `DPSTimer`, `FDTimer`) | Fine-grained cast timing; not ported |
-| `combatCast`: `DPSSkip`, `DPSOn==2`, `DAMod`, `DPSInterval` | Advanced rotation modes; not ported |
-| `combatCast`: feign-death sequence (`FDTimer`) | FD pull cycling; not ported |
-| `combatCast`: `WeaveArray` / `CastWeave` | Bard weave during cooldown; not ported |
-| `combatCast`: `TargetSwitchingOn` + MA mid-rotation retarget | Dynamic retarget in rotation; not ported |
-| `combatReset`: DPS meter output (`MQ2DPSAdv`) | End-of-fight parse output; not in scope |
+| `combatReset`: DPS meter output (`MQ2DPSAdv`) | End-of-fight parse output; requires MQ2DPSAdv plugin; not in scope |
 | `fight`: `combatPet` Summon Companion AA | In-combat pet resummon; not ported |
-| Stuck-gem detection in `castWhat` | Detects a spell stuck in gem slot; not ported |
 
 ---
 
-*Last updated: 2026-05-17. Milestones 1–9 code complete (PRs merged); tests not formally executed. Milestone 10 in progress.*
+*Last updated: 2026-05-17. Milestones 1–9 code complete (PRs merged); tests not formally executed. Milestone 10 in progress. Milestones 11 (condition evaluation), 12 (mez system), and 13 (advanced combat rotation) planned; sections to be run after implementation.*
