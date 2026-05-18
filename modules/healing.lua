@@ -3,14 +3,15 @@ local Config = require('modules.config')
 
 local Heal = {}
 
-local _state, _utils, _cast
+local _state, _utils, _cast, _cond
 
 -- Mirrors Bind_Settings heals/cures/general-med sections (kissassist.mac:14750).
 -- Defaults match LoadIni defaults in the mac.
-function Heal.init(state, utils, cast)
+function Heal.init(state, utils, cast, cond)
     _state = state
     _utils = utils
     _cast  = cast
+    _cond  = cond
 
     -- [General] medding + group-watch (GroupWatchOn may encode pct as "1|20")
     _state.heal.medOn           = Config.get('General', 'MedOn',     '1') == '1'
@@ -39,18 +40,18 @@ function Heal.init(state, utils, cast)
 
     local healsRaw = Config.get('Heals', 'Heals', nil)
     if type(healsRaw) == 'table' then
-        for _, v in ipairs(healsRaw) do
-            if v and v ~= '' and v ~= 'NULL' and v ~= 'null' then
-                _state.heal.healsArray[#_state.heal.healsArray + 1] = v
+        for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
             end
         end
     end
 
     -- Derive singleHealPoint/MA/Range from healsArray (mirrors FindSingleHeals, mac:12012)
     for _, entry in ipairs(_state.heal.healsArray) do
-        local spell = entry:match('^([^|]+)') or ''
-        local pct   = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
-        local tag   = entry:match('^[^|]+|[^|]+|([^|]*)') or ''
+        local spell = entry.name:match('^([^|]+)') or ''
+        local pct   = tonumber(entry.name:match('^[^|]+|([^|]+)')) or 0
+        local tag   = entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''
         if tag == 'MA' then
             if pct > _state.heal.singleHealPointMA then _state.heal.singleHealPointMA = pct end
         else
@@ -69,8 +70,8 @@ function Heal.init(state, utils, cast)
     -- Include spells whose TargetType contains 'group' (catches Group v2/v3 etc.)
     -- or TargetType 'Targeted AE' when the entry tag is not 'MA' or 'ME'.
     for _, entry in ipairs(_state.heal.healsArray) do
-        local spell = entry:match('^([^|]+)') or ''
-        local tag   = entry:match('^[^|]+|[^|]+|([^|]*)') or ''
+        local spell = entry.name:match('^([^|]+)') or ''
+        local tag   = entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''
         if spell ~= '' then
             local tt    = mq.TLO.Spell(spell).TargetType() or ''
             local ttLow = tt:lower()
@@ -95,9 +96,9 @@ function Heal.init(state, utils, cast)
 
     local curesRaw = Config.get('Cures', 'Cures', nil)
     if type(curesRaw) == 'table' then
-        for _, v in ipairs(curesRaw) do
-            if v and v ~= '' and v ~= 'NULL' and v ~= 'null' then
-                _state.heal.curesArray[#_state.heal.curesArray + 1] = v
+        for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                _state.heal.curesArray[#_state.heal.curesArray + 1] = slot
             end
         end
     end
@@ -105,9 +106,9 @@ function Heal.init(state, utils, cast)
     -- [Heals] AutoRez entries: SpellName|arg2|RezType (rez/rezooc/rezcombat)
     local autoRezRaw = Config.get('Heals', 'AutoRez', nil)
     if type(autoRezRaw) == 'table' then
-        for _, v in ipairs(autoRezRaw) do
-            if v and v ~= '' and v ~= 'NULL' and v ~= 'null' then
-                _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = v
+        for _, slot in ipairs(Config.parseCondArray(autoRezRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = slot
             end
         end
     end
@@ -134,7 +135,11 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
     if not targetID or targetID == 0 then return end
 
-    for _, entry in ipairs(_state.heal.healsArray) do
+    for _, slot in ipairs(_state.heal.healsArray) do
+        if not slot then goto next_sh end
+        local condNo    = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_sh end
+        local entry     = slot.name or ''
         local spell     = entry:match('^([^|]+)') or ''
         local threshold = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
         if spell ~= '' and threshold > 0 and hpPct <= threshold then
@@ -142,6 +147,7 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
             _cast.castWhat(spell, targetID, sentFrom)
             return
         end
+        ::next_sh::
     end
 end
 
@@ -271,11 +277,15 @@ function Heal.doGroupHealStuff()
 
     mq.doevents()
 
-    for i, entry in ipairs(_state.heal.groupHealArray) do
+    for i, slot in ipairs(_state.heal.groupHealArray) do
+        if not slot then break end
+        local entry = slot.name or ''
         local spell = entry:match('^([^|]+)') or ''
         local pct   = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
         -- Mac returns on first empty/zero-threshold entry (mac:6749)
         if spell == '' or pct == 0 then break end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_gh end
 
         if os.clock() >= _state.heal.groupHealTimers[i] then
             ---@diagnostic disable-next-line: undefined-field
@@ -292,6 +302,7 @@ function Heal.doGroupHealStuff()
                 end
             end
         end
+        ::next_gh::
     end
 
     _utils.debug('heals', 'doGroupHealStuff leave')
@@ -347,8 +358,12 @@ local function rezWithCheck()
     local inCombat = _state.combat.combatStart
         or (mq.TLO.SpawnCount('xtarhater radius ' .. (_state.combat.meleeDistance or 30))() or 0) > 0
 
-    for _, entry in ipairs(_state.heal.autoRezArray) do
+    for _, slot in ipairs(_state.heal.autoRezArray) do
+        if not slot then break end
+        local entry = slot.name or ''
         if entry == '' or entry == 'null' or entry == 'NULL' then break end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_rz end
         local parts = {}
         for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
         local spellName = parts[1] or ''
@@ -371,9 +386,9 @@ local function rezWithCheck()
             local ready = mq.TLO.Me.SpellReady(rankName)()
                 or mq.TLO.Me.AltAbilityReady(spellName)()
                 or mq.TLO.Me.ItemReady(spellName)()
-            -- ConOn / condition eval simplified (deferred to Step 6+); return first ready spell
             if ready then return spellName end
         end
+        ::next_rz::
     end
     return nil
 end
@@ -469,7 +484,11 @@ function Heal.checkCures()
 
         local cureCast = false
 
-        for _, entry in ipairs(_state.heal.curesArray) do
+        for _, slot in ipairs(_state.heal.curesArray) do
+            if not slot then goto next_cure end
+            local condNo = slot.condNo or 0
+            if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_cure end
+            local entry = slot.name or ''
             if entry == '' or entry == 'null' or entry == 'NULL' then goto next_cure end
 
             -- Parse: SpellName[|debuffType[|scope][|condN]] (mac:12665-12686)

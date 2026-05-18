@@ -343,6 +343,12 @@ local State = {
         looterAssigned = false,
     },
 
+    cond = {
+        on          = false,  -- set from INI [KConditions] ConOn
+        size        = 5,      -- set from INI [KConditions] CondSize
+        expressions = {},     -- [n] = TLO expression string (1-indexed)
+    },
+
     dps = {
         lastCast   = '',
         parseTimer = 0,

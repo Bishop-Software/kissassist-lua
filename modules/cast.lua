@@ -6,7 +6,7 @@ local mq = require('mq')
 
 local Cast = {}
 
-local state, utils, _bard
+local state, utils, _bard, _cond
 
 function Cast.init(s, u)
     state = s
@@ -16,6 +16,11 @@ end
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
 function Cast.setBard(bard)
     _bard = bard
+end
+
+-- Wire Cond module after Cond.init; called from init.lua (Step 11.3).
+function Cast.setCond(cond)
+    _cond = cond
 end
 
 -- ─── Primitives ───────────────────────────────────────────────────────────────
@@ -656,7 +661,7 @@ end
 -- Determines what type of ability castWhat is, checks readiness, acquires target,
 -- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
 -- StopMoving, and bard twist-restart are stubbed → M4/M5/M6/M7/M8.
-function Cast.castWhat(castWhat, whatID, sentFrom)
+function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     -- Non-bard: bail immediately if already casting with the window open
     if not state.session.iAmABard then
         if (mq.TLO.Me.Casting.ID() or 0) ~= 0
@@ -726,8 +731,9 @@ function Cast.castWhat(castWhat, whatID, sentFrom)
         strTargetType = mq.TLO.FindItem('=' .. castWhat).Spell.TargetType() or 'null'
     end
 
-    -- Condition check stub → M5 (conditions system)
-    -- condNumber > 0 would evaluate Cond[condNumber] here and return CAST_COND_FAILED
+    if condNumber and condNumber > 0 and _cond then
+        if not _cond.eval(condNumber) then return 'CAST_COND_FAILED' end
+    end
 
     -- Target acquisition for non-self spells
     if strTargetType ~= 'Self' then
@@ -897,7 +903,14 @@ local function mashButtons(_tarID)
         if name == '' or name == 'null' then return end
         if (mq.TLO.Target.ID() or 0) == 0 then return end
         if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
-        -- |cond evaluation deferred → M5 (ConOn/CondNo system)
+        -- Condition guard
+        if _cond then
+            local cp = entry:find('|cond', 1, true)
+            if cp then
+                local condNo = tonumber(entry:sub(cp + 5, cp + 7)) or 0
+                if condNo > 0 and not _cond.eval(condNo) then goto next_mash end
+            end
+        end
         if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
             mq.cmd('/useitem "' .. name .. '"')
             mq.delay(100)
@@ -937,6 +950,7 @@ local function mashButtons(_tarID)
             mq.cmdf('/docommand %s', name:sub(9))
             mq.cmd('/echo ## Mashing >> ' .. name .. ' <<')
         end
+        ::next_mash::
     end
 end
 
@@ -979,8 +993,12 @@ function Cast.combatCast()
             return
         end
 
-        local entry = dpsArr[i]
-        if not entry or entry == 'null' or entry == '' then break end
+        local slot = dpsArr[i]
+        if not slot then break end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_dps end
+        local entry = slot.name or ''
+        if entry == 'null' or entry == '' then break end
 
         -- Skip weave/mash/ambush-tagged entries (handled by other subsystems)
         if entry:find('|weave', 1, true) or entry:find('|mash', 1, true)
@@ -1328,11 +1346,11 @@ function Cast.doBurn()
         for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
         local spellName  = parts[1] or 'null'
         local targetType = parts[2] or 'Mob'
-        -- parts[3] = arg3 (abort flag / cond) deferred → Step 4.8
+        local condNo3    = tonumber(parts[3]) or 0  -- >0: skip entry if false; <0: abort burn if false
 
         if spellName == 'null' or spellName == '' then goto next_burn end
 
-        -- Resolve target ID (mac:11799-11812); abortFlag deferred → Step 4.8
+        -- Resolve target ID (mac:11799-11812)
         local tType = targetType:lower()
         local burnTargetID
         if tType == 'me' then
@@ -1345,7 +1363,12 @@ function Cast.doBurn()
             burnTargetID = state.combat.myTargetID
         end
 
-        -- condNo/abortFlag (mac:11793-11815) deferred → Step 4.8
+        if condNo3 ~= 0 and _cond then
+            if not _cond.eval(math.abs(condNo3)) then
+                if condNo3 < 0 then return end  -- abortFlag: abort entire burn
+                goto next_burn                  -- normal skip
+            end
+        end
 
         local result = Cast.castWhat(spellName, burnTargetID, 'burn')
 
