@@ -1346,11 +1346,11 @@ function Cast.doBurn()
         for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
         local spellName  = parts[1] or 'null'
         local targetType = parts[2] or 'Mob'
-        -- parts[3] = arg3 (abort flag / cond) deferred → Step 4.8
+        local condNo3    = tonumber(parts[3]) or 0  -- >0: skip entry if false; <0: abort burn if false
 
         if spellName == 'null' or spellName == '' then goto next_burn end
 
-        -- Resolve target ID (mac:11799-11812); abortFlag deferred → Step 4.8
+        -- Resolve target ID (mac:11799-11812)
         local tType = targetType:lower()
         local burnTargetID
         if tType == 'me' then
@@ -1363,7 +1363,12 @@ function Cast.doBurn()
             burnTargetID = state.combat.myTargetID
         end
 
-        -- condNo/abortFlag (mac:11793-11815) deferred → Step 4.8
+        if condNo3 ~= 0 and _cond then
+            if not _cond.eval(math.abs(condNo3)) then
+                if condNo3 < 0 then return end  -- abortFlag: abort entire burn
+                goto next_burn                  -- normal skip
+            end
+        end
 
         local result = Cast.castWhat(spellName, burnTargetID, 'burn')
 
