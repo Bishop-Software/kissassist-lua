@@ -3,6 +3,7 @@ local Config = require('modules.config')
 
 local Combat = {}
 local _state, _utils, _cast, _heal, _movement, _bard
+local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
 local function dist2D(y1, x1, y2, x2)
@@ -170,13 +171,16 @@ local function validateTarget(spawnID)
     local ignByID = _state.pull.mobsToIgnoreByID or 'null'
     if ignByID ~= 'null' and ignByID:find(mobID .. '|', 1, true) then return false end
 
-    -- Tank: target must appear on the XTarget auto-hater list
+    -- Tank: target must appear on the XTarget auto-hater list.
+    -- Bypassed when Me.Combat() is true and the mob is the current target
+    -- (Me.Combat() fallback in mobRadar already validated it as a live aggressor).
     if _state.session.role == 'tank'
        and _state.combat.mobCount <= _state.combat.xSlotTotal then
         local maName = _state.session.mainAssist
         local maType = _state.session.mainAssistType
         if (mq.TLO.Spawn(maName .. ' ' .. maType .. ' group').ID() or 0) ~= 0 then
-            if (mq.TLO.SpawnCount('id ' .. mobID .. ' xtarhater') or 0) == 0 then
+            local inXtar = (mq.TLO.SpawnCount('id ' .. mobID .. ' xtarhater')() or 0) > 0
+            if not inXtar and not (_nearspawnFallback and (mq.TLO.Me.Combat() or false)) then
                 return false
             end
         end
@@ -202,7 +206,7 @@ local function validateTarget(spawnID)
     -- "Eye of" charm-NPC: don't attack "eye of <name>" when that PC is present
     if mobName:lower():find('eye of ', 1, true) then
         local stripped = mobName:sub(8)
-        if (mq.TLO.SpawnCount('pc ' .. stripped) or 0) > 0 then return false end
+        if (mq.TLO.SpawnCount('pc ' .. stripped)() or 0) > 0 then return false end
     end
 
     -- PC-owned pet
@@ -232,7 +236,7 @@ local function validateTarget(spawnID)
         local mobY = sp and sp.Y() or 0
         local mobX = sp and sp.X() or 0
         -- Reject if any non-group PC is within 30 units of the mob.
-        if (mq.TLO.SpawnCount('pc radius 30 loc ' .. mobY .. ',' .. mobX .. ' nogroup') or 0) > 0 then
+        if (mq.TLO.SpawnCount('pc radius 30 loc ' .. mobY .. ',' .. mobX .. ' nogroup')() or 0) > 0 then
             return false
         end
         -- Reject if mob level is outside configured pull level range.
@@ -403,6 +407,29 @@ function Combat.mobRadar(mode, radius)
                 closestID = tostring(xid)
             elseif (xt.TargetType() or '') ~= 'Auto Hater' then
                 count = count + 1
+            end
+        end
+    end
+
+    -- Fallback: only when Me.Combat() is true (character is being attacked).
+    -- Tries current target first, then nearest NPC within a generous radius.
+    -- _nearspawnFallback tells validateTarget to skip the xtarhater filter.
+    _nearspawnFallback = false
+    if count == 0 and (mq.TLO.Me.Combat() or false) then
+        local tgt   = mq.TLO.Target
+        local tID   = tgt.ID()   or 0
+        local tType = (tgt.Type() or ''):lower()
+        if tID ~= 0 and tType == 'npc' then
+            count              = 1
+            closestID          = tostring(tID)
+            _nearspawnFallback = true
+        else
+            local nearSp = mq.TLO.NearestSpawn(1, 'npc radius 100 zradius 50')
+            local nearID = nearSp and (nearSp.ID() or 0) or 0
+            if nearID ~= 0 then
+                count              = 1
+                closestID          = tostring(nearID)
+                _nearspawnFallback = true
             end
         end
     end
@@ -594,7 +621,7 @@ function Combat.getCombatTarget()
 
         else
             -- Iterate all xtarhater spawns; find closest, highest level, most hurt
-            local j = mq.TLO.SpawnCount('xtarhater') or 0
+            local j = mq.TLO.SpawnCount('xtarhater')() or 0
             if j > 0 then
                 local first = mq.TLO.NearestSpawn(1, 'xtarhater')
                 local firstID = first and first.ID() or 0
@@ -918,8 +945,10 @@ function Combat.fight(fromWhere)
     local inRange  = mobDist < combatRadius
                   or (campToMA <= cr and maToTgt <= cr)
 
-    -- ─── Main engage block: not corpse, HP ≤ assistAt, in range ───────────────
-    if spType:lower() ~= 'corpse' and mobPct <= _state.combat.assistAt and inRange then
+    -- ─── Main engage block: not corpse, HP ≤ assistAt (MA always engages), in range ──
+    if spType:lower() ~= 'corpse'
+       and (_state.session.iAmMA or mobPct <= _state.combat.assistAt)
+       and inRange then
 
         -- CombatStart: announce first attack (mac:1081-1093)
         if not _state.combat.combatStart then
@@ -940,11 +969,15 @@ function Combat.fight(fromWhere)
         end
 
         -- Look level when not underwater (mac:1095)
-        if not mq.TLO.Me.FeetWet() then mq.cmd('/look 0') end
+        if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 
         -- Initiate attack (mac:1097-1127); AutoFireOn treated as always off (deferred)
         if not _state.combat.attacking then
             if _state.combat.meleeOn then
+                if (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                        or mq.TLO.Window('CastingWindow').Open() then
+                    goto skip_first_engage
+                end
                 _state.combat.attacking = true
                 if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
                 -- Taunt for tank/hunter on first engage (mac:1105)
@@ -980,6 +1013,7 @@ function Combat.fight(fromWhere)
                 end
             end
         end
+        ::skip_first_engage::
 
         -- Enable mez-mob scan for tank roles (mac:1131)
         if role == 'tank' or role == 'pullertank'
@@ -994,6 +1028,13 @@ function Combat.fight(fromWhere)
                 _state.combat.eventFlag = false
                 mq.doevents()
             until not _state.combat.eventFlag
+
+            -- Pause all commands while player or script is casting
+            if (mq.TLO.Me.Casting.ID() or 0) ~= 0
+                    or mq.TLO.Window('CastingWindow').Open() then
+                mq.delay(50)
+                goto continue_fight
+            end
 
             -- Burn if flagged (mac:1139-1141)
             if _state.combat.burnOn and _state.combat.burnID ~= 0 then
@@ -1579,7 +1620,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
             local sickBuff  = mq.TLO.Me.Buff('Resurrection Sickness')
             local hasSick   = sickBuff and (sickBuff.ID() or 0) ~= 0
             local myName    = mq.TLO.Me.CleanName() or ''
-            local corpseCount = mq.TLO.SpawnCount('pccorpse ' .. myName) or 0
+            local corpseCount = mq.TLO.SpawnCount('pccorpse ' .. myName)() or 0
             if hasSick or corpseCount == 0 then
                 _state.session.iAmDead = false
             end
@@ -1649,12 +1690,12 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                         local campDist = dist2D(_state.movement.campY, _state.movement.campX, meY, meX)
                         local cnt
                         if campDist > md then
-                            cnt = mq.TLO.SpawnCount('xtarhater radius ' .. md .. ' zradius 50') or 0
+                            cnt = mq.TLO.SpawnCount('xtarhater radius ' .. md .. ' zradius 50')() or 0
                         else
                             local cY = _state.movement.campY
                             local cX = _state.movement.campX
                             cnt = mq.TLO.SpawnCount('xtarhater loc ' .. cX .. ' ' .. cY
-                                                   .. ' radius ' .. md .. ' zradius 50') or 0
+                                                   .. ' radius ' .. md .. ' zradius 50')() or 0
                         end
                         _state.combat.mobCount = cnt
 
