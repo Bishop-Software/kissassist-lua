@@ -13,6 +13,7 @@ local Bard     = require('modules.bard')
 local Movement = require('modules.movement')
 local Pull     = require('modules.pull')
 local Loot     = require('modules.loot')
+local Comms    = require('modules.comms')
 
 local VERSION = '1.0.0'
 
@@ -26,6 +27,21 @@ Utils.init(State)
 Config.parseArgs(State, args)
 
 printf('\agKissAssist \aw%s starting... Role: \at%s', VERSION, State.session.role)
+
+-- Mirrors Sub AssignMainAssist (kissassist.mac): tank roles are their own MA.
+-- Must run before Config.load so mainAssist is set when Combat.init reads it.
+do
+    local TANK_ROLES = {tank=true, pullertank=true, pettank=true, pullerpettank=true, hunterpettank=true}
+    local myName = mq.TLO.Me.CleanName() or ''
+    if TANK_ROLES[State.session.role] then
+        State.session.iAmMA = true
+        if State.session.mainAssist == '' then
+            State.session.mainAssist = myName
+        end
+    else
+        State.session.iAmMA = (State.session.mainAssist:lower() == myName:lower())
+    end
+end
 
 -- Seed camp location and runtime identity from live TLO
 State.movement.campX   = mq.TLO.Me.X()
@@ -67,28 +83,47 @@ Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement)
-Binds.register(State, Utils, Buffs, Loot)
 Cast.init(State, Utils)
 Heal.init(State, Utils, Cast)
 Movement.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard)
-Buffs.init(State, Utils, Cast, Heal)
+Comms.init(State, Utils)
+Buffs.init(State, Utils, Cast, Heal, Comms)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
+Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
 
--- Main loop — mq.delay() processes events internally in MQ2Lua
+-- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
+-- Verified against .mac source. Two intentional Lua additions: Comms.tick(), mq.delay(50).
+-- Divergence from plan note: Buffs/Healing order was already correct; plan comment was stale.
 while not State.terminate do
+    -- Phase 1: events
     mq.doevents()
+    -- Phase 2: combat (first pass — mac:MainLoop1)
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    -- Phase 3: heal / cure / rez
+    Heal.writeDebuffs()
+    Heal.checkCures()
+    Heal.checkHealth('MainLoop')
+    -- Phase 4: movement
+    if not State.combat.combatStart and State.movement.returnToCamp then
+        Movement.doWeMove(0, 'mainloop')
+    end
+    if State.session.chaseAssist then Movement.doWeChase() end
+    -- Phase 5: pet
+    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
+    if State.pet.on then Buffs.checkPetBuffs() end
+    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    -- Phase 6: buffs
     if not State.combat.combatStart and not State.session.danNetOn then
         Buffs.writeBuffs()
         Buffs.writeBuffsPet()
@@ -99,19 +134,11 @@ while not State.terminate do
         State.buffs.forceBuffs = false
     end
     if State.buffs.kaBegActive then Buffs.checkBegforBuffs() end
-    if State.pet.on then Buffs.checkPetBuffs() end
-    if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
-    if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
-    Heal.writeDebuffs()
-    Heal.checkHealth('MainLoop')
-    Heal.checkCures()
-    Heal.doWeMed()
+    -- Phase 7: bard
     if State.session.iAmABard then Bard.doBardStuff() end
-    if not State.combat.combatStart and State.movement.returnToCamp then
-        Movement.doWeMove(0, 'mainloop')
-    end
-    if State.session.chaseAssist then Movement.doWeChase() end
-    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
+    -- Phase 8: med (only out of combat — mac:409-410)
+    Heal.doWeMed()
+    -- Phase 9: pull
     if PULLER_ROLES[State.session.role] then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
@@ -119,6 +146,16 @@ while not State.terminate do
             State.pull.mob = 0
         end
     end
+    -- Phase 10: combat (second pass — mac:MainLoop2, 200ms wait catches post-buff aggro)
+    if State.combat.dpsOn or State.combat.meleeOn then
+        Combat.checkForCombat(0, 'main2', 200)
+    else
+        Combat.checkForCombat(1, 'main3', 0)
+    end
+    -- Phase 11: loot
+    if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
+    -- Phase 12: comms (Lua addition — no .mac equivalent)
+    Comms.tick()
     mq.delay(50)
 end
 

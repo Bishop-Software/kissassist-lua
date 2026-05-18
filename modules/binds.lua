@@ -9,7 +9,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
-local state, utils, _buffs, _loot
+local state, utils, _buffs, _loot, _cast, _combat, _config, _comms
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -136,29 +136,77 @@ end
 local function onSwitch(_lockOnFlag, newTargetID)
     if state.session.iAmMA then return end
     state.combat.calledTargetID = tonumber(newTargetID) or 0
-    printf('\aw>> Switch target called.')
-    -- CombatReset + Assist in M4 (combat.lua)
+    _combat.combatReset('switch', 'switchnow')
+    printf('\aw>> Switching to target ID: %d', state.combat.calledTargetID)
 end
 
 local function onSwitchMA(newMA, _newRole, _doWhat)
     if not newMA or newMA == '' then return end
-    printf('\aw>> SwitchMA: %s — full logic in M4 (combat.lua)', newMA)
-    -- MA reassign + CombatReset in M4
+    state.session.mainAssist = newMA
+    state.session.iAmMA = (newMA:lower() == (mq.TLO.Me.CleanName() or ''):lower())
+    state.combat.calledTargetID = 0
+    _combat.combatReset('switchma', 'switchma')
+    printf('\awMain Assist changed to \at%s\aw (IAmMA=%s)', newMA, tostring(state.session.iAmMA))
 end
 
-local function onKissCast(castWhat, _whatID, _forceInterrupt)
-    if not castWhat or castWhat == '' then return end
-    printf('\aw>> KissCast: %s — M3 (cast.lua)', castWhat)
-    -- CastWhat dispatch in M3
+local function onKissCast(castWhat, whatID, forceInterrupt)
+    if not castWhat or castWhat == '' then
+        printf('\ay/kisscast <spellname>')
+        return
+    end
+    _cast.castWhat(castWhat, tonumber(whatID) or 0, forceInterrupt)
 end
 
-local function onToggleVariable(cmd, val, _extra)
-    printf('\aw>> ToggleVariable %s=%s — domain module for this var', tostring(cmd), tostring(val))
-    -- Generic var toggle implemented per-module as each milestone adds the var
+-- Shared sub-table list used by changevarint and togglevariable to search state.
+local function stateSubtables()
+    return {
+        state.session, state.combat, state.cast, state.pull,
+        state.movement, state.heal, state.buffs, state.pet,
+        state.loot, state.dps, state.misc, state.bard, state.mez,
+    }
 end
 
-local function onChangeVarInt(_section, _name, _var, _val)
-    printf('\aw>> ChangeVarInt — M10 (config.lua)')
+local function onToggleVariable(varName, _val, _extra)
+    if not varName or varName == '' then
+        printf('\ay/togglevariable <varName>')
+        return
+    end
+    for _, tbl in ipairs(stateSubtables()) do
+        if tbl[varName] ~= nil then
+            local cur = tbl[varName]
+            if type(cur) == 'boolean' then
+                tbl[varName] = not cur
+                printf('\ay%s = \at%s', varName, tostring(tbl[varName]))
+            elseif type(cur) == 'number' then
+                tbl[varName] = cur == 0 and 1 or 0
+                printf('\ay%s = \at%d', varName, tbl[varName])
+            else
+                printf('\aytogglervariable: %s is not toggleable (type: %s)', varName, type(cur))
+            end
+            return
+        end
+    end
+    printf('\aytogglesvariable: unknown variable \at%s', varName)
+end
+
+local function onChangeVarInt(varName, value, _c, _d)
+    if not varName or varName == '' then
+        printf('\ay/changevarint <varName> <value>')
+        return
+    end
+    local n = tonumber(value)
+    if not n then
+        printf('\aychangevarint: value must be a number, got: %s', tostring(value))
+        return
+    end
+    for _, tbl in ipairs(stateSubtables()) do
+        if tbl[varName] ~= nil then
+            tbl[varName] = n
+            printf('\ay%s = \at%d', varName, n)
+            return
+        end
+    end
+    printf('\aychangevarint: unknown variable \at%s', varName)
 end
 
 -- ─── Movement / camp ──────────────────────────────────────────────────────────
@@ -171,17 +219,34 @@ local function onMakeCampHere()
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
-    -- Cross-char broadcast in M9 (comms.lua)
+    if _comms then
+        _comms.broadcast('CAMP', {
+            x    = state.movement.campX,
+            y    = state.movement.campY,
+            z    = state.movement.campZ,
+            zone = state.movement.campZone,
+        })
+    end
 end
 
 local function onStayHere()
-    printf('\ay>> StayHere — cross-char broadcast in M9 (comms.lua)')
-    -- /dgge /waithere
+    state.movement.returnToCamp = true
+    state.session.chaseAssist   = false
+    printf('\ay>> StayHere — camp mode on.')
+    if _comms then _comms.broadcast('STAY', {}) end
+end
+
+local function onCampOff()
+    state.movement.returnToCamp = false
+    printf('\ay>> Camp mode off.')
 end
 
 local function onChaseMe()
-    printf('\ay>> ChaseMe %s — cross-char broadcast in M9 (comms.lua)', mq.TLO.Me.CleanName())
-    -- /dgge /chase on Me.CleanName
+    local myName = mq.TLO.Me.CleanName() or ''
+    state.movement.whoToChase  = myName
+    state.session.chaseAssist  = true
+    printf('\ay>> ChaseMe %s', myName)
+    if _comms then _comms.broadcast('CHASE', { who = myName }) end
 end
 
 -- Mirrors Bind_TrackMeDown (kissassist.mac). Sets chase target; no arg toggles off.
@@ -230,12 +295,9 @@ local function onBuffGroup(_flag)
 end
 
 local function onCampfire()
-    if not state.misc.campfireOn then
-        printf('\ay>> Campfire disabled (campfireOn=false).')
-        return
-    end
-    printf('\ay>> Campfire placement — M6/misc')
-    -- Fellowship window UI interaction in M6
+    state.misc.campfireOn = true
+    mq.cmd('/usefinditem Fellowship Campfire')
+    printf('\ay>> Campfire placed at %.1f, %.1f', state.movement.campY, state.movement.campX)
 end
 
 local function onTbManager(action, spell)
@@ -396,7 +458,23 @@ local function onKissEdit()
 end
 
 local function onKissCheck()
-    printf('>> KissCheck (INI scan) — M10 (config.lua)')
+    printf('----------- KissAssist Config Check -----------')
+    printf('Role: \at%-12s\aw  MA: \at%-20s\aw  AssistAt: \at%d%%',
+        state.session.role, state.session.mainAssist, state.session.assistAt)
+    printf('IAmMA: \at%-5s\aw  IAmBard: \at%s',
+        tostring(state.session.iAmMA), tostring(state.session.iAmABard))
+    printf('HealsOn: \at%-2s\aw  CuresOn: \at%-2s\aw  BuffsOn: \at%s',
+        tostring(state.heal.healsOn), tostring(state.heal.curesOn), tostring(state.buffs.buffsOn))
+    printf('DPSOn:   \at%-5s\aw  MeleeOn: \at%s',
+        tostring(state.combat.dpsOn), tostring(state.combat.meleeOn))
+    printf('PetOn:   \at%-5s\aw  LootOn:  \at%s',
+        tostring(state.pet.on), tostring(state.loot.on))
+    printf('Camp: \at%.1f, %.1f\aw  ReturnToCamp: \at%s',
+        state.movement.campY, state.movement.campX, tostring(state.movement.returnToCamp))
+    printf('Chase: \at%-5s\aw  ChaseTarget: \at%s',
+        tostring(state.session.chaseAssist), state.movement.whoToChase)
+    printf('INI: \at%s', state.session.iniFileName)
+    printf('-----------------------------------------------')
 end
 
 local function onKaSettings(_cmd1, _cmd2, _skipIni)
@@ -404,7 +482,8 @@ local function onKaSettings(_cmd1, _cmd2, _skipIni)
 end
 
 local function onWriteSpells(_quiet)
-    printf('>> WriteMySpells — M10 (config.lua)')
+    _config.writeSpells(state)
+    if not _quiet then printf('\aySpell set written to config.') end
 end
 
 -- Mirrors Bind_MemMySpells (kissassist.mac:14131-14232).
@@ -493,16 +572,38 @@ local function onMemMySpells(_charName, p_spellSet)
     end
 end
 
-local function onIniWrite(_section, _e1, _e2, _e3, _e4, _e5, _e6, _e7, _e8)
-    printf('>> IniWrite — M10 (config.lua)')
+local function onIniWrite()
+    _config.save()
+    printf('\ayConfig flushed to pickle.')
 end
 
-local function onParse(_timeToParse)
-    printf('>> Parse — M10 (dps parsing)')
+local function onParse(expr, p2, p3, p4, p5, p6, p7, p8)
+    local parts = {}
+    for _, v in ipairs({expr, p2, p3, p4, p5, p6, p7, p8}) do
+        if v and v ~= '' then parts[#parts+1] = v end
+    end
+    local exprStr = table.concat(parts, ' ')
+    if exprStr == '' then
+        printf('\ay/parse <expression>')
+        return
+    end
+    mq.cmdf('/parse %s', exprStr)
 end
 
-local function onMyCmds(_cmd, _p1, _p2, _p3)
-    printf('>> MyCmds — M4+ (custom command pass-through)')
+local function onMyCmds(cmd, p1, p2, p3)
+    local myCmd = state.misc.myCmd or ''
+    if cmd and cmd ~= '' then
+        local parts = {cmd}
+        for _, v in ipairs({p1, p2, p3}) do
+            if v and v ~= '' then parts[#parts+1] = v end
+        end
+        myCmd = table.concat(parts, ' ')
+    end
+    if myCmd == '' then
+        printf('\ay/mycmd: no command set (configure General.MyCmd in config)')
+        return
+    end
+    mq.cmd(myCmd)
 end
 
 -- ─── Loot ─────────────────────────────────────────────────────────────────────
@@ -532,11 +633,15 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, u, b, l)
-    state  = s
-    utils  = u
-    _buffs = b
-    _loot  = l
+function Binds.register(s, u, b, l, cast, combat, config, comms)
+    state   = s
+    utils   = u
+    _buffs  = b
+    _loot   = l
+    _cast   = cast
+    _combat = combat
+    _config = config
+    _comms  = comms
 
     -- Debug / utility
     bind('/debug',          onDebug)
@@ -563,6 +668,7 @@ function Binds.register(s, u, b, l)
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)
     bind('/stayhere',       onStayHere)
+    bind('/campoff',        onCampOff)
     bind('/chaseme',        onChaseMe)
     bind('/trackmedown',    onTrackMeDown)
     bind('/SetPullArc',     onSetPullArc)

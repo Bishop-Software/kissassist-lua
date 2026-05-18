@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Buffs = {}
-local _state, _utils, _cast, _heal
+local _state, _utils, _cast, _heal, _comms
 
 -- Dual tag set used in buffToCheck resolution and target-type dispatch.
 local DUAL_TAGS = {
@@ -167,37 +167,23 @@ local function cleanBuffsFile()
 end
 
 -- Mirrors Sub WriteBuffs (mac:17072).
--- Writes character's current buff list + metadata to KissAssist_Buffs.ini every 30s OOC.
+-- Broadcasts buff list via actors every 30s OOC so Lua chars sync without the INI file.
+-- When danNetOn=true (mixed Lua/.mac group), also writes KissAssist_Buffs.ini for .mac chars.
 function Buffs.writeBuffs()
     if _state.timers.writeBuffs > os.clock() then return end
     if not _state.misc.redguides then return end
     if (_state.combat.aggroTargetID or '') ~= '' then return end
-    if _state.session.danNetOn then return end
+    -- danNetOn guard removed: actors broadcast replaces INI for all-Lua groups;
+    -- INI write is gated on danNetOn below for the mixed migration window.
     if mq.TLO.EverQuest.GameState() ~= 'INGAME' then return end
 
     -- blockedBuffsCount: state.lua defaults to 30 (emu); live servers use 40 (mac:17083-17087)
-    -- Dynamic build detection deferred — override via state.buffs.blockedBuffsCount if needed
-
-    cleanBuffsFile()
 
     local id   = tostring(mq.TLO.Me.ID() or 0)
-    local t    = os.date('*t')
-    local day  = tostring(t.day)
-    local hour = tostring(t.hour)
-
-    -- Write metadata keys only if absent (mac:17090-17096)
-    if not mq.TLO.Ini(BUFFS_FILE, id, 'Day')()  then mq.cmd(string.format('/ini "%s" %s Day %s',  BUFFS_FILE, id, day))  end
-    if not mq.TLO.Ini(BUFFS_FILE, id, 'Hour')() then mq.cmd(string.format('/ini "%s" %s Hour %s', BUFFS_FILE, id, hour)) end
-    if not mq.TLO.Ini(BUFFS_FILE, id, 'Zone')() then
-        mq.cmd(string.format('/ini "%s" %s Zone %s', BUFFS_FILE, id, tostring(mq.TLO.Zone.ID() or 0)))
-    end
-    if not mq.TLO.Ini(BUFFS_FILE, id, 'Buffs')()        then mq.cmd(string.format('/ini "%s" %s Buffs ""',        BUFFS_FILE, id)) end
-    if not mq.TLO.Ini(BUFFS_FILE, id, 'Blockedbuffs')() then mq.cmd(string.format('/ini "%s" %s Blockedbuffs ""', BUFFS_FILE, id)) end
-    mq.cmd(string.format('/ini "%s" %s AmILooting 0', BUFFS_FILE, id))  -- LootOn: M8
-    mq.cmd(string.format('/ini "%s" %s MyRole %s',    BUFFS_FILE, id, _state.session.role))
+    local zone = tostring(mq.TLO.Zone.ID() or 0)
 
     -- Collect buff list: slots 1..41, strip ':Permanent' suffix (mac:17098-17105)
-    local bufflist = ''
+    local bufflist  = ''
     local buffCount = 0
     for i = 1, 41 do
         local name = mq.TLO.Me.Buff(i).Name() or ''
@@ -208,10 +194,9 @@ function Buffs.writeBuffs()
             buffCount = buffCount + 1
         end
     end
-    mq.cmd(string.format('/ini "%s" %s Buffs "%s"', BUFFS_FILE, id, bufflist))
 
     -- Collect blocked buff list (mac:17109-17115)
-    local blockedlist = ''
+    local blockedlist  = ''
     local blockedCount = 0
     for k = 1, _state.buffs.blockedBuffsCount do
         local name = mq.TLO.Me.BlockedBuff(k).Name() or ''
@@ -220,8 +205,37 @@ function Buffs.writeBuffs()
             blockedCount = blockedCount + 1
         end
     end
-    if blockedlist ~= '' then
-        mq.cmd(string.format('/ini "%s" %s Blockedbuffs "%s"', BUFFS_FILE, id, blockedlist))
+
+    -- Actors broadcast: received by other Lua chars and stored in state.buffs.remote[charName]
+    if _comms then
+        _comms.broadcast('BUFFS', {
+            charName    = mq.TLO.Me.CleanName() or '',
+            role        = _state.session.role,
+            buffList    = bufflist,
+            blockedList = blockedlist,
+            zone        = zone,
+        })
+    end
+
+    -- INI write: only when DanNet shim is active so .mac chars can still read it
+    if _state.session.danNetOn then
+        cleanBuffsFile()
+        local t    = os.date('*t')
+        local day  = tostring(t.day)
+        local hour = tostring(t.hour)
+        if not mq.TLO.Ini(BUFFS_FILE, id, 'Day')()  then mq.cmd(string.format('/ini "%s" %s Day %s',  BUFFS_FILE, id, day))  end
+        if not mq.TLO.Ini(BUFFS_FILE, id, 'Hour')() then mq.cmd(string.format('/ini "%s" %s Hour %s', BUFFS_FILE, id, hour)) end
+        if not mq.TLO.Ini(BUFFS_FILE, id, 'Zone')() then
+            mq.cmd(string.format('/ini "%s" %s Zone %s', BUFFS_FILE, id, zone))
+        end
+        if not mq.TLO.Ini(BUFFS_FILE, id, 'Buffs')()        then mq.cmd(string.format('/ini "%s" %s Buffs ""',        BUFFS_FILE, id)) end
+        if not mq.TLO.Ini(BUFFS_FILE, id, 'Blockedbuffs')() then mq.cmd(string.format('/ini "%s" %s Blockedbuffs ""', BUFFS_FILE, id)) end
+        mq.cmd(string.format('/ini "%s" %s AmILooting 0', BUFFS_FILE, id))
+        mq.cmd(string.format('/ini "%s" %s MyRole %s',    BUFFS_FILE, id, _state.session.role))
+        mq.cmd(string.format('/ini "%s" %s Buffs "%s"', BUFFS_FILE, id, bufflist))
+        if blockedlist ~= '' then
+            mq.cmd(string.format('/ini "%s" %s Blockedbuffs "%s"', BUFFS_FILE, id, blockedlist))
+        end
     end
 
     _state.timers.writeBuffs = os.clock() + 30
@@ -355,6 +369,7 @@ function Buffs.checkBuffs(forceGroup)
     if not _state.buffs.buffsOn then return end
     if _state.misc.iAmDead then return end
     if mq.TLO.Me.Hovering() then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
     if mq.TLO.Me.Invis() and mq.TLO.Me.Class.Name() ~= 'Rogue' then return end
     if _state.movement.chaseAssist and mq.TLO.Me.Moving() then return end
     if mq.TLO.Me.Moving() and _state.movement.whoToChase == mq.TLO.Me.Name() then return end
@@ -1002,11 +1017,12 @@ end
 
 -- Mirrors Bind_Settings buff loading (kissassist.mac:14657-14671) and
 -- Pet buff loading from [Pet] INI section.
-function Buffs.init(state, utils, cast, heal)
+function Buffs.init(state, utils, cast, heal, comms)
     _state = state
     _utils = utils
     _cast  = cast
     _heal  = heal
+    _comms = comms  -- nil when Comms not yet init'd; writeBuffs guards with `if _comms`
 
     -- Cross-char comms flag (guards all write functions)
     _state.session.danNetOn = Config.get('General', 'DanNetOn', '0') == '1'

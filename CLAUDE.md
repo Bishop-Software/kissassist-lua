@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the Macro
 
 Start from in-game EverQuest chat:
+
 ```
 /mac kissassist assist TankName 95
 /mac kissassist assist                  (target the main tank first)
@@ -103,6 +104,7 @@ AssignMainAssist
 ## Configuration
 
 Character-specific INI files are auto-generated on first run:
+
 - `KissAssist_ServerName_ToonName_ClassShort.ini` (preferred)
 - `KissAssist_ToonName_ClassShort.ini` (fallback)
 
@@ -112,26 +114,27 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 
 ## Plugin Dependencies
 
-**Required** (validated at startup by `InitPlugins`):
-- `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`
+**Required** (validated at startup by `Config.checkPlugins()`):
+
+- `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2AutoLoot`
 - Extended Target window with Auto Hater x-target slots configured in-game
 
 **Required for Bard only:**
-- `MQ2Medley` — named medley sets replace MQ2Twist for song management (see `design/mq2twist_vs_mq2medley.md`)
+
+- `MQ2Medley` — named medley sets replace MQ2Twist for song management
 
 **Optional** (conditionally used):
-- `MQ2Cast` — casting management (macro may unload/reload it)
-- `MQ2Melee` — melee auto-attack (macro may unload/reload it)
-- `MQ2DanNet` or `MQ2EQBC` — cross-character messaging (EQBC deprecated in Lua port)
+
+- `MQ2Cast` — casting management
+- `MQ2Melee` — melee auto-attack
+- `MQ2DanNet` — cross-character messaging (DanNet shim active during `.mac`→Lua migration; EQBC deprecated)
 - `MQ2Nav` — navigation mesh pathfinding
 - `MQ2AdvPath` — waypoint-based pathing
-- `MQ2DPSAdv`, `MQ2Map`, `MQ2Notepad`, `MQ2SpawnMaster`, `MQ2Log`
 
 ## Reference
 
-- RedGuides wiki: https://www.redguides.com/wiki/KissAssist
+- RedGuides wiki: <https://www.redguides.com/wiki/KissAssist>
 - Analysis docs in repo: `design/KissAssist_Macro_Analysis_Summary.md`, `design/KissAssist_Macro_Quick_Reference.md`
-- Plugin comparison: `design/mq2twist_vs_mq2medley.md`
 - Lua migration plan: `design/kissassist_lua_migration_plan.md`
 
 ## Lua Port Layout
@@ -139,21 +142,59 @@ Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ni
 Run with: `/lua run kissassist-lua`
 
 ```
-kissassist-lua/     ← repo root (deployed into MQ2's lua/ directory)
-├── init.lua        ← entry point
-└── modules/        ← all domain modules (config, state, combat, etc.)
+kissassist-lua/          ← repo root (deployed into MQ2's lua/ directory)
+├── init.lua             ← entry point: require order, main loop, INI wiring
+└── modules/
+    ├── config.lua       ← INI→pickle migration, Config.load, Config.checkPlugins
+    ├── state.lua        ← all runtime State.* sub-tables (replaces ~1,079 .mac globals)
+    ├── utils.lua        ← debug logging, timer helpers (timerExpired/setTimer)
+    ├── events.lua       ← all 113 mq.event() registrations (cast, combat, zone, pet, bard)
+    ├── binds.lua        ← all 31 mq.bind() slash commands + loot binds (9.4)
+    ├── cast.lua         ← CastWhat dispatcher, CastSpell/AA/Disc/Item/Command, gem memory
+    ├── combat.lua       ← CheckForCombat, Combat rotation, CombatTargetCheck, burn system
+    ├── healing.lua      ← CheckHealth, DoGroupHealStuff, CheckCures, RezCheck
+    ├── buffs.lua        ← CheckBuffs, WriteBuffs, beg-for-buffs, CheckPetBuffs
+    ├── pull.lua         ← FindMobToPull, PullCheck, executePull, CheckRampPets integration
+    ├── movement.lua     ← DoWeMove, DoWeChase, stuck recovery, camp management
+    ├── pet.lua          ← DoPetStuff, petStateCheck, PetToys, CheckRampPets
+    ├── bard.lua         ← DoBardStuff, MQ2Medley context switching (melee/burn/oor sets)
+    └── loot.lua         ← MQ2AutoLoot delegation: Loot.init, sell/deposit/barter helpers
 ```
 
+### Module Dependency Rule
+
+Every module receives `state` and `utils` at `init()` time. No module imports another domain module directly — cross-module communication goes through `State` exclusively (star topology, no circular deps). Selected modules also receive peer references at init (e.g. `Combat.init(state, utils, cast, healing, buffs, bard)`).
+
+### Completed Milestones
+
+| Milestone | PR | What was built |
+| --- | --- | --- |
+| 1 — Foundation | #1 | `init.lua`, `utils.lua`, `state.lua`, `config.lua`, plugin validation, main loop |
+| 2 — Events & Binds | #2 | All 113 events in `events.lua`; all 31 binds in `binds.lua` |
+| 3 — Casting Engine | #3 | `cast.lua`: full `CastWhat` dispatcher, gem memory, cast state machine |
+| 4 — Combat Core | #4 | `combat.lua`: combat detection, melee/spell rotation, burn system |
+| 5 — Healing | #5 | `healing.lua`: heals, cures, rez; wired into combat loop |
+| 6 — Buffs | #6 | `buffs.lua`: self/group buffs, beg-for-buffs, `CheckPetBuffs` |
+| 7 — Pulling & Movement | #7 | `pull.lua`, `movement.lua`: full pull/movement loop, all binds |
+| 8 — Pet & Bard | #8 | `pet.lua`: pet control, rampage-pet gating; `bard.lua`: MQ2Medley switching |
+| 9 — Looting | #9 | `loot.lua`: MQ2AutoLoot delegation, sell/deposit/barter; loot binds |
+
 ## Before spawning any subagent
+
 Only spawn subagents for complex, multistep tasks.
 For simple tasks, handle directly without calling route_task.
 When you do need a subagent:
 Call route_task(task, files, directory) first. Always.
+
 - REUSE → call get_context(agent_id), check stale_files, re-read any that changed
 - CREATE_NEW → check existing_agents in response before spawning
+
 ## For code search
+
 Prefer cocoindex.search() over Grep for semantic/exploratory queries.
 Use Grep only for exact string matches.
+
 ## Memory
+
 claude-mem auto-captures observations. Use search() → get_observations()
 for progressive retrieval (don't load everything).

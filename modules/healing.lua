@@ -149,6 +149,7 @@ end
 -- sentFrom: caller tag ('MainLoop', 'CheckForCombat', etc.)
 function Heal.checkHealth(sentFrom)
     if _state.heal.healsOn == 0 then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
     if _state.heal.medding and not _state.heal.medCombat then return end
 
@@ -301,6 +302,7 @@ end
 -- Called from the main loop out-of-combat (init.lua, Step 5.6).
 function Heal.doWeMed()
     if not _state.heal.medOn then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
     -- Only med in combat if medCombat is on (mac:3838)
     if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then return end
     if mq.TLO.Me.Moving() then return end
@@ -422,6 +424,7 @@ end
 -- Also wires MezBroke timer reset that was deferred from Step 2.2 events.lua.
 function Heal.checkCures()
     if _state.heal.curesOn == 0 then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
     -- mac:12599: return when medding AND medCombat (don't interrupt combat-med for cures)
     if _state.heal.medding and _state.heal.medCombat then return end
