@@ -543,22 +543,28 @@ function Config.load(state)
     _cfg = Config.migrateIni(state)
 end
 
--- Validate required plugins. Mirrors InitPlugins() from kissassist.mac.
+-- Load and validate required plugins.
 local REQUIRED_PLUGINS = {
     'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez', 'MQ2AutoLoot',
 }
 
 function Config.checkPlugins()
-    local missing = {}
+    local failed = {}
     for _, plugin in ipairs(REQUIRED_PLUGINS) do
         if not mq.TLO.Plugin(plugin)() then
-            missing[#missing+1] = plugin
+            printf('\ayKissAssist: loading missing plugin \aw%s', plugin)
+            mq.cmdf('/plugin %s load', plugin)
+            mq.delay(500)
+            if not mq.TLO.Plugin(plugin)() then
+                failed[#failed+1] = plugin
+            end
         end
     end
-    if #missing > 0 then
-        printf('\arKissAssist: missing required plugins: \aw%s', table.concat(missing, ', '))
+    if #failed > 0 then
+        printf('\arKissAssist: failed to load required plugins: \aw%s', table.concat(failed, ', '))
+        return false
     end
-    return #missing == 0
+    return true
 end
 
 return Config

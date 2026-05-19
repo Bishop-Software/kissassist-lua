@@ -100,6 +100,10 @@ local State = {
         debuffAllOn        = 0,
         dboList            = {},   -- per-debuff-slot: string of "|id|id..." already-debuffed mobs
         dboTimer           = {},   -- per-debuff-slot: os.clock() expiry for re-debuff
+        slotTimers         = {},   -- per-DPS-slot os.clock() expiry (0=expired); mac ABTimer/DPSTimer
+        dpsSkip            = 20,  -- stop DPS rotation when mob HP% is at or below this (mac DPSSkip)
+        dpsInterval        = 2,   -- fallback timer (seconds) for zero-duration spells (mac DPSInterval)
+        dpsOnOoc           = false, -- DPSOn==2: run DPS rotation out of combat
     },
 
     cast = {
@@ -123,6 +127,7 @@ local State = {
         reMemMiscSpell   = '',  -- set post-ini: Me.Gem[miscGem].Name
         reMemMiscSpellLW = '',  -- set post-ini: Me.Gem[miscGemLW].Name
         spellReadyL      = false,
+        checkStuckGem    = false,  -- [Spells] CheckStuckGem: verify gem slot before cast
     },
 
     pull = {
