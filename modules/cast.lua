@@ -1004,7 +1004,7 @@ end
 
 -- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
 -- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
--- Deferred: WeaveArray, Feign-death sequence (Step 13.3).
+-- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
@@ -1185,6 +1185,29 @@ function Cast.combatCast()
                     expiry = os.clock() + state.combat.dpsInterval
                 end
                 state.combat.slotTimers[i] = expiry
+            end
+            -- Feign-death sequence (mac:1783-1788; Step 13.3)
+            -- tType 'feign' casts an FD ability on self, waits for aggro to drop, then stands.
+            if tType == 'feign' then
+                local fdClasses = { BST=true, MNK=true, NEC=true, SHD=true }
+                if fdClasses[mq.TLO.Me.Class.ShortName() or ''] then
+                    -- Wait up to 3s for feign state (mac: /delay 30 Me.State==FEIGN)
+                    mq.delay(3000, function()
+                        return mq.TLO.Me.Feigning() or (mq.TLO.Me.Dead() or false)
+                    end)
+                    if not (mq.TLO.Me.Dead() or false) then
+                        -- Override slot timer to 60s: mob needs time to re-path (mac: FDTimer${i} 60s)
+                        state.combat.slotTimers[i] = os.clock() + 60
+                        -- Wait up to 10s for feign to break naturally (mac: /delay 10s Me.State!=FEIGN)
+                        mq.delay(10000, function()
+                            return not mq.TLO.Me.Feigning() or (mq.TLO.Me.Dead() or false)
+                        end)
+                        -- Stand if still feigning and able (mac:1788)
+                        if mq.TLO.Me.Feigning() and not mq.TLO.Me.Sitting() then
+                            mq.cmd('/stand')
+                        end
+                    end
+                end
             end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
