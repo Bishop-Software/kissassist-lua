@@ -1,4 +1,5 @@
-local mq = require('mq')
+local mq     = require('mq')
+local Config = require('modules.config')
 
 local Mez = {}
 local _state, _utils, _cast
@@ -7,6 +8,19 @@ function Mez.init(state, utils, cast)
     _state = state
     _utils = utils
     _cast  = cast
+
+    -- [Mez] INI section — mirrors LoadIni Mez block (kissassist.mac:14861-14874)
+    _state.mez.on               = tonumber(Config.get('Mez', 'MezOn',             '0')) or 0
+    _state.mez.radius           = tonumber(Config.get('Mez', 'MezRadius',         '50')) or 50
+    _state.mez.minLevel         = tonumber(Config.get('Mez', 'MezMinLevel',       '1')) or 1
+    _state.mez.maxLevel         = tonumber(Config.get('Mez', 'MezMaxLevel',       '115')) or 115
+    _state.mez.stopHPs          = tonumber(Config.get('Mez', 'MezStopHPs',        '80')) or 80
+    _state.mez.spell            = Config.get('Mez', 'MezSpell',          '') or ''
+    _state.mez.mezDebuffOnResist = Config.get('Mez', 'MezDebuffOnResist', '0') == '1'
+    _state.mez.mezDebuffSpell   = Config.get('Mez', 'MezDebuffSpell',    '') or ''
+    _state.mez.aeSpell          = Config.get('Mez', 'MezAESpell',        '') or ''
+    -- PetBreakMezSpell lives in [Pet] section (mac:14822)
+    _state.mez.petBreakSpell    = Config.get('Pet', 'PetBreakMezSpell',  '') or ''
 end
 
 -- Scan XTarget haters within MezRadius; populate mezArray, mobCount, mobAECount, aeClosest.
