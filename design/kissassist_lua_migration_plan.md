@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–12
+### Completed — Milestones 1–13
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -68,30 +68,6 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 11 — Condition Evaluation (KConditions) | #11 | `cond.lua` evaluator (`mq.parse`, TARGETCHECK sentinel); `Config.parseCondArray()` strips condNNN suffix; `Cond.eval()` wired into all rotation modules and `CastWhat` condNumber gate; burn condNo/abortFlag; ConOn bind and integration test deferred |
 | 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
-
-### Milestone 13 — Advanced Combat Rotation
-
-**Goal:** Port the remaining `combatCast` features deferred from Milestone 4, plus stuck-gem detection in `castWhat`.
-
-#### Features
-
-- **Per-slot timers** (`ABTimer`, `DPSTimer`, `FDTimer`) — each DPS/ability slot can specify a per-use cooldown; the rotation skips the slot until the timer expires
-- **Advanced rotation modes** — `DPSSkip` (HP% floor stops entire rotation), `DPSOn==2` (out-of-combat rotation), `DAMod` (timer duration modifier on the slot), `DPSInterval` (fallback timer for zero-duration spells)
-- **Feign-death sequence** (`tType=='feign'`) — cast FD, wait up to 3 s for feign state, suppress slot 60 s, wait up to 10 s to break, stand if still feigning
-- **`TargetSwitchingOn`** — after each cast in the rotation, re-check MA's current target; switch assist target if MA changed
-- **Stuck-gem detection** — in `castSpell`, verify `Me.Gem(n).Name()` matches the expected spell; re-mem via `castMemSpell` if mismatched; return `CAST_STUCK_GEM` on second failure
-
-**Implemented:** PR #13
-
-- `state.lua`: `state.combat.slotTimers = {}`, `dpsSkip`, `dpsInterval`, `dpsOnOoc`; `state.cast.checkStuckGem`
-- `cast.lua`: local `castMemSpell` forward-declared; `Cast.init` loads `[Spells] CheckStuckGem`; `setSlotTimer(spellName, tType, daMod)` computes `os.clock()` expiry with `+N`/`-N`/fixed DAMod arithmetic; per-slot timer skip guard at top of `combatCast` slot loop; `CAST_SUCCESS` block sets timer with `dpsInterval` fallback; feign-death sequence in `CAST_SUCCESS` (`tType=='feign'`, BST/MNK/NEC/SHD only); after-cast `TargetSwitchingOn` retarget check; stuck-gem re-mem block in `castSpell` after gem guard
-- `combat.lua`: `Combat.init` wires `DPSOn` (1/2), `DPSSkip`, `DPSInterval`, `TargetSwitchingOn` from `[Melee]` (not `[General]` as plan stated — corrected from mac source mac:14687); `combatReset` clears `slotTimers`
-- **Plan deviation — DAMod**: plan described DAMod as "skip slot while disc active"; mac source shows it is a timer-duration modifier (`+N`/`-N` seconds, or fixed `N` seconds). Implemented correctly per mac source.
-- **Plan deviation — DPSSkip**: plan described as "skip N ticks"; mac source shows it is an HP% floor that stops the entire rotation pass (`/break` equivalent → `return`). Implemented correctly.
-- **Plan deviation — TargetSwitchingOn INI section**: plan listed `[General]`; mac source (mac:14687) loads from `[Melee]`. Implemented correctly.
-- **Plan deviation — stuck-gem**: plan placed check in `castWhat`; implementation placed in `castSpell` (after gem guard) for cleaner separation. `castWhat` stub comment updated to reference `castSpell`.
-
----
 
 ### Milestone 14 — Debuff Rotation
 
