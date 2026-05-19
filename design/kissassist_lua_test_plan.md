@@ -486,4 +486,52 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
-*Last updated: 2026-05-19. Covers all implemented functionality through Milestone 12. Milestone 13 (Advanced Combat Rotation) test section to be added when M13 is implemented.*
+## Section 13 — Advanced Combat Rotation
+
+### 13.1 — Per-slot timers
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 13.1.1 | Slot fires and is suppressed | DPS slot configured with a duration spell; engage a mob | Spell cast once; slot skipped on subsequent passes until `slotTimers[i]` expires |
+| [ ] | 13.1.2 | Timer cleared on new fight | Kill mob; engage a new mob | `combatReset` zeros all `slotTimers`; slot fires again on first pass |
+| [ ] | 13.1.3 | `once` / `maonce` tType | Set a slot tType to `once` | Slot fires once then suppressed for 300 s (full fight) |
+| [ ] | 13.1.4 | Zero-duration spell uses `DPSInterval` | Configure a slot with an instant AA (no buff duration); set `DPSInterval=3` in `[DPS]` | After cast, `slotTimers[i]` set to `os.clock() + 3`; slot blocked 3 s |
+
+### 13.2 — Advanced rotation modes
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 13.2.1 | `DPSSkip` HP floor | Set `DPSSkip=20` in `[DPS]`; engage mob; burn it below 20% HP | Entire DPS rotation stops (`return`) at ≤ 20% HP; melee continues |
+| [ ] | 13.2.2 | `DPSSkip=0` disables floor | Set `DPSSkip=0` | Rotation fires at any HP%; no floor enforced |
+| [ ] | 13.2.3 | `DPSOn==2` OOC mode | Set `DPSOn=2` in `[DPS]`; stand near a mob out of combat | DPS rotation runs between pulls; `dpsOnOoc` bypasses `dpsAt` HP gate |
+| [ ] | 13.2.4 | `DAMod` shortens timer | Configure slot with `DAMod=-10`; spell has 30 s duration | Timer set to `os.clock() + 20`; slot fires again after 20 s, not 30 |
+| [ ] | 13.2.5 | `DAMod` fixed duration | Configure slot with `DAMod=5` (no sign prefix) | Timer always set to 5 s regardless of spell duration |
+
+### 13.3 — Feign-death sequence
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 13.3.1 | FD cast succeeds — rotation pauses | BST/MNK/NEC/SHD; slot `tType='feign'`; FD lands | Rotation waits up to 3 s for feign state; `slotTimers[i]` set to `os.clock() + 60`; rotation waits up to 10 s to break feign; stands if still feigning |
+| [ ] | 13.3.2 | Character breaks feign early | FD lands; mob walks off; char stands before 10 s | `mq.TLO.Me.Feigning()` returns false; wait loop exits early; rotation resumes |
+| [ ] | 13.3.3 | Non-FD class skips sequence | Non-BST/MNK/NEC/SHD char; slot `tType='feign'` | FD sequence block not entered; timer still set normally from spell duration |
+
+### 13.4 — TargetSwitchingOn mid-rotation retarget
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 13.4.1 | MA retargets mid-rotation | Set `TargetSwitchingOn=1` in `[Melee]`; MA switches target during assist char's DPS rotation | After next cast completes, assist char detects new `GroupAssistTarget.ID()`; updates `myTargetID`; rotation exits to retarget |
+| [ ] | 13.4.2 | `TargetSwitchingOn=0` — no retarget | Set `TargetSwitchingOn=0` | MA target change ignored mid-rotation; assist char finishes rotation on original target |
+| [ ] | 13.4.3 | MA char skips retarget-on-switch | Set `TargetSwitchingOn=1`; running as MA role | MA always returns (not `tcnc`); no erroneous re-engage loop |
+
+### 13.5 — Stuck-gem detection
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 13.5.1 | Gem slot correct — casts normally | `CheckStuckGem=1`; spell properly memed in expected slot | No re-mem triggered; spell cast proceeds normally |
+| [ ] | 13.5.2 | Gem slot has wrong spell — re-mems | Manually `/memspell` a different spell over expected slot; trigger rotation | Yellow warning printed; `castMemSpell` called; spell re-memed; cast proceeds |
+| [ ] | 13.5.3 | Re-mem fails — returns stuck gem | Slot wrong and `castMemSpell` unable to correct (e.g. spell not in spellbook) | Red error printed; `castSpell` returns `CAST_STUCK_GEM`; slot skipped |
+| [ ] | 13.5.4 | `CheckStuckGem=0` — check skipped | Set `CheckStuckGem=0` in `[Spells]` | Stuck-gem block not entered; no re-mem attempted regardless of gem state |
+
+---
+
+*Last updated: 2026-05-19. Covers all implemented functionality through Milestone 13.*
