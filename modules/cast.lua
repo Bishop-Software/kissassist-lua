@@ -1213,6 +1213,23 @@ function Cast.combatCast()
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
         end
 
+        -- After-cast target-switch check (mac:1860-1867; Step 13.4)
+        -- Re-query the group assist target; if MA switched mobs mid-rotation, update and restart.
+        if state.combat.targetSwitchingOn then
+            local newID = mq.TLO.Me.GroupAssistTarget.ID() or 0
+            if (newID ~= 0 and newID ~= myID) or myID == 0 then
+                if newID ~= 0 then
+                    state.combat.myTargetID   = newID
+                    state.combat.myTargetName = mq.TLO.Spawn('id ' .. newID).CleanName() or ''
+                end
+                if state.session.iAmMA then
+                    return          -- MA: outer fight loop restarts combatCast from slot 1
+                elseif state.combat.meleeOn and not mq.TLO.Me.Combat() then
+                    return 'tcnc'   -- non-MA: out of combat, signal restart (mac:1865-1867)
+                end
+            end
+        end
+
         ::next_dps::
     end
 
