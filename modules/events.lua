@@ -219,11 +219,24 @@ local function onTooFar()
     if movement then movement.doWeMove(1, 'tooFar') end
 end
 
-local function onMezBroke(_, mob, breaker)
-    utils.debug('mez', 'MezBroke: ' .. tostring(mob) .. ' by ' .. tostring(breaker))
+local function onMezBroke(_, mob, _breaker)
+    utils.debug('mez', 'MezBroke: %s by %s', tostring(mob), tostring(_breaker))
     state.combat.eventFlag = true
     state.mez.broke        = true
-    -- Mez timer reset and target reassign in M5 (healing.lua)
+    if state.mez.on == 0 then return end
+    -- Clear the per-slot timer so the awoken mob can be immediately re-mezzed (mac:8166,8180)
+    local arr = state.arrays and state.arrays.mezArray
+    if arr then
+        local myID = tostring(state.combat.myTargetID or 0)
+        for i = 1, 50 do
+            local entry = arr[i]
+            if entry and entry[3] ~= 'NULL' and entry[3] == mob
+               and entry[1] ~= 'NULL' and entry[1] ~= myID then
+                state.timers['mezTimer' .. i] = 0
+                utils.debug('mez', 'MezBroke: cleared slot %d timer for %s', i, mob)
+            end
+        end
+    end
 end
 
 local function onMissing()
