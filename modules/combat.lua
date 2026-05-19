@@ -1480,6 +1480,9 @@ function Combat.combatReset(sFlag, calledFrom)
         -- PetHold re-enable (deferred — pet module Step M6)
     end
 
+    -- Clear per-slot DPS timers on fight end (mac CreateTimersDPS; Step 13.1)
+    for k in pairs(_state.combat.slotTimers) do _state.combat.slotTimers[k] = 0 end
+
     -- Combat flags (mac:2280–2282)
     _state.combat.attacking  = false
     _state.combat.burnActive = false

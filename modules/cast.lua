@@ -957,10 +957,37 @@ end
 -- ─── Combat Cast (DPS Rotation) ───────────────────────────────────────────────
 
 -- Mirrors CombatCast (kissassist.mac:1616).
+-- Compute per-slot timer expiry after a successful cast (mac ABTimer/DPSTimer logic).
+-- Returns an os.clock() timestamp; 0 means no timer applies.
+local function setSlotTimer(spellName, tType)
+    -- 'once' / 'maonce' target types: suppress for 5 minutes (mac:1778-1779)
+    if tType == 'once' or tType == 'maonce' then
+        return os.clock() + 300
+    end
+    -- Item: use item spell duration (mac:1781-1782)
+    local item = mq.TLO.FindItem('=' .. spellName)
+    if item and (item.ID() or 0) ~= 0 then
+        local dur = item.Spell.Duration.TotalSeconds() or 0
+        return dur > 0 and os.clock() + dur or 0
+    end
+    -- AA: use AA spell duration, then trigger duration (mac:1817-1830)
+    local aa = mq.TLO.Me.AltAbility(spellName)
+    if aa and (aa.ID() or 0) ~= 0 then
+        ---@diagnostic disable-next-line: undefined-field
+        local dur = aa.Spell.MyDuration.TotalSeconds() or 0
+        ---@diagnostic disable-next-line: undefined-field
+        if dur == 0 then dur = aa.Spell.Trigger.MyDuration.TotalSeconds() or 0 end
+        return dur > 0 and os.clock() + dur or 0
+    end
+    -- Spell (book or disc): use MyDuration (mac:1790-1814; DAMod deferred to Step 13.2)
+    local dur = mq.TLO.Spell(spellName).MyDuration.TotalSeconds() or 0
+    return dur > 0 and os.clock() + dur or 0
+end
+
 -- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
 -- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
--- Deferred: per-slot timers (ABTimer/DPSTimer/FDTimer), ConOn/CondNo, WeaveArray,
---           WriteDebuffs, Feign-death sequence, DPSSkip min-HP gate, DPSInterval, DPSOn==2.
+-- Deferred: WeaveArray, Feign-death sequence (Step 13.3), DPSSkip min-HP gate,
+--           DPSInterval (Step 13.2), DPSOn==2 (Step 13.2).
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
@@ -999,6 +1026,9 @@ function Cast.combatCast()
         if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_dps end
         local entry = slot.name or ''
         if entry == 'null' or entry == '' then break end
+
+        -- Skip slot if per-slot cooldown timer has not expired (mac ABTimer/DPSTimer; Step 13.1)
+        if os.clock() < (state.combat.slotTimers[i] or 0) then goto next_dps end
 
         -- Skip weave/mash/ambush-tagged entries (handled by other subsystems)
         if entry:find('|weave', 1, true) or entry:find('|mash', 1, true)
@@ -1118,7 +1148,9 @@ function Cast.combatCast()
                 printf('** %s on >> %s <<', spellName,
                     mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
             end
-            -- Per-slot timers (ABTimer/DPSTimer/FDTimer/Feign) deferred → Step 4.8
+            if not isCmd then
+                state.combat.slotTimers[i] = setSlotTimer(spellName, tType)
+            end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
         end

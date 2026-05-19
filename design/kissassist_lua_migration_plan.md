@@ -216,19 +216,6 @@ Create `modules/debuff.lua` with:
 
 ## Architectural Decisions (all resolved before Milestone 1)
 
-### 6. Bard Song Plugin — DECIDED: MQ2Medley (replaces MQ2Twist)
-
-`bard.lua` uses MQ2Medley instead of MQ2Twist. Key rules:
-
-- Song sets are defined as named medleys in the character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`)
-- `bard.lua` calls `/medley <setname>` on context transitions — no gem-list management in Lua code
-- Event-driven one-shot songs use `/medley queue <song>` without tearing down the active medley
-- Query `Medley.Active` and `Medley.TTQE` for state; do not use Twist TLO members
-- `MQ2Medley` is required for Bard roles only; no-op for all other classes
-- `MQ2Twist` is removed from the required plugin list entirely
-
-**Bard INI migration:** `[MQ2Twist]` sections are not forward-compatible. Bard users must define `[MQ2Medley-*]` sections — one-time manual migration.
-
 ---
 
 Decisions 1–5 were set before Milestone 1:
@@ -332,6 +319,19 @@ Migrate one character at a time while the rest stay on `.mac`. Suggested order b
 | 2 | Pet class | Adds pet system validation in low-stakes role |
 | 3 | Puller | Validates pull system in isolation |
 | 4 | Healer | Highest stakes — validate last when everything else is proven |
+
+### 6. Bard Song Plugin — DECIDED: MQ2Medley (replaces MQ2Twist)
+
+`bard.lua` uses MQ2Medley instead of MQ2Twist. Key rules:
+
+- Song sets are defined as named medleys in the character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`)
+- `bard.lua` calls `/medley <setname>` on context transitions — no gem-list management in Lua code
+- Event-driven one-shot songs use `/medley queue <song>` without tearing down the active medley
+- Query `Medley.Active` and `Medley.TTQE` for state; do not use Twist TLO members
+- `MQ2Medley` is required for Bard roles only; no-op for all other classes
+- `MQ2Twist` is removed from the required plugin list entirely
+
+**Bard INI migration:** `[MQ2Twist]` sections are not forward-compatible. Bard users must define `[MQ2Medley-*]` sections — one-time manual migration.
 
 **Rules:**
 

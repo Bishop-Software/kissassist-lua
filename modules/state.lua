@@ -100,6 +100,7 @@ local State = {
         debuffAllOn        = 0,
         dboList            = {},   -- per-debuff-slot: string of "|id|id..." already-debuffed mobs
         dboTimer           = {},   -- per-debuff-slot: os.clock() expiry for re-debuff
+        slotTimers         = {},   -- per-DPS-slot os.clock() expiry (0=expired); mac ABTimer/DPSTimer
     },
 
     cast = {
