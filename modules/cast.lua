@@ -958,16 +958,33 @@ end
 
 -- Mirrors CombatCast (kissassist.mac:1616).
 -- Compute per-slot timer expiry after a successful cast (mac ABTimer/DPSTimer logic).
+-- daMod: optional modifier string from INI entry (e.g. '+0', '-30', '300').
+--   '+N'/'-N' → timer = baseDuration + N seconds
+--   plain 'N'  → timer = N seconds (fixed; mac:1807-1810)
 -- Returns an os.clock() timestamp; 0 means no timer applies.
-local function setSlotTimer(spellName, tType)
+local function setSlotTimer(spellName, tType, daMod)
     -- 'once' / 'maonce' target types: suppress for 5 minutes (mac:1778-1779)
     if tType == 'once' or tType == 'maonce' then
         return os.clock() + 300
     end
+
+    -- Apply DAMod to a base duration (seconds). Returns adjusted seconds, or 0 if no timer.
+    local function applyMod(baseDur)
+        if not daMod or daMod == '' or daMod == '+0' then
+            return baseDur > 0 and baseDur or 0
+        end
+        local first = daMod:sub(1, 1)
+        if first == '+' or first == '-' then
+            return math.max(0, baseDur + (tonumber(daMod) or 0))
+        else
+            return tonumber(daMod) or 0   -- fixed-second override
+        end
+    end
+
     -- Item: use item spell duration (mac:1781-1782)
     local item = mq.TLO.FindItem('=' .. spellName)
     if item and (item.ID() or 0) ~= 0 then
-        local dur = item.Spell.Duration.TotalSeconds() or 0
+        local dur = applyMod(item.Spell.Duration.TotalSeconds() or 0)
         return dur > 0 and os.clock() + dur or 0
     end
     -- AA: use AA spell duration, then trigger duration (mac:1817-1830)
@@ -977,17 +994,17 @@ local function setSlotTimer(spellName, tType)
         local dur = aa.Spell.MyDuration.TotalSeconds() or 0
         ---@diagnostic disable-next-line: undefined-field
         if dur == 0 then dur = aa.Spell.Trigger.MyDuration.TotalSeconds() or 0 end
+        dur = applyMod(dur)
         return dur > 0 and os.clock() + dur or 0
     end
-    -- Spell (book or disc): use MyDuration (mac:1790-1814; DAMod deferred to Step 13.2)
-    local dur = mq.TLO.Spell(spellName).MyDuration.TotalSeconds() or 0
+    -- Spell (book or disc): use MyDuration (mac:1790-1814)
+    local dur = applyMod(mq.TLO.Spell(spellName).MyDuration.TotalSeconds() or 0)
     return dur > 0 and os.clock() + dur or 0
 end
 
 -- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
 -- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
--- Deferred: WeaveArray, Feign-death sequence (Step 13.3), DPSSkip min-HP gate,
---           DPSInterval (Step 13.2), DPSOn==2 (Step 13.2).
+-- Deferred: WeaveArray, Feign-death sequence (Step 13.3).
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
@@ -1037,13 +1054,22 @@ function Cast.combatCast()
         end
 
         -- Parse |-delimited fields: spellName|hpThresh|targetType|opt4|opt5
+        -- DAMod= can appear in part3 or part4 (mac:1674-1686).
         local parts = {}
         for part in (entry .. '|'):gmatch('([^|]*)|') do
             parts[#parts + 1] = part
         end
-        local spellName  = parts[1] or ''
+        local spellName   = parts[1] or ''
         local hpThreshStr = parts[2] or ''
         local targetType  = parts[3] or ''
+        local part4       = parts[4] or ''
+        local daMod       = '+0'
+        if targetType:find('DAMod=', 1, true) then
+            daMod      = targetType:match('DAMod=(.+)') or '+0'
+            targetType = ''
+        elseif part4:find('DAMod=', 1, true) then
+            daMod = part4:match('DAMod=(.+)') or '+0'
+        end
 
         if spellName == '' or spellName == 'null' then goto next_dps end
 
@@ -1074,9 +1100,13 @@ function Cast.combatCast()
             end
         end
 
-        -- HP% gate (DPSSkip lower bound deferred → treated as 0)
+        -- HP% gate (mac:1727)
         local targetHP = mq.TLO.Spawn('id ' .. myID).PctHPs() or 0
-        if state.combat.dpsOn and targetHP > dpsAt then goto next_dps end
+        -- Lower bound: stop entire rotation when mob is near death (mac DPSSkip)
+        local dpsSkip = state.combat.dpsSkip or 0
+        if dpsSkip > 0 and targetHP <= dpsSkip then return end
+        -- Upper bound: skip slot when mob HP above threshold; bypassed in OOC mode (DPSOn==2)
+        if state.combat.dpsOn and not state.combat.dpsOnOoc and targetHP > dpsAt then goto next_dps end
 
         -- Resolve cast target
         local castTargetID = myID
@@ -1149,7 +1179,12 @@ function Cast.combatCast()
                     mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
             end
             if not isCmd then
-                state.combat.slotTimers[i] = setSlotTimer(spellName, tType)
+                local expiry = setSlotTimer(spellName, tType, daMod)
+                -- Fallback: zero-duration spells use DPSInterval as their cooldown (mac:1813-1814)
+                if expiry == 0 and (state.combat.dpsInterval or 0) > 0 then
+                    expiry = os.clock() + state.combat.dpsInterval
+                end
+                state.combat.slotTimers[i] = expiry
             end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')

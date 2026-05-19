@@ -277,8 +277,12 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     _cond     = cond
     _mez      = mez
 
-    -- Engagement toggles
-    _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
+    -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
+    local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
+    _state.combat.dpsOn       = dpsOnVal >= 1
+    _state.combat.dpsOnOoc    = dpsOnVal == 2
+    _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
+    _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
     _state.combat.meleeOn     = Config.get('Melee', 'MeleeOn', '1') == '1'
 
     -- Assist-at percent: prefer INI; fall back to CLI-parsed session value (default 95)
