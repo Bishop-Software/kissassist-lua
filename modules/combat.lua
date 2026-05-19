@@ -460,7 +460,7 @@ end
 -- Both paths validate and lock state.combat.myTargetID.
 function Combat.assist(_fromWhere)
     if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
-    if not _state.combat.meleeOn and not _state.combat.dpsOn and not _state.mez.on > 0 then return end
+    if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
@@ -558,7 +558,7 @@ end
 -- Falls back to mem-blurred mob scan when no haters remain and MezMobFlag is set.
 function Combat.getCombatTarget()
     if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
-    if not _state.combat.meleeOn and not _state.combat.dpsOn and not _state.mez.on > 0 then return end
+    if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
