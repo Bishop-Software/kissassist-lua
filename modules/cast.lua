@@ -6,11 +6,13 @@ local mq = require('mq')
 
 local Cast = {}
 
+local Config = require('modules.config')
 local state, utils, _bard, _cond
 
 function Cast.init(s, u)
     state = s
     utils = u
+    state.cast.checkStuckGem = Config.get('Spells', 'CheckStuckGem', '1') == '1'
 end
 
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
@@ -73,6 +75,9 @@ local function castSkill(spellName, sentFrom)
     return 'CAST_SUCCESS'
 end
 
+-- Forward declaration — castMemSpell is defined later in this file.
+local castMemSpell
+
 -- ─── CastSpell ────────────────────────────────────────────────────────────────
 
 -- Mirrors CastSpell (kissassist.mac:2833-2915).
@@ -100,6 +105,22 @@ local function castSpell(spellName, sentFrom)
     if not mq.TLO.Me.Gem(spellName)() then
         printf('\aw Skip Casting %s. Spell Not Memed.', spellName)
         return 'CAST_NO_RESULT'
+    end
+
+    -- Stuck-gem check (mac:16013-16025 translated to re-mem approach)
+    if state.cast.checkStuckGem and not (sentFrom == 'bard') then
+        local gemNum = mq.TLO.Me.Gem(spellName)()
+        ---@diagnostic disable-next-line: undefined-field
+        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+            printf('\ayKissAssist: stuck gem — slot %d has wrong spell; re-memming %s', gemNum, spellName)
+            castMemSpell(spellName, gemNum, 0)
+            mq.delay(500)
+            ---@diagnostic disable-next-line: undefined-field
+            if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+                printf('\arKissAssist: stuck gem could not be fixed for %s', spellName)
+                return 'CAST_STUCK_GEM'
+            end
+        end
     end
 
     local wasSitting  = mq.TLO.Me.Sitting()
@@ -409,7 +430,7 @@ end
 -- Mirrors CastMemSpell (kissassist.mac:3177-3227).
 -- Low-level /memspell gemNum "spell" with cursor cleanup and already-memed guard.
 -- forceIt > 0: unmem from that slot first (used by CastReMem for LW spell restore).
-local function castMemSpell(spellToMem, gemNum, forceIt)
+castMemSpell = function(spellToMem, gemNum, forceIt)
     if not spellToMem or spellToMem == '' or spellToMem == 'null' or gemNum == 0 then
         return
     end
@@ -713,8 +734,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         if not isBard
                 and (mq.TLO.Me.Casting.ID() or 0) ~= 0
                 and not mq.TLO.Window('CastingWindow').Open() then
-            -- Casting but window closed → gem may be stuck
-            -- CheckStuckGems stub → M6
+            -- Casting but window closed → gem may be stuck; re-mem handled in castSpell
             rtc = mq.TLO.Me.Gem(castWhat)() and 5 or 7
         elseif not hasItem and not mq.TLO.Me.Gem(castWhat)() and not hasAA then
             rtc = 7     -- in book but not memed → needs CastMem

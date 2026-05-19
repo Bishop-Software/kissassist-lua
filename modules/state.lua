@@ -127,6 +127,7 @@ local State = {
         reMemMiscSpell   = '',  -- set post-ini: Me.Gem[miscGem].Name
         reMemMiscSpellLW = '',  -- set post-ini: Me.Gem[miscGemLW].Name
         spellReadyL      = false,
+        checkStuckGem    = false,  -- [Spells] CheckStuckGem: verify gem slot before cast
     },
 
     pull = {
