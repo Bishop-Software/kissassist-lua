@@ -66,6 +66,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 9 — Looting | #9 | `loot.lua`: MQ2AutoLoot delegation, sell/deposit/barter helpers; loot binds; `MQ2AutoLoot` required plugin |
 | 10 — Full Integration & Parallel Validation | #10 | Remaining stub binds (`/kisscheck`, `/campoff`, etc.); `comms.lua` cross-char messaging (actors + DanNet shim); main loop phase audit against `.mac`; in-game testing (steps 10.4–10.6) deferred to production rollout |
 | 11 — Condition Evaluation (KConditions) | — | `cond.lua` evaluator (`mq.parse`, TARGETCHECK sentinel); `Config.parseCondArray()` strips condNNN suffix; `Cond.eval()` wired into all rotation modules and `CastWhat` condNumber gate; burn condNo/abortFlag; ConOn bind and integration test deferred |
+| 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
 
 ### Milestone 12 — Mez System (`MezCheck`, `AECheck`, `BreakMez`)
 
@@ -110,6 +111,8 @@ Wire `mez.lua` into `init.lua` require/init order (after combat, before healing)
 
 **Done when:** `Mez.check()` runs without error with `MezOn=0` (no-op path).
 
+**Implemented:** `modules/mez.lua` created with `Mez.init(state, utils, cast)`, local `mezRadar` (XTarget hater scan), local `mezMobsAE` (BRD/ENC AE dispatch), local `mezMobs` (single mez cast with per-slot timer), `Mez.check` (full 14-guard-per-slot port of `DoMezStuff`), `Mez.aeCheck` (AE threshold gate), `Mez.breakMez` (pettank only). `state.mez` expanded to 20 fields (`on` int 0–3, `broke`, `immuneIDs`, `radius`, `minLevel`, `maxLevel`, `stopHPs`, `spell`, `aeSpell`, `petBreakSpell`, `mezDebuffSpell`, `mezDebuffOnResist`, `mobCount`, `mobAECount`, `aeClosest`, `singleCount`, `aeCount`, `mobDone`, `mobFlag`, `debuffCount`). Wired into `init.lua` at line 104 (after `Loot.init`).
+
 #### Step 12.2 — `MezBroke` event and `/addimmune` bind
 
 In `events.lua`, register the MezBroke event:
@@ -127,6 +130,8 @@ In `binds.lua`, wire `/addimmune` (already registered as a stub in M2):
 
 **Done when:** Waking a mezzed mob sets `state.mez.broke`; `/addimmune` appends to the immune list.
 
+**Implemented:** `onMezBroke` in `events.lua` already registered for pattern `"#1# has been awakened by #2#."` — enhanced to scan `state.arrays.mezArray` slots 1–50, find the awoken mob by name, and clear `state.timers['mezTimer'..i]` so re-mez fires immediately (port of mac:8166/8180). `onAddMezImmune` in `binds.lua` already fully implemented and registered as `/addimmune`; adds target ID to `state.mez.immuneIDs` pipe-delimited string and persists name to InfoFileName INI under zone key.
+
 #### Step 12.3 — Config: load `[Mez]` INI section
 
 In `config.lua`, load `[Mez]` into `state.mez`:
@@ -135,6 +140,8 @@ In `config.lua`, load `[Mez]` into `state.mez`:
 - Mez HP threshold (`MezPct` — skip mezzing if mob HP below this)
 
 **Done when:** `state.mez.spell` and `state.mez.on` load correctly from pickle.
+
+**Implemented:** Config loading moved into `Mez.init()` (same effect as loading in `config.lua`). Added `local Config = require('modules.config')` to `mez.lua`. `Mez.init` loads all `[Mez]` keys (`MezOn`, `MezRadius`, `MezMinLevel`, `MezMaxLevel`, `MezStopHPs`, `MezSpell`, `MezDebuffOnResist`, `MezDebuffSpell`, `MezAESpell`) and `PetBreakMezSpell` from `[Pet]`. Mac defaults used as fallbacks (radius=50, stopHPs=80). `config.lua` `cfg.Mez` block and `defaultCfg` Mez defaults were already present from an earlier migration step.
 
 #### Step 12.4 — Wire into combat loop
 
@@ -149,6 +156,8 @@ In `combat.lua` pet-tank target engagement path: call `_mez.breakMez()` for pett
 
 **Done when:** Mez fires before the group attacks an add; mezzed mobs are not accidentally woken by non-MA casters.
 
+**Implemented:** `Combat.init` signature extended to accept `mez` (8th param), stored as `_mez`. `init.lua` updated to pass `Mez` to `Combat.init`. Three call sites wired: (1) `fight()` inner spell loop — `_mez.check('Combat')` + `_mez.aeCheck()` (mac:1162/1164); (2) `fight()` pet/mez tail — `_mez.check('Combat')` (mac:1323); (3) `checkForCombat()` post-fight — `_mez.check('checkForCombat')` + `_mez.aeCheck()` (mac:543). `combatPet()` wired with role-gated `_mez.breakMez()` for pettank/pullerpettank/hunterpettank (mac:2080). Precedence bug fixed: `not _state.mez.on > 0` → `_state.mez.on == 0` in `Combat.assist` and `Combat.getCombatTarget`.
+
 #### Step 12.5 — Integration test
 
 See Section 12 of the test plan. Key checks:
@@ -160,6 +169,8 @@ See Section 12 of the test plan. Key checks:
 - Pettank role — `BreakMez` fires to let pet engage
 
 **Done when:** Mez system gates correctly in live multi-mob combat.
+
+**Implemented:** Manual in-game validation required — no automated test suite. See Section 12 of the test plan for the five key checks.
 
 ---
 
