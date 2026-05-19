@@ -6,11 +6,13 @@ local mq = require('mq')
 
 local Cast = {}
 
+local Config = require('modules.config')
 local state, utils, _bard, _cond
 
 function Cast.init(s, u)
     state = s
     utils = u
+    state.cast.checkStuckGem = Config.get('Spells', 'CheckStuckGem', '1') == '1'
 end
 
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
@@ -73,6 +75,9 @@ local function castSkill(spellName, sentFrom)
     return 'CAST_SUCCESS'
 end
 
+-- Forward declaration — castMemSpell is defined later in this file.
+local castMemSpell
+
 -- ─── CastSpell ────────────────────────────────────────────────────────────────
 
 -- Mirrors CastSpell (kissassist.mac:2833-2915).
@@ -100,6 +105,22 @@ local function castSpell(spellName, sentFrom)
     if not mq.TLO.Me.Gem(spellName)() then
         printf('\aw Skip Casting %s. Spell Not Memed.', spellName)
         return 'CAST_NO_RESULT'
+    end
+
+    -- Stuck-gem check (mac:16013-16025 translated to re-mem approach)
+    if state.cast.checkStuckGem and not (sentFrom == 'bard') then
+        local gemNum = mq.TLO.Me.Gem(spellName)()
+        ---@diagnostic disable-next-line: undefined-field
+        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+            printf('\ayKissAssist: stuck gem — slot %d has wrong spell; re-memming %s', gemNum, spellName)
+            castMemSpell(spellName, gemNum, 0)
+            mq.delay(500)
+            ---@diagnostic disable-next-line: undefined-field
+            if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+                printf('\arKissAssist: stuck gem could not be fixed for %s', spellName)
+                return 'CAST_STUCK_GEM'
+            end
+        end
     end
 
     local wasSitting  = mq.TLO.Me.Sitting()
@@ -409,7 +430,7 @@ end
 -- Mirrors CastMemSpell (kissassist.mac:3177-3227).
 -- Low-level /memspell gemNum "spell" with cursor cleanup and already-memed guard.
 -- forceIt > 0: unmem from that slot first (used by CastReMem for LW spell restore).
-local function castMemSpell(spellToMem, gemNum, forceIt)
+castMemSpell = function(spellToMem, gemNum, forceIt)
     if not spellToMem or spellToMem == '' or spellToMem == 'null' or gemNum == 0 then
         return
     end
@@ -713,8 +734,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         if not isBard
                 and (mq.TLO.Me.Casting.ID() or 0) ~= 0
                 and not mq.TLO.Window('CastingWindow').Open() then
-            -- Casting but window closed → gem may be stuck
-            -- CheckStuckGems stub → M6
+            -- Casting but window closed → gem may be stuck; re-mem handled in castSpell
             rtc = mq.TLO.Me.Gem(castWhat)() and 5 or 7
         elseif not hasItem and not mq.TLO.Me.Gem(castWhat)() and not hasAA then
             rtc = 7     -- in book but not memed → needs CastMem
@@ -957,10 +977,54 @@ end
 -- ─── Combat Cast (DPS Rotation) ───────────────────────────────────────────────
 
 -- Mirrors CombatCast (kissassist.mac:1616).
+-- Compute per-slot timer expiry after a successful cast (mac ABTimer/DPSTimer logic).
+-- daMod: optional modifier string from INI entry (e.g. '+0', '-30', '300').
+--   '+N'/'-N' → timer = baseDuration + N seconds
+--   plain 'N'  → timer = N seconds (fixed; mac:1807-1810)
+-- Returns an os.clock() timestamp; 0 means no timer applies.
+local function setSlotTimer(spellName, tType, daMod)
+    -- 'once' / 'maonce' target types: suppress for 5 minutes (mac:1778-1779)
+    if tType == 'once' or tType == 'maonce' then
+        return os.clock() + 300
+    end
+
+    -- Apply DAMod to a base duration (seconds). Returns adjusted seconds, or 0 if no timer.
+    local function applyMod(baseDur)
+        if not daMod or daMod == '' or daMod == '+0' then
+            return baseDur > 0 and baseDur or 0
+        end
+        local first = daMod:sub(1, 1)
+        if first == '+' or first == '-' then
+            return math.max(0, baseDur + (tonumber(daMod) or 0))
+        else
+            return tonumber(daMod) or 0   -- fixed-second override
+        end
+    end
+
+    -- Item: use item spell duration (mac:1781-1782)
+    local item = mq.TLO.FindItem('=' .. spellName)
+    if item and (item.ID() or 0) ~= 0 then
+        local dur = applyMod(item.Spell.Duration.TotalSeconds() or 0)
+        return dur > 0 and os.clock() + dur or 0
+    end
+    -- AA: use AA spell duration, then trigger duration (mac:1817-1830)
+    local aa = mq.TLO.Me.AltAbility(spellName)
+    if aa and (aa.ID() or 0) ~= 0 then
+        ---@diagnostic disable-next-line: undefined-field
+        local dur = aa.Spell.MyDuration.TotalSeconds() or 0
+        ---@diagnostic disable-next-line: undefined-field
+        if dur == 0 then dur = aa.Spell.Trigger.MyDuration.TotalSeconds() or 0 end
+        dur = applyMod(dur)
+        return dur > 0 and os.clock() + dur or 0
+    end
+    -- Spell (book or disc): use MyDuration (mac:1790-1814)
+    local dur = applyMod(mq.TLO.Spell(spellName).MyDuration.TotalSeconds() or 0)
+    return dur > 0 and os.clock() + dur or 0
+end
+
 -- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
 -- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
--- Deferred: per-slot timers (ABTimer/DPSTimer/FDTimer), ConOn/CondNo, WeaveArray,
---           WriteDebuffs, Feign-death sequence, DPSSkip min-HP gate, DPSInterval, DPSOn==2.
+-- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
@@ -1000,6 +1064,9 @@ function Cast.combatCast()
         local entry = slot.name or ''
         if entry == 'null' or entry == '' then break end
 
+        -- Skip slot if per-slot cooldown timer has not expired (mac ABTimer/DPSTimer; Step 13.1)
+        if os.clock() < (state.combat.slotTimers[i] or 0) then goto next_dps end
+
         -- Skip weave/mash/ambush-tagged entries (handled by other subsystems)
         if entry:find('|weave', 1, true) or entry:find('|mash', 1, true)
                 or entry:find('|ambush', 1, true) then
@@ -1007,13 +1074,22 @@ function Cast.combatCast()
         end
 
         -- Parse |-delimited fields: spellName|hpThresh|targetType|opt4|opt5
+        -- DAMod= can appear in part3 or part4 (mac:1674-1686).
         local parts = {}
         for part in (entry .. '|'):gmatch('([^|]*)|') do
             parts[#parts + 1] = part
         end
-        local spellName  = parts[1] or ''
+        local spellName   = parts[1] or ''
         local hpThreshStr = parts[2] or ''
         local targetType  = parts[3] or ''
+        local part4       = parts[4] or ''
+        local daMod       = '+0'
+        if targetType:find('DAMod=', 1, true) then
+            daMod      = targetType:match('DAMod=(.+)') or '+0'
+            targetType = ''
+        elseif part4:find('DAMod=', 1, true) then
+            daMod = part4:match('DAMod=(.+)') or '+0'
+        end
 
         if spellName == '' or spellName == 'null' then goto next_dps end
 
@@ -1044,9 +1120,13 @@ function Cast.combatCast()
             end
         end
 
-        -- HP% gate (DPSSkip lower bound deferred → treated as 0)
+        -- HP% gate (mac:1727)
         local targetHP = mq.TLO.Spawn('id ' .. myID).PctHPs() or 0
-        if state.combat.dpsOn and targetHP > dpsAt then goto next_dps end
+        -- Lower bound: stop entire rotation when mob is near death (mac DPSSkip)
+        local dpsSkip = state.combat.dpsSkip or 0
+        if dpsSkip > 0 and targetHP <= dpsSkip then return end
+        -- Upper bound: skip slot when mob HP above threshold; bypassed in OOC mode (DPSOn==2)
+        if state.combat.dpsOn and not state.combat.dpsOnOoc and targetHP > dpsAt then goto next_dps end
 
         -- Resolve cast target
         local castTargetID = myID
@@ -1118,9 +1198,56 @@ function Cast.combatCast()
                 printf('** %s on >> %s <<', spellName,
                     mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
             end
-            -- Per-slot timers (ABTimer/DPSTimer/FDTimer/Feign) deferred → Step 4.8
+            if not isCmd then
+                local expiry = setSlotTimer(spellName, tType, daMod)
+                -- Fallback: zero-duration spells use DPSInterval as their cooldown (mac:1813-1814)
+                if expiry == 0 and (state.combat.dpsInterval or 0) > 0 then
+                    expiry = os.clock() + state.combat.dpsInterval
+                end
+                state.combat.slotTimers[i] = expiry
+            end
+            -- Feign-death sequence (mac:1783-1788; Step 13.3)
+            -- tType 'feign' casts an FD ability on self, waits for aggro to drop, then stands.
+            if tType == 'feign' then
+                local fdClasses = { BST=true, MNK=true, NEC=true, SHD=true }
+                if fdClasses[mq.TLO.Me.Class.ShortName() or ''] then
+                    -- Wait up to 3s for feign state (mac: /delay 30 Me.State==FEIGN)
+                    mq.delay(3000, function()
+                        return mq.TLO.Me.Feigning() or (mq.TLO.Me.Dead() or false)
+                    end)
+                    if not (mq.TLO.Me.Dead() or false) then
+                        -- Override slot timer to 60s: mob needs time to re-path (mac: FDTimer${i} 60s)
+                        state.combat.slotTimers[i] = os.clock() + 60
+                        -- Wait up to 10s for feign to break naturally (mac: /delay 10s Me.State!=FEIGN)
+                        mq.delay(10000, function()
+                            return not mq.TLO.Me.Feigning() or (mq.TLO.Me.Dead() or false)
+                        end)
+                        -- Stand if still feigning and able (mac:1788)
+                        if mq.TLO.Me.Feigning() and not mq.TLO.Me.Sitting() then
+                            mq.cmd('/stand')
+                        end
+                    end
+                end
+            end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
+        end
+
+        -- After-cast target-switch check (mac:1860-1867; Step 13.4)
+        -- Re-query the group assist target; if MA switched mobs mid-rotation, update and restart.
+        if state.combat.targetSwitchingOn then
+            local newID = mq.TLO.Me.GroupAssistTarget.ID() or 0
+            if (newID ~= 0 and newID ~= myID) or myID == 0 then
+                if newID ~= 0 then
+                    state.combat.myTargetID   = newID
+                    state.combat.myTargetName = mq.TLO.Spawn('id ' .. newID).CleanName() or ''
+                end
+                if state.session.iAmMA then
+                    return          -- MA: outer fight loop restarts combatCast from slot 1
+                elseif state.combat.meleeOn and not mq.TLO.Me.Combat() then
+                    return 'tcnc'   -- non-MA: out of combat, signal restart (mac:1865-1867)
+                end
+            end
         end
 
         ::next_dps::

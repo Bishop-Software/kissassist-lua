@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–12
+### Completed — Milestones 1–13
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -67,59 +67,92 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 10 — Full Integration & Parallel Validation | #10 | Remaining stub binds (`/kisscheck`, `/campoff`, etc.); `comms.lua` cross-char messaging (actors + DanNet shim); main loop phase audit against `.mac`; in-game testing (steps 10.4–10.6) deferred to production rollout |
 | 11 — Condition Evaluation (KConditions) | #11 | `cond.lua` evaluator (`mq.parse`, TARGETCHECK sentinel); `Config.parseCondArray()` strips condNNN suffix; `Cond.eval()` wired into all rotation modules and `CastWhat` condNumber gate; burn condNo/abortFlag; ConOn bind and integration test deferred |
 | 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
+| 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
 
-### Milestone 13 — Advanced Combat Rotation
+### Milestone 14 — Debuff Rotation
 
-**Goal:** Port the remaining `combatCast` features deferred from Milestone 4, plus stuck-gem detection in `castWhat`.
+**Goal:** Port the `DoDebuffStuff` / `DebuffCast` debuff rotation to a new `debuff.lua` module, giving enchanters, shamans, beastlords, and other debuffing classes the ability to land and maintain debuffs on primary and X-target mobs during combat.
 
-#### Features
+#### Background
 
-- **Per-slot timers** (`ABTimer`, `DPSTimer`, `FDTimer`) — each DPS/ability slot can specify a per-use cooldown; the rotation skips the slot until the timer expires
-- **Advanced rotation modes** — `DPSSkip` (skip N ticks between fires), `DPSOn==2` (out-of-combat rotation), `DAMod` (skip slot while a damage-avoidance disc is active), `DPSInterval` (minimum ms between any two casts)
-- **Feign-death sequence** (`FDTimer`) — FD pull cycling: cast FD, wait FDTimer ms, then re-engage or abort
-- **`TargetSwitchingOn`** — after each cast in the rotation, re-check MA's current target; switch assist target if MA changed
-- **Stuck-gem detection** — in `castWhat`, confirm the expected spell is in its gem slot before casting; eject and re-mem if mismatched or empty
+Debuff slots are stored in the same `[DPS]` INI section as DPS rotation slots. The second pipe-delimited field distinguishes them: a value **≥ 101** marks a debuff slot; **< 101** is a DPS slot. `DebuffCount` is the count of debuff slots found. Each slot has a per-slot mob-tracking list (`DBOList`) and a re-apply timer (`DBOTimer`). The system supports spell, AA, and item debuffs, checks target buff state by type tag before casting, and iterates X-Target auto-hater slots to debuff all mobs in range — not just the primary target.
 
-#### Steps
+`WriteDebuffs` (the `.mac` function that writes self-debuff status to `KissAssist_Buffs.ini` for healer cross-char cure awareness) is **not ported** — the Lua port already covers this via `comms.lua` broadcasting `state.heal.needCuring`.
 
-**Step 13.1 — Per-slot timers in `combat.lua`**
+#### Debuff Features
 
-Add `State.combat.slotTimers = {}` (slot index → expiry timestamp). In `combatCast`, skip any slot whose timer has not expired. Start the timer on successful cast.
+- **`DebuffAllOn` modes** — `0` off, `1` in-combat debuffing only, `2` out-of-combat debuffing enabled
+- **Per-slot mob tracking** (`state.debuff.lists[i]`) — tracks which mobs have been debuffed per slot; stale entries (dead or > 200 units) purged each pass
+- **Per-slot re-apply timers** (`state.debuff.timers[i]`) — set from spell/AA/item duration on successful land; slot is skipped until timer expires
+- **Debuff type tags** — `slow`, `tash`, `malo`, `crip`, `snare`, `root`, `strip`, `always` — before casting, checks if the target already has that debuff type; skips cast if duration remains
+- **Multi-mob debuffing** — iterates X-Target auto-hater slots within `MeleeDistance` and LOS; temporarily suspends melee to retarget off-mob, then restores
+- **`FWait` flag** — in chain-pull path, waits briefly for spell/AA/item to come off cooldown; in normal DPS path, skips and lets combat continue
+- **KConditions gate** — `|cond` tag in DPS slot entries evaluated via `Cond.eval` (M11)
+- **Fight reset** — all timers and mob lists cleared in `Combat.combatReset`
 
-Read `ABTimer`, `DPSTimer`, and `FDTimer` from each `[DPS]` and `[Melee]` INI slot entry in `config.lua`.
+#### Debuff Steps
 
-**Step 13.2 — Advanced rotation modes in `combat.lua`**
+**Step 14.1 — `state.debuff` sub-table**
 
-Port four flags read from the `[DPS]` INI section per slot:
+Add to `state.lua`:
 
-- `DPSSkip` — integer; slot skipped this many ticks after last fire before re-attempting
-- `DPSOn==2` — slot fires even when not in combat
-- `DAMod` — slot skipped while a damage-avoidance disc is active (`Me.ActiveDisc` check)
-- `DPSInterval` — minimum milliseconds between any two casts in the rotation; enforced via `State.combat.lastCastTime`
+```lua
+State.debuff = {
+    on     = 0,   -- DebuffAllOn (0/1/2)
+    count  = 0,   -- number of debuff slots in DPS array
+    slots  = {},  -- array of slot defs: { spell, tag1, tag2, condNo }
+    timers = {},  -- slot index → expiry timestamp (mq.gettime())
+    lists  = {},  -- slot index → table of debuffed spawn IDs
+}
+```
 
-**Step 13.3 — Feign-death sequence in `combat.lua`**
+**Step 14.2 — Config loading in `config.lua`**
 
-When `FDTimer` is set on a DPS slot and FD cast succeeds, pause the rotation for `FDTimer` ms before re-engaging. Abort cleanly if the character dies during the wait.
+When parsing `[DPS]` INI slots in `Config.parseDPSArray()`:
 
-**Step 13.4 — `TargetSwitchingOn` mid-rotation retarget**
+- If `Arg[2,|]` (as integer) **≥ 101**, it is a debuff slot — append to `state.debuff.slots` and increment `state.debuff.count`.
+- If **< 101**, it remains a DPS slot (existing behavior).
 
-After each cast in `combatCast`, if `State.combat.targetSwitchingOn` is true, re-query MA's current target. If it differs from the current assist target, update `State.session.assistTarget` and restart the rotation from slot 1.
+Read `DebuffAllOn` from `[General]` via `Config.get` → `state.debuff.on`.
 
-Read `TargetSwitchingOn` from `[General]` INI section in `config.lua`.
+**Step 14.3 — `debuff.lua` module**
 
-**Step 13.5 — Stuck-gem detection in `cast.lua`**
+Create `modules/debuff.lua` with:
 
-Before casting a spell gem in `castWhat`:
+- `Debuff.init(state, utils, cast, healing, cond)` — store peer refs, call config load
+- Local `debuffRadar()` — iterate `mq.TLO.Me.XTarget` slots 1–`XSlotTotal`; collect IDs that are: auto-hater type, alive (not Corpse), not PC/PC-pet, within `MeleeDistance`, and have LOS. Return list. (Same pattern as `mez.lua`'s `mezRadar`.)
+- `Debuff.cast(debuffTargetID, fWait)` — port of `DebuffCast`:
+  - Iterate `state.debuff.slots`; skip slots where the mob is already on `state.debuff.lists[i]` and `state.debuff.timers[i]` has not expired
+  - Check target's existing debuff by tag1 type (`Target.Slowed`, `Target.Tashed`, `Target.Maloed`, `Target.Crippled`, `Target.Snared`, `Target.Rooted`); if present and duration > 0, set timer and skip
+  - Evaluate KCondition via `Cond.eval(slot.condNo)` if set
+  - Call `Cast.castWhat(spell, targetID, 'DebuffCast', 0, 0)`; on `CAST_SUCCESS` set timer from spell/AA/item duration; on `CAST_IMMUNE` / `CAST_TAKEHOLD` set long suppress timer
+  - Intersperse `Healing.checkHealth('DebuffCast')` during wait loops when `HealsOn` is set
+  - `fWait = true`: wait up to ~3.5 s for spell/AA/item to come off cooldown before giving up; `fWait = false`: skip immediately and return to DPS
+- `Debuff.check(firstMobID)` — port of `DoDebuffStuff`:
+  - Guard: `state.debuff.on == 0`, `state.debuff.count == 0`, `state.session.DPSPaused`, respawn window open, or (mez on and `state.mez.mezMobDone == false`) → return
+  - Bard + MA + in combat guard (bards skip debuff when acting as MA)
+  - Purge stale entries from all `state.debuff.lists[i]` (dead or > 200 units)
+  - Call `Debuff.cast(firstMobID, true)` for primary target
+  - Iterate X-Target auto-hater mobs via `debuffRadar()`; for each mob (skip `firstMobID`): temporarily suspend melee if needed, call `Debuff.cast(mobID, DebuffAllOn==2)`, restore target and melee
+- `Debuff.resetFight()` — zero all `state.debuff.timers` and clear all `state.debuff.lists`
 
-1. Confirm `mq.TLO.Me.Gem(n).Name()` matches the expected spell name
-2. If mismatched or nil, `/memspell n <spellName>` and wait for memorization (reuse existing gem-mem logic)
-3. Log a warning; retry once; return `CAST_STUCK_GEM` on second failure
+**Step 14.4 — Wire into `combat.lua`**
 
-**Done when:** All five features pass test plan Section 13.
+- `Combat.init` receives `debuff` peer reference alongside existing peers
+- In the main fight loop after the mez check block: call `Debuff.check(state.session.assistTarget)` when `state.debuff.on > 0`
+- In the chain-pull path: call `Debuff.cast(targetID, true)` instead of `Debuff.check` (mirrors mac's `DebuffCast` with `FWait=1` at mac:1262)
+- Out-of-combat debuff path (after `CheckForCombat` returns no target): if `state.debuff.on == 2` and `state.session.assistTarget` exists, call `Debuff.check`
+- In `Combat.combatReset`: call `Debuff.resetFight()`
+
+**Step 14.5 — Wire into `init.lua`**
+
+- `require` and instantiate `debuff.lua`; pass to `Combat.init`
+
+**Done when:** Debuff slots in `[DPS]` INI with tag ≥ 101 land on the primary and X-target mobs during combat, timers suppress re-casting while the debuff is active, and the fight-end reset clears all tracking state.
 
 ---
 
-### Milestone 14 — ImGui UI (Optional)
+### Milestone 15 — ImGui UI (Optional)
 
 **Goal:** In-game configuration panel.
 
@@ -132,19 +165,6 @@ Before casting a spell gem in `castWhat`:
 ---
 
 ## Architectural Decisions (all resolved before Milestone 1)
-
-### 6. Bard Song Plugin — DECIDED: MQ2Medley (replaces MQ2Twist)
-
-`bard.lua` uses MQ2Medley instead of MQ2Twist. Key rules:
-
-- Song sets are defined as named medleys in the character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`)
-- `bard.lua` calls `/medley <setname>` on context transitions — no gem-list management in Lua code
-- Event-driven one-shot songs use `/medley queue <song>` without tearing down the active medley
-- Query `Medley.Active` and `Medley.TTQE` for state; do not use Twist TLO members
-- `MQ2Medley` is required for Bard roles only; no-op for all other classes
-- `MQ2Twist` is removed from the required plugin list entirely
-
-**Bard INI migration:** `[MQ2Twist]` sections are not forward-compatible. Bard users must define `[MQ2Medley-*]` sections — one-time manual migration.
 
 ---
 
@@ -250,11 +270,49 @@ Migrate one character at a time while the rest stay on `.mac`. Suggested order b
 | 3 | Puller | Validates pull system in isolation |
 | 4 | Healer | Highest stakes — validate last when everything else is proven |
 
+### 6. Bard Song Plugin — DECIDED: MQ2Medley (replaces MQ2Twist)
+
+`bard.lua` uses MQ2Medley instead of MQ2Twist. Key rules:
+
+- Song sets are defined as named medleys in the character INI (`[MQ2Medley-melee]`, `[MQ2Medley-burn]`, `[MQ2Medley-oor]`)
+- `bard.lua` calls `/medley <setname>` on context transitions — no gem-list management in Lua code
+- Event-driven one-shot songs use `/medley queue <song>` without tearing down the active medley
+- Query `Medley.Active` and `Medley.TTQE` for state; do not use Twist TLO members
+- `MQ2Medley` is required for Bard roles only; no-op for all other classes
+- `MQ2Twist` is removed from the required plugin list entirely
+
+**Bard INI migration:** `[MQ2Twist]` sections are not forward-compatible. Bard users must define `[MQ2Medley-*]` sections — one-time manual migration.
+
 **Rules:**
 
 - `kissassist.mac` stays untouched throughout — any character can `/mac kissassist` back at any time with zero friction
 - DanNet shim in `comms.lua` stays active until the last character migrates
 - **Deleting the DanNet/EQBC shim is the explicit end-of-migration milestone**
+
+---
+
+## Not Ported / Out of Scope
+
+Features present in the original `.mac` that are not ported to Lua and will not be tested.
+
+| Area | Mac location | Notes |
+| --- | --- | --- |
+| `CombatTargetCheckRaid` | mac:1420 | Raid/cross-char target selection; not ported |
+| `MercsDoWhat` | mac:8569 | Merc control; not ported |
+| `AutoFireOn` branches | in `CombatCast` | Ranged auto-fire logic; not ported |
+| `namedWatchList` / `NamedWatch` | mac:12886 | Named mob watch list from `KissAssist_Info.ini`; INI loader not implemented |
+| `SwitchMA` on offtank / MA-dead path | `Bind_SwitchMA` | Cross-char MA failover; not ported |
+| `BroadCast` burn/add/tank-announce | mac:12820 | In-group announce on burn/add events; not ported |
+| `combatReset`: DPS meter output (`MQ2DPSAdv`) | mac:2144 | End-of-fight parse output; requires MQ2DPSAdv plugin; not in scope |
+| `combatPet` Summon Companion AA | mac:2056 | In-combat pet resummon; not ported |
+| **`AFKTools`** | mac:11665 | AFK automation: pause on stranger in camp radius (MQ2Posse); GM detection with configurable action (hold / endmacro / unload / quit); not ported |
+| **Corpse recovery** (`RecoverCorpses`, `GrabCorpse`) | mac:15331 | SHD/NEC/ROG: auto-summons own/group corpses using Tiny Jade Inlaid Coffin; not ported |
+| **`GroupEscape`** | mac:6335 | DRU/WIZ emergency group evac (Exodus/Succor/Evacuate) when MA dies mid-combat; not ported |
+| **KissTrack integration** (`Event_KTDismount/Target/Hail/Say/DoorClick/Invite`) | mac:14313–14459 | Six event handlers for cross-macro NPC interaction with KissTrack; not ported |
+| **`CastMount`** | mac:13875 | Auto-mount from `[Buffs]` INI using `\|Mount` type tag; not ported |
+| **`CastMana`** | mac:13892 | Auto-cast mana restoration items (Canni, Paragon, Harvest, Managroup type from `[Buffs]` INI); not ported |
+| **EQBC events** (`Event_GUEQBC`, `Event_FSEQBC`, `Event_EQBCIRC`) | mac:11588–11664 | Group/server EQBC broadcast and IRC-style command handling; intentionally dropped — EQBC deprecated per Arch Decision 3 |
+| **`Roguestuff`** | mac:15205 | Rogue-specific stealth/hide management; not ported |
 
 ---
 

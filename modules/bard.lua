@@ -36,6 +36,15 @@ function Bard.init(state, utils, cast)
 
     if not _state.session.iAmABard then return end
 
+    if not mq.TLO.Plugin('MQ2Medley')() then
+        printf('\ayKissAssist: loading missing bard plugin \awMQ2Medley')
+        mq.cmd('/plugin MQ2Medley load')
+        mq.delay(500)
+        if not mq.TLO.Plugin('MQ2Medley')() then
+            printf('\arKissAssist: MQ2Medley failed to load — bard medley switching will not function')
+        end
+    end
+
     -- [General] — medley on/off toggles
     _state.bard.twistOn      = Config.get('General', 'TwistOn',      '0') == '1'
     _state.bard.meleeTwistOn = tonumber(Config.get('General', 'MeleeTwistOn', '0')) or 0
