@@ -10,6 +10,8 @@ function Loot.init(state, utils)
     if not mq.TLO.Plugin('MQ2AutoLoot').IsLoaded() then
         printf('\arKissAssist: \awMQ2AutoLoot not loaded — looting disabled.')
         _state.loot.on = 0
+    else
+        mq.cmd(_state.loot.on ~= 0 and '/autoloot turn on' or '/autoloot turn off')
     end
 end
 

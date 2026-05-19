@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -93,7 +93,11 @@ local function combatPet()
     end
 
     -- Wait for target buffs if target just changed (mac:2076-2078, minor)
-    -- BreakMez for pettank roles (deferred M6)
+    -- BreakMez for pettank roles (mac:2080)
+    local pRole = _state.session.role or ''
+    if _mez and (pRole == 'pettank' or pRole == 'pullerpettank' or pRole == 'hunterpettank') then
+        _mez.breakMez()
+    end
     if mq.TLO.Target.Mezzed.ID() then return end
 
     -- Send pet to attack or follow based on role and distance (mac:2082-2116)
@@ -263,7 +267,7 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -271,6 +275,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond)
     _movement = movement
     _bard     = bard
     _cond     = cond
+    _mez      = mez
 
     -- Engagement toggles
     _state.combat.dpsOn       = Config.get('DPS',   'DPSOn',   '1') == '1'
@@ -460,7 +465,7 @@ end
 -- Both paths validate and lock state.combat.myTargetID.
 function Combat.assist(_fromWhere)
     if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
-    if not _state.combat.meleeOn and not _state.combat.dpsOn and not _state.mez.mezOn then return end
+    if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
@@ -558,7 +563,7 @@ end
 -- Falls back to mem-blurred mob scan when no haters remain and MezMobFlag is set.
 function Combat.getCombatTarget()
     if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
-    if not _state.combat.meleeOn and not _state.combat.dpsOn and not _state.mez.mezOn then return end
+    if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
@@ -975,6 +980,12 @@ function Combat.fight(fromWhere)
             -- Hunter LOS position (deferred M7)
         end
 
+        -- Face mob every tick when enabled (mac:1094)
+        if _state.movement.faceMobOn and (mq.TLO.Target.ID() or 0) ~= 0
+           and (mq.TLO.Me.Standing() or mq.TLO.Me.Mount.ID()) then
+            mq.cmd('/squelch /face fast nolook')
+        end
+
         -- Look level when not underwater (mac:1095)
         if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 
@@ -1051,7 +1062,8 @@ function Combat.fight(fromWhere)
 
             -- Deferred: SwitchMA offtank (M9), MercsDoWhat (M6)
             -- Deferred: stick/distance maintenance (M7)
-            -- Deferred: MezCheck, AECheck, CheckCures/CheckHealth (M5)
+            if _mez then _mez.check('Combat') end
+            if _mez then _mez.aeCheck() end
             if _bard then _bard.doBardStuff() end
             -- AggroCheck (mac:1165)
             if _state.combat.aggroOn and _cast and _cast.castWhat then
@@ -1235,7 +1247,7 @@ function Combat.fight(fromWhere)
         end
         -- Pet / mez (mac:1322-1329)
         if _state.pet.activeState and _state.pet.combatOn and myID ~= 0 then
-            -- MezCheck (deferred M4.x)
+            if _mez then _mez.check('Combat') end
             sp = mq.TLO.Spawn('id ' .. myID)
             if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
                and not mq.TLO.Pet.Combat() then
@@ -1393,7 +1405,7 @@ function Combat.combatReset(sFlag, calledFrom)
     Combat.mobRadar('los', _state.combat.meleeDistance)
 
     -- Mez array and immune-ID cleanup (mac:2196–2214)
-    if _state.mez.mezOn then
+    if _state.mez.on > 0 then
         local myTID  = _state.combat.myTargetID
         local xTotal = _state.combat.xSlotTotal
         for j = 1, xTotal do
@@ -1731,7 +1743,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         if _state.pull.chainPull == 2 then return end
     end
 
-    -- MezCheck (deferred — mez module Step M4.x)
+    if _mez then _mez.check('checkForCombat') end
+    if _mez then _mez.aeCheck() end
 
     -- SkipCombat==1 healer loop (mac:563-580)
     if skipCombat == 1 and _heal then
