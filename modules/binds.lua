@@ -679,6 +679,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     _comms  = comms
 
     -- Debug / utility
+    if mq.TLO.Alias('/debug')() then mq.cmd('/alias /debug delete') end
     bind('/debug',          onDebug)
     bind('/parse',          onParse)
     bind('/zoneinfo',       onZoneInfo)
@@ -697,6 +698,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/burn',           onBurn)
     bind('/backoff',        onBackOff)
     bind('/switchnow',      onSwitch)
+    if mq.TLO.Alias('/switchma')() then mq.cmd('/alias /switchma delete') end
     bind('/switchma',       onSwitchMA)
     bind('/kisscast',       onKissCast)
     if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
@@ -705,6 +707,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/petoff',         onPetOff)
     bind('/mounton',        onMountOn)
     bind('/mountoff',       onMountOff)
+    if mq.TLO.Alias('/autofireon')() then mq.cmd('/alias /autofireon delete') end
     bind('/autofireon',     onAutoFireOn)
 
     -- Movement / camp
