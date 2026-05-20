@@ -353,9 +353,9 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 9.1.1 | Loot on enables MQ2AutoLoot | `/kalooton` | MQ2AutoLoot enabled; items looted from corpses |
-| [ ] | 9.1.2 | Loot off disables MQ2AutoLoot | `/kalootoff` | MQ2AutoLoot disabled; corpses not auto-looted |
-| [ ] | 9.1.3 | Loot default on startup | `loot.on=1` in state | MQ2AutoLoot enabled automatically on script start |
+| [x] | 9.1.1 | Loot on enables MQ2AutoLoot | `/kalooton` | MQ2AutoLoot enabled; items looted from corpses |
+| [x] | 9.1.2 | Loot off disables MQ2AutoLoot | `/kalootoff` | MQ2AutoLoot disabled; corpses not auto-looted |
+| [x] | 9.1.3 | Loot default on startup | `loot.on=1` in state | MQ2AutoLoot enabled automatically on script start |
 
 ### 9.2 — Sell / deposit / barter
 

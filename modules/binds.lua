@@ -157,6 +157,20 @@ local function onKissCast(castWhat, whatID, forceInterrupt)
     _cast.castWhat(castWhat, tonumber(whatID) or 0, forceInterrupt)
 end
 
+local function onPetOn()
+    state.pet.on = true
+    _config.set('Pet', 'PetOn', '1')
+    _config.save()
+    printf('\ayPet system \agON')
+end
+
+local function onPetOff()
+    state.pet.on = false
+    _config.set('Pet', 'PetOn', '0')
+    _config.save()
+    printf('\ayPet system \arOFF')
+end
+
 -- Shared sub-table list used by changevarint and togglevariable to search state.
 local function stateSubtables()
     return {
@@ -663,6 +677,10 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/switchnow',      onSwitch)
     bind('/switchma',       onSwitchMA)
     bind('/kisscast',       onKissCast)
+    if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
+    if mq.TLO.Alias('/petoff')() then mq.cmd('/alias /petoff delete') end
+    bind('/peton',          onPetOn)
+    bind('/petoff',         onPetOff)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)
