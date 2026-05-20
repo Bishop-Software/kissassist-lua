@@ -592,4 +592,48 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
-*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 14.*
+## Section 15 — Buff System Extensions
+
+### 15.1 Mount casting (`Buffs.castMount`)
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 15.1.1 | Mount fires OOC in outdoor zone | Set `MountOn=1`; add `TurgurSaddle\|Mount` to `[Buffs]`; stand OOC in outdoor zone | Character auto-mounts |
+| [ ] | 15.1.2 | Mount suppressed indoors | Same config; enter indoor zone | No mount attempted |
+| [ ] | 15.1.3 | Mount suppressed while FeetWet | Stand in water OOC in outdoor zone | No mount attempted for that slot |
+| [ ] | 15.1.4 | Mount suppressed in combat | Engage mob while unmounted | No mount attempt during `COMBAT` state |
+| [ ] | 15.1.5 | Already mounted — no double-cast | Mount active | `castMount` returns immediately; no cast |
+| [ ] | 15.1.6 | `CAST_NOMOUNT` disables mountOn | Trigger no-mount game message | `state.misc.mountOn` set to `false`; no further attempts this session |
+| [ ] | 15.1.7 | Mount fires after successful rez | Rez a group member OOC in outdoor zone | Character auto-mounts via Phase 3 `Buffs.castMount()` call |
+| [ ] | 15.1.8 | `\|cond` tag respected | Add condition number to mount entry; condition evaluates false | Mount not cast when condition fails |
+| [ ] | 15.1.9 | `MountOn=0` disables entirely | Set `MountOn=0` in INI | `castMount` returns immediately; no mount |
+
+### 15.2 Mana item casting (`Buffs.castMana`)
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 15.2.1 | Canni/Paragon fires OOC below threshold | Add `Cannibalize\|mana\|80\|20` to `[Buffs]`; let mana drop below 80% | Item/spell cast OOC via main loop `castMana()` call |
+| [ ] | 15.2.2 | Canni/Paragon fires mid-fight | Engage mob with mana below threshold | `castMana()` fires from `Combat.fight()` after rotation |
+| [ ] | 15.2.3 | Suppressed above mana threshold | Mana above `p3` threshold | No cast |
+| [ ] | 15.2.4 | HP floor guard respected | HP below `p4` floor | No cast even if mana is low |
+| [ ] | 15.2.5 | `Revival Sickness` suppresses | Character has Revival Sickness buff | `castMana` returns immediately; no scan |
+| [ ] | 15.2.6 | JustZoned suppresses | Cast within 10s of zone-in | `state.timers.justZoned` guard fires; no cast |
+| [ ] | 15.2.7 | Invisible suppresses | Character is invisible | `castMana` returns immediately |
+| [ ] | 15.2.8 | Aggro mid-scan stops loop | Aggro fires while scanning multiple `\|mana` entries | Scanning stops after next CAST_SUCCESS; no further items cast |
+| [ ] | 15.2.9 | Druid Growth cooldown respected | Druid casts Growth spell; immediately re-check | Second cast suppressed by `slotTimers[i][0]` until duration+5s expires |
+| [ ] | 15.2.10 | Bard Dichotomic Psalm skipped at endurance ≥ 6600 | Bard with ≥ 6600 endurance | Psalm entry skipped; no cast |
+| [ ] | 15.2.11 | Bard Dichotomic Psalm fires at endurance < 6600 | Bard with < 6600 endurance and low mana | Psalm cast |
+| [ ] | 15.2.12 | `CAST_COMPONENTS` disables slot | Missing reagent for mana item | Slot name set to `NULL`; no further attempts |
+| [ ] | 15.2.13 | `buffsOn=false` suppresses castMana | Toggle buffs off via `/buffsoff` | `castMana()` not called (gated by `buffsOn` in init.lua and combat.lua) |
+
+### 15.3 Mount binds
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 15.3.1 | `/mounton` enables mount system | Run `/mounton` | `state.misc.mountOn = true`; `MountOn=1` written to pickle; chat echo |
+| [ ] | 15.3.2 | `/mountoff` disables mount system | Run `/mountoff` | `state.misc.mountOn = false`; `MountOn=0` written to pickle; chat echo |
+| [ ] | 15.3.3 | Mount state persists after restart | Run `/mounton`; stop and restart script | `state.misc.mountOn` restored as `true` from pickle |
+
+---
+
+*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 15.*
