@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–14 (of 23)
+### Completed — Milestones 1–15 (of 23)
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -69,6 +69,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
 | 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
+| 15 — Buff System Extensions | #15 | `buffs.lua`: `Buffs.castMount()` scans buffsArray for `\|Mount` tag (FeetWet + cond guards); `Buffs.castMana()` scans for `\|mana` tag (invis/justZoned/Revival Sickness guards, Bard Dichotomic Psalm endurance check, Druid Growth per-slot cooldown); `castMana` wired into `Combat.fight()` and OOC main loop; `castMount` wired into Phase 3 post-rez; `/mounton` `/mountoff` binds; `MountSpell` config key removed |
 
 ### Milestone 15 — Buff System Extensions
 
