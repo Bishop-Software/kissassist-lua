@@ -157,6 +157,20 @@ local function onKissCast(castWhat, whatID, forceInterrupt)
     _cast.castWhat(castWhat, tonumber(whatID) or 0, forceInterrupt)
 end
 
+local function onPetOn()
+    state.pet.on = true
+    _config.set('Pet', 'PetOn', '1')
+    _config.save()
+    printf('\ayPet system \agON')
+end
+
+local function onPetOff()
+    state.pet.on = false
+    _config.set('Pet', 'PetOn', '0')
+    _config.save()
+    printf('\ayPet system \arOFF')
+end
+
 -- Shared sub-table list used by changevarint and togglevariable to search state.
 local function stateSubtables()
     return {
@@ -230,9 +244,13 @@ local function onMakeCampHere()
 end
 
 local function onStayHere()
+    state.movement.campX        = mq.TLO.Me.X()
+    state.movement.campY        = mq.TLO.Me.Y()
+    state.movement.campZ        = mq.TLO.Me.FloorZ()
+    state.movement.campZone     = mq.TLO.Zone.ID()
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
-    printf('\ay>> StayHere — camp mode on.')
+    printf('\ay>> StayHere — camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
     if _comms then _comms.broadcast('STAY', {}) end
 end
 
@@ -579,7 +597,8 @@ local function onParse(expr, p2, p3, p4, p5, p6, p7, p8)
         printf('\ay/parse <expression>')
         return
     end
-    mq.cmdf('/parse %s', exprStr)
+    local result = mq.parse('${' .. exprStr .. '}')
+    printf('\ay%s\aw = \ag%s', exprStr, tostring(result))
 end
 
 local function onMyCmds(cmd, p1, p2, p3)
@@ -658,6 +677,10 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/switchnow',      onSwitch)
     bind('/switchma',       onSwitchMA)
     bind('/kisscast',       onKissCast)
+    if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
+    if mq.TLO.Alias('/petoff')() then mq.cmd('/alias /petoff delete') end
+    bind('/peton',          onPetOn)
+    bind('/petoff',         onPetOff)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)

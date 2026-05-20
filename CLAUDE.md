@@ -10,9 +10,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Loot helper: `Ninjadvloot.inc` (~1,160 lines)
 - No build system, compiler, or test suite — macros run directly inside the EverQuest client via MacroQuest
 
-## Running the Macro
+## Running the Script
 
-Start from in-game EverQuest chat:
+### Lua Port (this repo)
+
+```
+/lua run kissassist-lua assist TankName 95
+/lua run kissassist-lua assist
+/lua run kissassist-lua tank
+/lua run kissassist-lua puller TankName
+```
+
+Stop with `/lua stop kissassist-lua`.
+
+### `.mac` Source (reference)
 
 ```
 /mac kissassist assist TankName 95
@@ -25,7 +36,9 @@ Supported roles: `assist`, `tank`, `puller`, `pullertank`, `pettank`, `pullerpet
 
 Optional flags appended to startup: `debug`, `debugall`, custom INI path, parse mode
 
-## Architecture
+## Architecture (.mac Source Reference)
+
+The sections below describe the original `.mac` macro — useful context for understanding what was ported and why. For the Lua port's structure, see **Lua Port Layout** below.
 
 ### Execution Model
 
@@ -110,7 +123,7 @@ Character-specific INI files are auto-generated on first run:
 
 Key INI sections: `[General]`, `[Spells]`, `[Buffs]`, `[Heals]`, `[Cures]`, `[Pet]`, `[Mez]`, `[Pull]`, `[PullAdvanced]`, `[Burn]`, `[Aggro]`, `[Melee]`, `[DPS]`, `[AFKTools]`, `[Conditions]`
 
-Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `Ninjadvloot.inc`.
+Loot settings are in `Loot.ini` or a character-specific loot INI, managed by `loot.lua` (MQ2AutoLoot delegation) in the Lua port.
 
 ## Plugin Dependencies
 
@@ -149,16 +162,20 @@ kissassist-lua/          ← repo root (deployed into MQ2's lua/ directory)
     ├── state.lua        ← all runtime State.* sub-tables (replaces ~1,079 .mac globals)
     ├── utils.lua        ← debug logging, timer helpers (timerExpired/setTimer)
     ├── events.lua       ← all 113 mq.event() registrations (cast, combat, zone, pet, bard)
-    ├── binds.lua        ← all 31 mq.bind() slash commands + loot binds (9.4)
-    ├── cast.lua         ← CastWhat dispatcher, CastSpell/AA/Disc/Item/Command, gem memory
-    ├── combat.lua       ← CheckForCombat, Combat rotation, CombatTargetCheck, burn system
+    ├── binds.lua        ← all 31 mq.bind() slash commands + loot binds
+    ├── cast.lua         ← CastWhat dispatcher, CastSpell/AA/Disc/Item/Command, gem memory, stuck-gem detection
+    ├── combat.lua       ← CheckForCombat, Combat rotation, CombatTargetCheck, burn system, per-slot timers
     ├── healing.lua      ← CheckHealth, DoGroupHealStuff, CheckCures, RezCheck
     ├── buffs.lua        ← CheckBuffs, WriteBuffs, beg-for-buffs, CheckPetBuffs
     ├── pull.lua         ← FindMobToPull, PullCheck, executePull, CheckRampPets integration
     ├── movement.lua     ← DoWeMove, DoWeChase, stuck recovery, camp management
     ├── pet.lua          ← DoPetStuff, petStateCheck, PetToys, CheckRampPets
     ├── bard.lua         ← DoBardStuff, MQ2Medley context switching (melee/burn/oor sets)
-    └── loot.lua         ← MQ2AutoLoot delegation: Loot.init, sell/deposit/barter helpers
+    ├── loot.lua         ← MQ2AutoLoot delegation: Loot.init, sell/deposit/barter helpers
+    ├── comms.lua        ← cross-character messaging: Lua actors backend + DanNet shim (.mac interop)
+    ├── cond.lua         ← KConditions evaluator: mq.parse expressions, TARGETCHECK sentinel
+    ├── mez.lua          ← Mez system: mezRadar, MezCheck, AECheck, BreakMez, immune list
+    └── debuff.lua       ← Debuff rotation: debuffRadar, Debuff.cast, Debuff.check, Debuff.resetFight
 ```
 
 ### Module Dependency Rule
@@ -178,16 +195,17 @@ Every module receives `state` and `utils` at `init()` time. No module imports an
 | 7 — Pulling & Movement | #7 | `pull.lua`, `movement.lua`: full pull/movement loop, all binds |
 | 8 — Pet & Bard | #8 | `pet.lua`: pet control, rampage-pet gating; `bard.lua`: MQ2Medley switching |
 | 9 — Looting | #9 | `loot.lua`: MQ2AutoLoot delegation, sell/deposit/barter; loot binds |
+| 10 — Full Integration & Parallel Validation | #10 | Remaining stub binds; `comms.lua` cross-char messaging (actors + DanNet shim); main loop phase audit |
+| 11 — Condition Evaluation (KConditions) | #11 | `cond.lua`: `mq.parse` evaluator, TARGETCHECK sentinel; wired into all rotation modules and `CastWhat` |
+| 12 — Mez System | #12 | `mez.lua`: `mezRadar`, `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` (20 fields); `/addimmune` bind |
+| 13 — Advanced Combat Rotation | #13 | Per-slot `slotTimers[]`, `DAMod` arithmetic, `DPSSkip` HP floor, `DPSOn==2` OOC, feign-death sequence, `TargetSwitchingOn`, stuck-gem re-mem |
+| 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init/cast/check/resetFight`, `debuffRadar`; `state.debuff` sub-table; `[DPS]` threshold≥101 split into debuff slots; `FaceMobOn` integer fix + `Me.State()` face guard; `/peton` `/petoff` binds |
 
 ## Before spawning any subagent
 
-Only spawn subagents for complex, multistep tasks.
-For simple tasks, handle directly without calling route_task.
-When you do need a subagent:
-Call route_task(task, files, directory) first. Always.
+Only spawn subagents for complex, multistep tasks. For simple tasks (single file edits, targeted searches, quick lookups), handle directly.
 
-- REUSE → call get_context(agent_id), check stale_files, re-read any that changed
-- CREATE_NEW → check existing_agents in response before spawning
+When spawning, use the `Agent` tool with `subagent_type` set to the appropriate type (`Explore` for codebase search, `Plan` for architecture design, `claude` for general). Write a self-contained prompt — the subagent has no conversation context.
 
 ## For code search
 

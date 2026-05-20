@@ -16,6 +16,7 @@ local Loot     = require('modules.loot')
 local Comms    = require('modules.comms')
 local Cond     = require('modules.cond')
 local Mez      = require('modules.mez')
+local Debuff   = require('modules.debuff')
 
 local VERSION = '1.0.0'
 
@@ -45,11 +46,7 @@ do
     end
 end
 
--- Seed camp location and runtime identity from live TLO
-State.movement.campX   = mq.TLO.Me.X()
-State.movement.campY   = mq.TLO.Me.Y()
-State.movement.campZ   = mq.TLO.Me.Z()
-State.movement.campZone = mq.TLO.Zone.ID()
+-- Seed runtime identity from live TLO; camp is set explicitly via /makecamphere
 State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
@@ -93,7 +90,6 @@ Cast.init(State, Utils)
 Cast.setCond(Cond)
 Heal.init(State, Utils, Cast, Cond)
 Movement.init(State, Utils)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez)
 Comms.init(State, Utils)
 Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
@@ -102,6 +98,8 @@ Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
+Debuff.init(State, Utils, Cast, Heal, Cond)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')

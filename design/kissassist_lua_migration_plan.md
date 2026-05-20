@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–13
+### Completed — Milestones 1–14
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -68,89 +68,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 11 — Condition Evaluation (KConditions) | #11 | `cond.lua` evaluator (`mq.parse`, TARGETCHECK sentinel); `Config.parseCondArray()` strips condNNN suffix; `Cond.eval()` wired into all rotation modules and `CastWhat` condNumber gate; burn condNo/abortFlag; ConOn bind and integration test deferred |
 | 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
-
-### Milestone 14 — Debuff Rotation
-
-**Goal:** Port the `DoDebuffStuff` / `DebuffCast` debuff rotation to a new `debuff.lua` module, giving enchanters, shamans, beastlords, and other debuffing classes the ability to land and maintain debuffs on primary and X-target mobs during combat.
-
-#### Background
-
-Debuff slots are stored in the same `[DPS]` INI section as DPS rotation slots. The second pipe-delimited field distinguishes them: a value **≥ 101** marks a debuff slot; **< 101** is a DPS slot. `DebuffCount` is the count of debuff slots found. Each slot has a per-slot mob-tracking list (`DBOList`) and a re-apply timer (`DBOTimer`). The system supports spell, AA, and item debuffs, checks target buff state by type tag before casting, and iterates X-Target auto-hater slots to debuff all mobs in range — not just the primary target.
-
-`WriteDebuffs` (the `.mac` function that writes self-debuff status to `KissAssist_Buffs.ini` for healer cross-char cure awareness) is **not ported** — the Lua port already covers this via `comms.lua` broadcasting `state.heal.needCuring`.
-
-#### Debuff Features
-
-- **`DebuffAllOn` modes** — `0` off, `1` in-combat debuffing only, `2` out-of-combat debuffing enabled
-- **Per-slot mob tracking** (`state.debuff.lists[i]`) — tracks which mobs have been debuffed per slot; stale entries (dead or > 200 units) purged each pass
-- **Per-slot re-apply timers** (`state.debuff.timers[i]`) — set from spell/AA/item duration on successful land; slot is skipped until timer expires
-- **Debuff type tags** — `slow`, `tash`, `malo`, `crip`, `snare`, `root`, `strip`, `always` — before casting, checks if the target already has that debuff type; skips cast if duration remains
-- **Multi-mob debuffing** — iterates X-Target auto-hater slots within `MeleeDistance` and LOS; temporarily suspends melee to retarget off-mob, then restores
-- **`FWait` flag** — in chain-pull path, waits briefly for spell/AA/item to come off cooldown; in normal DPS path, skips and lets combat continue
-- **KConditions gate** — `|cond` tag in DPS slot entries evaluated via `Cond.eval` (M11)
-- **Fight reset** — all timers and mob lists cleared in `Combat.combatReset`
-
-#### Debuff Steps
-
-**Step 14.1 — `state.debuff` sub-table**
-
-Add to `state.lua`:
-
-```lua
-State.debuff = {
-    on     = 0,   -- DebuffAllOn (0/1/2)
-    count  = 0,   -- number of debuff slots in DPS array
-    slots  = {},  -- array of slot defs: { spell, tag1, tag2, condNo }
-    timers = {},  -- slot index → expiry timestamp (mq.gettime())
-    lists  = {},  -- slot index → table of debuffed spawn IDs
-}
-```
-
-**Step 14.2 — Config loading in `config.lua`**
-
-When parsing `[DPS]` INI slots in `Config.parseDPSArray()`:
-
-- If `Arg[2,|]` (as integer) **≥ 101**, it is a debuff slot — append to `state.debuff.slots` and increment `state.debuff.count`.
-- If **< 101**, it remains a DPS slot (existing behavior).
-
-Read `DebuffAllOn` from `[General]` via `Config.get` → `state.debuff.on`.
-
-**Step 14.3 — `debuff.lua` module**
-
-Create `modules/debuff.lua` with:
-
-- `Debuff.init(state, utils, cast, healing, cond)` — store peer refs, call config load
-- Local `debuffRadar()` — iterate `mq.TLO.Me.XTarget` slots 1–`XSlotTotal`; collect IDs that are: auto-hater type, alive (not Corpse), not PC/PC-pet, within `MeleeDistance`, and have LOS. Return list. (Same pattern as `mez.lua`'s `mezRadar`.)
-- `Debuff.cast(debuffTargetID, fWait)` — port of `DebuffCast`:
-  - Iterate `state.debuff.slots`; skip slots where the mob is already on `state.debuff.lists[i]` and `state.debuff.timers[i]` has not expired
-  - Check target's existing debuff by tag1 type (`Target.Slowed`, `Target.Tashed`, `Target.Maloed`, `Target.Crippled`, `Target.Snared`, `Target.Rooted`); if present and duration > 0, set timer and skip
-  - Evaluate KCondition via `Cond.eval(slot.condNo)` if set
-  - Call `Cast.castWhat(spell, targetID, 'DebuffCast', 0, 0)`; on `CAST_SUCCESS` set timer from spell/AA/item duration; on `CAST_IMMUNE` / `CAST_TAKEHOLD` set long suppress timer
-  - Intersperse `Healing.checkHealth('DebuffCast')` during wait loops when `HealsOn` is set
-  - `fWait = true`: wait up to ~3.5 s for spell/AA/item to come off cooldown before giving up; `fWait = false`: skip immediately and return to DPS
-- `Debuff.check(firstMobID)` — port of `DoDebuffStuff`:
-  - Guard: `state.debuff.on == 0`, `state.debuff.count == 0`, `state.session.DPSPaused`, respawn window open, or (mez on and `state.mez.mezMobDone == false`) → return
-  - Bard + MA + in combat guard (bards skip debuff when acting as MA)
-  - Purge stale entries from all `state.debuff.lists[i]` (dead or > 200 units)
-  - Call `Debuff.cast(firstMobID, true)` for primary target
-  - Iterate X-Target auto-hater mobs via `debuffRadar()`; for each mob (skip `firstMobID`): temporarily suspend melee if needed, call `Debuff.cast(mobID, DebuffAllOn==2)`, restore target and melee
-- `Debuff.resetFight()` — zero all `state.debuff.timers` and clear all `state.debuff.lists`
-
-**Step 14.4 — Wire into `combat.lua`**
-
-- `Combat.init` receives `debuff` peer reference alongside existing peers
-- In the main fight loop after the mez check block: call `Debuff.check(state.session.assistTarget)` when `state.debuff.on > 0`
-- In the chain-pull path: call `Debuff.cast(targetID, true)` instead of `Debuff.check` (mirrors mac's `DebuffCast` with `FWait=1` at mac:1262)
-- Out-of-combat debuff path (after `CheckForCombat` returns no target): if `state.debuff.on == 2` and `state.session.assistTarget` exists, call `Debuff.check`
-- In `Combat.combatReset`: call `Debuff.resetFight()`
-
-**Step 14.5 — Wire into `init.lua`**
-
-- `require` and instantiate `debuff.lua`; pass to `Combat.init`
-
-**Done when:** Debuff slots in `[DPS]` INI with tag ≥ 101 land on the primary and X-target mobs during combat, timers suppress re-casting while the debuff is active, and the fight-end reset clears all tracking state.
-
----
+| 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
 
 ### Milestone 15 — ImGui UI (Optional)
 

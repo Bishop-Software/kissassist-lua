@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -267,7 +267,7 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -276,6 +276,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     _bard     = bard
     _cond     = cond
     _mez      = mez
+    _debuff   = debuff
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -298,12 +299,27 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
     -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
 
-    -- DPS spell/AA/disc array — parsed into { name, condNo } slots.
+    -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
+    -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN
+    _state.debuff.on = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
     local rawDps = Config.get('DPS', 'DPS', nil)
     if type(rawDps) == 'table' then
         for _, slot in ipairs(Config.parseCondArray(rawDps)) do
             if slot and slot.name and slot.name ~= '' then
-                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+                local parts = {}
+                for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
+                local thresh = tonumber(parts[2]) or 0
+                if thresh >= 101 then
+                    _state.debuff.slots[#_state.debuff.slots + 1] = {
+                        spell  = parts[1] or '',
+                        tag1   = parts[3] or '',
+                        tag2   = parts[4] or '',
+                        condNo = slot.condNo,
+                    }
+                    _state.debuff.count = _state.debuff.count + 1
+                else
+                    _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+                end
             end
         end
     end
@@ -317,19 +333,6 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
             end
         end
     end
-
-    -- Debuff-all: compute debuffCount from DPS array (slots with hp threshold >= 101 are debuff-all entries)
-    _state.combat.debuffAllOn = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
-    local debuffCount = 0
-    for _, dpsEntry in ipairs(_state.combat.dpsArray) do
-        local thresh = tonumber(dpsEntry.name:match('^[^|]*|([^|]*)') or '') or 0
-        if thresh >= 101 then
-            debuffCount = debuffCount + 1
-        else
-            break  -- debuff slots are always first in the array
-        end
-    end
-    _state.mez.debuffCount = debuffCount
 
     -- Aggro management array — parsed into { name, condNo } slots.
     _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
@@ -357,7 +360,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
         _state.combat.meleeDistance,
         #_state.combat.dpsArray,
         #_state.combat.burnArray,
-        _state.mez.debuffCount,
+        _state.debuff.count,
         tostring(_state.combat.aggroOn),
         _state.movement.campRadius)
 end
@@ -962,6 +965,16 @@ function Combat.fight(fromWhere)
     local inRange  = mobDist < combatRadius
                   or (campToMA <= cr and maToTgt <= cr)
 
+    -- Face mob every tick when enabled (mac:1094)
+    local faceMob = _state.movement.faceMobOn or 0
+    if faceMob > 0 and (mq.TLO.Target.ID() or 0) ~= 0 then
+        local meState = mq.TLO.Me.State() or ''
+        if meState ~= 'FEIGN' and meState ~= 'DEAD' and meState ~= 'SIT' then
+            local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
+            mq.cmdf('/squelch /face %s', faceMode)
+        end
+    end
+
     -- ─── Main engage block: not corpse, HP ≤ assistAt (MA always engages), in range ──
     if spType:lower() ~= 'corpse'
        and (_state.session.iAmMA or mobPct <= _state.combat.assistAt)
@@ -983,12 +996,6 @@ function Combat.fight(fromWhere)
                 mq.cmd('/echo [KA] ' .. petName .. ' is TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
             end
             -- Hunter LOS position (deferred M7)
-        end
-
-        -- Face mob every tick when enabled (mac:1094)
-        if _state.movement.faceMobOn and (mq.TLO.Target.ID() or 0) ~= 0
-           and (mq.TLO.Me.Standing() or mq.TLO.Me.Mount.ID()) then
-            mq.cmd('/squelch /face fast nolook')
         end
 
         -- Look level when not underwater (mac:1095)
@@ -1126,8 +1133,8 @@ function Combat.fight(fromWhere)
                         mq.cmd('/makemevisible')
                     end
                     -- DoDebuffStuff: apply debuff-all DPS slots to target + nearby haters (mac:1179)
-                    if (_state.combat.debuffAllOn or 0) > 0 and _cast.doDebuffStuff then
-                        _cast.doDebuffStuff(_state.combat.myTargetID)
+                    if (_state.debuff.on or 0) > 0 and _debuff then
+                        _debuff.check(_state.combat.myTargetID)
                         myID = _state.combat.myTargetID
                         if myID == 0 then
                             Combat.combatReset(0, fromWhere .. '_afterDebuff')
@@ -1261,9 +1268,9 @@ function Combat.fight(fromWhere)
         end
         -- Deferred: Bard twist (mac:1327, M8)
         -- DebuffAllOn==2: debuff adds even when not at melee range (mac:1328)
-        if (_state.combat.debuffAllOn or 0) == 2 and _state.combat.myTargetID ~= 0
-           and (_state.combat.aggroTargetID or '') ~= '' and _cast.doDebuffStuff then
-            _cast.doDebuffStuff(_state.combat.myTargetID)
+        if (_state.debuff.on or 0) == 2 and _state.combat.myTargetID ~= 0
+           and (_state.combat.aggroTargetID or '') ~= '' and _debuff then
+            _debuff.check(_state.combat.myTargetID)
         end
         -- BeforeAttack condCheck=2: fire only |cond entries (mac:1330)
         if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
@@ -1529,6 +1536,8 @@ function Combat.combatReset(sFlag, calledFrom)
     until not _state.combat.eventFlag
 
     -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
+
+    if _debuff then _debuff.resetFight() end
 
     _utils.debug('combat', 'combatReset: done from=%s', tostring(calledFrom))
 end
