@@ -137,6 +137,7 @@ while not State.terminate do
         Buffs.writeBuffsMerc()
     end
     if State.buffs.buffsOn then
+        Buffs.castMana()  -- mana restore before full buff cycle (mac:394 MainLoop)
         Buffs.checkBuffs(State.buffs.forceBuffs)
         State.buffs.forceBuffs = false
     end
