@@ -82,7 +82,7 @@ end
 -- Broadcast to all KissAssist instances; DanNet shim relays movement commands to .mac chars.
 function Comms.broadcast(msgType, data)
     local msg = payload(msgType, data)
-    _actor:send(msg)
+    if _actor then _actor:send(msg) end
 
     -- DanNet shim: relay movement commands to .mac chars via /dgge
     if _state.session.danNetOn then
@@ -98,7 +98,11 @@ end
 
 -- Group-visible announcement: /dgtell all if DanNet+peers, else /echo (mac:Sub BroadCast)
 function Comms.announce(msg)
-    if _state.session.danNetOn and (mq.TLO.DanNet.PeerCount() or 0) > 0 then
+    local peerCount = _state.session.danNetOn
+                      and mq.TLO.Plugin('MQ2DanNet')()
+                      and (mq.TLO.DanNet.PeerCount() or 0)
+                      or 0
+    if peerCount > 0 then
         mq.cmdf('/dgtell all %s', msg)
     else
         mq.cmd('/echo ' .. msg)

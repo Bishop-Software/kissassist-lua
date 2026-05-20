@@ -72,29 +72,6 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 15 — Buff System Extensions | #15 | `buffs.lua`: `Buffs.castMount()` scans buffsArray for `\|Mount` tag (FeetWet + cond guards); `Buffs.castMana()` scans for `\|mana` tag (invis/justZoned/Revival Sickness guards, Bard Dichotomic Psalm endurance check, Druid Growth per-slot cooldown); `castMana` wired into `Combat.fight()` and OOC main loop; `castMount` wired into Phase 3 post-rez; `/mounton` `/mountoff` binds; `MountSpell` config key removed |
 | 16 — Combat Extensions | #16 | `combat.lua`: Summon Companion AA wired in `combatPet()`; `AutoFireOn` state machine (0=off/1=ranged/2=paused) with first-engage and re-engage branches; `onTooClose` event sets 1→2 and toggles `/autofire`; `combatReset` resets 2→1 and clears autofire; `/autofireon` bind (toggle 0↔1, persists to pickle); `comms.lua`: `Comms.announce()` (`/dgtell all` or `/echo` fallback); `_comms` wired as 11th param to `Combat.init()`; tank-announce and add-spam announce replace deferred stubs |
 
-### Milestone 15 — Buff System Extensions
-
-**Goal:** Add mount and mana item casting to the buff rotation.
-
-- `CastMount` — auto-cast mount from `[Buffs]` INI using `|Mount` type tag; dismount on combat entry
-- `CastMana` — auto-cast mana restoration items (Canni, Paragon, Harvest, Managroup type tags from `[Buffs]` INI)
-
-**Done when:** Characters auto-mount when out of combat and auto-use mana items when mana is low, driven entirely by INI config.
-
----
-
-### Milestone 16 — Combat Extensions
-
-**Goal:** Fill three remaining combat gaps present in the `.mac` but not yet ported.
-
-- `AutoFireOn` ranged auto-fire branches in `combat.lua` — gates ranged attack on range/arc conditions
-- `combatPet` Summon Companion AA — in-combat pet resummon when pet dies (extends `pet.lua`)
-- `BroadCast` burn/add/tank-announce — chat announces on burn activation, add detection, MA death (extends `comms.lua`)
-
-**Done when:** Rangers/casters use ranged auto-fire correctly; pets auto-resummon mid-fight; group sees burn/add chat notifications.
-
----
-
 ### Milestone 17 — Named Watch List
 
 **Goal:** Port `namedWatchList` / `NamedWatch` — the named mob radar that prioritizes kills by name.
