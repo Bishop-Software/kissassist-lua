@@ -45,11 +45,7 @@ do
     end
 end
 
--- Seed camp location and runtime identity from live TLO
-State.movement.campX   = mq.TLO.Me.X()
-State.movement.campY   = mq.TLO.Me.Y()
-State.movement.campZ   = mq.TLO.Me.Z()
-State.movement.campZone = mq.TLO.Zone.ID()
+-- Seed runtime identity from live TLO; camp is set explicitly via /makecamphere
 State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}

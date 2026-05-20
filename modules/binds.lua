@@ -230,9 +230,13 @@ local function onMakeCampHere()
 end
 
 local function onStayHere()
+    state.movement.campX        = mq.TLO.Me.X()
+    state.movement.campY        = mq.TLO.Me.Y()
+    state.movement.campZ        = mq.TLO.Me.FloorZ()
+    state.movement.campZone     = mq.TLO.Zone.ID()
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
-    printf('\ay>> StayHere — camp mode on.')
+    printf('\ay>> StayHere — camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
     if _comms then _comms.broadcast('STAY', {}) end
 end
 

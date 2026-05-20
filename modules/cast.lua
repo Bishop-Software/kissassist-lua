@@ -1029,7 +1029,7 @@ function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
-    local debuffCount = state.mez.debuffCount or 0
+    local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
     local dpsArr      = state.combat.dpsArray
 
@@ -1262,7 +1262,7 @@ end
 -- Iterates DPS slots 1..debuffCount on a specific target.
 -- fwait: wait briefly for a ready check on the primary mob; skip immediately for secondary mobs.
 local function debuffCast(targetID, fwait)
-    local debuffCount = state.mez.debuffCount or 0
+    local debuffCount = state.debuff.count or 0
     if debuffCount == 0 then return end
 
     local sp = mq.TLO.Spawn('id ' .. targetID)
@@ -1279,9 +1279,9 @@ local function debuffCast(targetID, fwait)
         if spellName == '' or spellName == 'null' then goto next_debuff end
 
         -- DBOTimer/DBOList: skip if mob was recently debuffed with this slot (mac:7634-7648)
-        local dboExpiry = (state.combat.dboTimer or {})[i] or 0
+        local dboExpiry = (state.debuff.timers or {})[i] or 0
         if os.clock() < dboExpiry then
-            local list = (state.combat.dboList or {})[i] or ''
+            local list = (state.debuff.lists or {})[i] or ''
             if list:find('|' .. tidStr, 1, true) then goto next_debuff end
         end
 
@@ -1320,14 +1320,12 @@ local function debuffCast(targetID, fwait)
 
         if result == 'CAST_SUCCESS' then
             -- Track: update DBOList and set DBOTimer (mac:7744+)
-            if not state.combat.dboList  then state.combat.dboList  = {} end
-            if not state.combat.dboTimer then state.combat.dboTimer = {} end
-            local existing = state.combat.dboList[i] or ''
+            local existing = state.debuff.lists[i] or ''
             if not existing:find('|' .. tidStr, 1, true) then
-                state.combat.dboList[i] = existing .. '|' .. tidStr
+                state.debuff.lists[i] = existing .. '|' .. tidStr
             end
             local duration = mq.TLO.Spell(spellName).Duration() or 30
-            state.combat.dboTimer[i] = os.clock() + duration
+            state.debuff.timers[i] = os.clock() + duration
             printf('** Debuff %s on %s', spellName, sp.CleanName() or '')
         end
 
@@ -1338,8 +1336,8 @@ end
 -- Mirrors Sub DoDebuffStuff (kissassist.mac:7613).
 -- Casts debuff-all DPS slots (1..debuffCount) on the primary target and nearby XTarget haters.
 function Cast.doDebuffStuff(firstMobID)
-    if (state.combat.debuffAllOn or 0) == 0 then return end
-    if (state.mez.debuffCount or 0) == 0 then return end
+    if (state.debuff.on or 0) == 0 then return end
+    if (state.debuff.count or 0) == 0 then return end
     if mq.TLO.Window('RespawnWnd').Open() then return end
     if state.dps.paused then return end
     if state.misc.dmz and not mq.TLO.Me.InInstance() then return end
@@ -1358,8 +1356,8 @@ function Cast.doDebuffStuff(firstMobID)
     mq.doevents()
 
     -- Clean stale entries from dboLists (dead/far/corpse mobs) (mac:7641-7648)
-    for i = 1, (state.mez.debuffCount or 0) do
-        local list = (state.combat.dboList or {})[i] or ''
+    for i = 1, (state.debuff.count or 0) do
+        local list = (state.debuff.lists or {})[i] or ''
         if list ~= '' then
             local cleaned = ''
             for idStr in list:gmatch('|(%d+)') do
@@ -1373,7 +1371,7 @@ function Cast.doDebuffStuff(firstMobID)
                     end
                 end
             end
-            state.combat.dboList[i] = cleaned
+            state.debuff.lists[i] = cleaned
         end
     end
 
@@ -1417,7 +1415,7 @@ function Cast.doDebuffStuff(firstMobID)
             mq.delay(500, function() return not mq.TLO.Me.Combat() end)
         end
 
-        local fwait = (state.combat.debuffAllOn == 2 and not state.combat.burnCalled)
+        local fwait = (state.debuff.on == 2 and not state.combat.burnCalled)
         debuffCast(xtID, fwait)
 
         ::next_xt::

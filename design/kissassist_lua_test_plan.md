@@ -24,8 +24,8 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 1.1.1 | All required plugins already loaded | Start with `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2AutoLoot` loaded | Script starts; no plugin messages printed |
-| [ ] | 1.1.2 | Missing plugin auto-loads | Unload one required plugin; start script | Script prints loading message, loads the plugin, continues normally |
+| [x] | 1.1.1 | All required plugins already loaded | Start with `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2AutoLoot` loaded | Script starts; no plugin messages printed |
+| [x] | 1.1.2 | Missing plugin auto-loads | Unload one required plugin; start script | Script prints loading message, loads the plugin, continues normally |
 | [ ] | 1.1.3 | Plugin fails to load | Unload a plugin and make it unavailable; start script | Error message names the failed plugin; `checkPlugins` returns false |
 | [ ] | 1.1.4 | Bard with MQ2Medley already loaded | Start as Bard role with `MQ2Medley` loaded | Script starts; no plugin messages printed |
 | [ ] | 1.1.5 | Bard auto-loads MQ2Medley | Start as Bard role without `MQ2Medley` loaded | `Bard.init` loads MQ2Medley; yellow notice printed; medley switching functions normally |
@@ -35,8 +35,8 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 1.2.1 | First-run INI migration | Start with existing `.ini`, no `.lua` pickle present | Pickle created; `.ini.bak` written; no data loss |
-| [ ] | 1.2.2 | Subsequent run loads pickle | Run again after migration | Loads `.lua` directly; `.ini.bak` untouched |
+| [] | 1.2.1 | First-run INI migration | Start with existing `.ini`, no `.lua` pickle present | Pickle created; `.ini.bak` written; no data loss |
+| [x] | 1.2.2 | Subsequent run loads pickle | Run again after migration | Loads `.lua` directly; `.ini.bak` untouched |
 | [ ] | 1.2.3 | All 18 sections round-trip | Compare pickle values to original `.ini` | No keys dropped; no defaults incorrectly applied |
 | [ ] | 1.2.4 | Role configs migrate | Test with melee, pet, puller, healer INIs | All role configs migrate and load correctly |
 
@@ -45,10 +45,10 @@ All tests are manual and in-game. No automated test framework exists.
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
 | [ ] | 1.3.1 | Assist role with MA name | `/lua run kissassist-lua assist TankName` | Role = assist; MA = TankName |
-| [ ] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
+| [X] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
 | [ ] | 1.3.3 | Puller role | `/lua run kissassist-lua puller TankName` | Role = puller; pull system active |
 | [ ] | 1.3.4 | Pettank role | `/lua run kissassist-lua pettank` | Pet module active; BreakMez path enabled |
-| [ ] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
+| [X] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
 
 ---
 

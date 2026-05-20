@@ -319,7 +319,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     end
 
     -- Debuff-all: compute debuffCount from DPS array (slots with hp threshold >= 101 are debuff-all entries)
-    _state.combat.debuffAllOn = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
+    _state.debuff.on = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
     local debuffCount = 0
     for _, dpsEntry in ipairs(_state.combat.dpsArray) do
         local thresh = tonumber(dpsEntry.name:match('^[^|]*|([^|]*)') or '') or 0
@@ -329,7 +329,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
             break  -- debuff slots are always first in the array
         end
     end
-    _state.mez.debuffCount = debuffCount
+    _state.debuff.count = debuffCount
 
     -- Aggro management array — parsed into { name, condNo } slots.
     _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
@@ -357,7 +357,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
         _state.combat.meleeDistance,
         #_state.combat.dpsArray,
         #_state.combat.burnArray,
-        _state.mez.debuffCount,
+        _state.debuff.count,
         tostring(_state.combat.aggroOn),
         _state.movement.campRadius)
 end
@@ -1126,7 +1126,7 @@ function Combat.fight(fromWhere)
                         mq.cmd('/makemevisible')
                     end
                     -- DoDebuffStuff: apply debuff-all DPS slots to target + nearby haters (mac:1179)
-                    if (_state.combat.debuffAllOn or 0) > 0 and _cast.doDebuffStuff then
+                    if (_state.debuff.on or 0) > 0 and _cast.doDebuffStuff then
                         _cast.doDebuffStuff(_state.combat.myTargetID)
                         myID = _state.combat.myTargetID
                         if myID == 0 then
@@ -1261,7 +1261,7 @@ function Combat.fight(fromWhere)
         end
         -- Deferred: Bard twist (mac:1327, M8)
         -- DebuffAllOn==2: debuff adds even when not at melee range (mac:1328)
-        if (_state.combat.debuffAllOn or 0) == 2 and _state.combat.myTargetID ~= 0
+        if (_state.debuff.on or 0) == 2 and _state.combat.myTargetID ~= 0
            and (_state.combat.aggroTargetID or '') ~= '' and _cast.doDebuffStuff then
             _cast.doDebuffStuff(_state.combat.myTargetID)
         end
