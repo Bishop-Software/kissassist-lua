@@ -534,4 +534,62 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
-*Last updated: 2026-05-19. Covers all implemented functionality through Milestone 13.*
+## Section 14 — Debuff Rotation
+
+### 14.1 State initialization
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.1.1 | `state.debuff` sub-table present | Start script; inspect `state.debuff` | Sub-table exists with `on`, `count`, `slots`, `timers`, `lists` fields |
+| [ ] | 14.1.2 | `DebuffAllOn=0` disables system | Set `DebuffAllOn=0` in `[DPS]` INI; start script | `state.debuff.on == 0`; no debuff casts occur |
+| [ ] | 14.1.3 | `DebuffAllOn=1` enables combat-only | Set `DebuffAllOn=1`; engage mob | Debuff casts fire during combat; no OOC debuff casts |
+| [ ] | 14.1.4 | `DebuffAllOn=2` enables OOC debuffing | Set `DebuffAllOn=2`; stay near mob without engaging | `Debuff.check` called when `state.debuff.on==2` and assist target exists |
+
+### 14.2 DPS/debuff slot split
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.2.1 | Threshold < 101 → DPS slot | Set `[DPS]` slot `SpellName\|90` | Slot placed in `state.combat.dpsArray`; not in `state.debuff.slots` |
+| [ ] | 14.2.2 | Threshold ≥ 101 → debuff slot | Set `[DPS]` slot `SpellName\|101` | Slot placed in `state.debuff.slots` with correct `spell/tag1/tag2/condNo` fields |
+| [ ] | 14.2.3 | `state.debuff.count` accurate | Configure 3 debuff slots (threshold ≥ 101) | `state.debuff.count == 3` after `Combat.init` |
+| [ ] | 14.2.4 | Mixed array splits correctly | Configure both DPS and debuff slots | Each slot lands in the correct array; counts match |
+
+### 14.3 Debuff.cast
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.3.1 | Slot on cooldown — skipped | Mob in `state.debuff.lists[i]` and timer not expired | Slot skipped; no cast attempted |
+| [ ] | 14.3.2 | Mob out of cast range — skipped | Target beyond spell range | Slot skipped |
+| [ ] | 14.3.3 | Condition gate fails — skipped | Attach false KCondition to slot | Slot skipped; condition evaluated before readiness check |
+| [ ] | 14.3.4 | Not ready + `fwait=false` — skipped | Spell on cooldown; call `Debuff.cast(..., false)` | Returns immediately without waiting |
+| [ ] | 14.3.5 | Not ready + `fwait=true` — waits | Spell on cooldown; call `Debuff.cast(..., true)` | Waits up to 2s; casts when ready |
+| [ ] | 14.3.6 | `CAST_SUCCESS` — timer and list set | Debuff lands | Mob ID appended to `state.debuff.lists[i]`; `state.debuff.timers[i]` set to `os.clock() + duration` |
+| [ ] | 14.3.7 | `CAST_IMMUNE` — long suppress | Target immune to debuff | `state.debuff.timers[i]` set to `os.clock() + 600`; mob added to list |
+
+### 14.4 Debuff.check
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.4.1 | `debuff.on == 0` — early return | Set `DebuffAllOn=0` | `Debuff.check` returns immediately; no casts |
+| [ ] | 14.4.2 | `debuff.count == 0` — early return | No debuff slots in INI | Returns immediately |
+| [ ] | 14.4.3 | RespawnWnd open — early return | Open the respawn window | Returns immediately |
+| [ ] | 14.4.4 | Stale mob cleanup | Previously debuffed mob dies or moves > 200 units away | Mob removed from `state.debuff.lists[i]` before cast loop |
+| [ ] | 14.4.5 | Primary target debuffed | Engage mob with debuff slot configured | `Debuff.cast(firstMobID, true)` fires; debuff applied |
+| [ ] | 14.4.6 | XTarget auto-haters debuffed | Multiple mobs on XTarget auto-hater slots in melee range with LOS | `Debuff.cast` called for each eligible XTarget mob |
+| [ ] | 14.4.7 | Target restored after XTarget cast | Off-target debuff fired | Target returns to primary mob; melee re-enabled if active |
+| [ ] | 14.4.8 | `Debuff.resetFight` clears state | Combat ends (`combatReset` fires) | `state.debuff.timers` and `state.debuff.lists` both empty after reset |
+
+### 14.5 Face mob and /peton /petoff
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.5.1 | `FaceMobOn=1` faces mob each tick | Set `FaceMobOn=1`; turn character away from mob in combat | Character re-faces mob every tick via `/face fast nolook` |
+| [ ] | 14.5.2 | `FaceMobOn=2` uses nolook | Set `FaceMobOn=2` | Character re-faces via `/face nolook` |
+| [ ] | 14.5.3 | Face skipped when FEIGN | Feign death with `FaceMobOn=1` | No `/face` command issued while `Me.State() == 'FEIGN'` |
+| [ ] | 14.5.4 | `/peton` enables pet system | Run `/peton` | `state.pet.on = true`; `PetOn=1` written to pickle |
+| [ ] | 14.5.5 | `/petoff` disables pet system | Run `/petoff` | `state.pet.on = false`; `PetOn=0` written to pickle |
+| [ ] | 14.5.6 | Pet state persists after restart | Run `/peton`; stop and restart script | `state.pet.on` restored from pickle as `true` |
+
+---
+
+*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 14.*

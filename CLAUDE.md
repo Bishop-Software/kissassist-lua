@@ -174,7 +174,8 @@ kissassist-lua/          ← repo root (deployed into MQ2's lua/ directory)
     ├── loot.lua         ← MQ2AutoLoot delegation: Loot.init, sell/deposit/barter helpers
     ├── comms.lua        ← cross-character messaging: Lua actors backend + DanNet shim (.mac interop)
     ├── cond.lua         ← KConditions evaluator: mq.parse expressions, TARGETCHECK sentinel
-    └── mez.lua          ← Mez system: mezRadar, MezCheck, AECheck, BreakMez, immune list
+    ├── mez.lua          ← Mez system: mezRadar, MezCheck, AECheck, BreakMez, immune list
+    └── debuff.lua       ← Debuff rotation: debuffRadar, Debuff.cast, Debuff.check, Debuff.resetFight
 ```
 
 ### Module Dependency Rule
@@ -198,6 +199,7 @@ Every module receives `state` and `utils` at `init()` time. No module imports an
 | 11 — Condition Evaluation (KConditions) | #11 | `cond.lua`: `mq.parse` evaluator, TARGETCHECK sentinel; wired into all rotation modules and `CastWhat` |
 | 12 — Mez System | #12 | `mez.lua`: `mezRadar`, `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` (20 fields); `/addimmune` bind |
 | 13 — Advanced Combat Rotation | #13 | Per-slot `slotTimers[]`, `DAMod` arithmetic, `DPSSkip` HP floor, `DPSOn==2` OOC, feign-death sequence, `TargetSwitchingOn`, stuck-gem re-mem |
+| 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init/cast/check/resetFight`, `debuffRadar`; `state.debuff` sub-table; `[DPS]` threshold≥101 split into debuff slots; `FaceMobOn` integer fix + `Me.State()` face guard; `/peton` `/petoff` binds |
 
 ## Before spawning any subagent
 

@@ -68,8 +68,9 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 11 — Condition Evaluation (KConditions) | #11 | `cond.lua` evaluator (`mq.parse`, TARGETCHECK sentinel); `Config.parseCondArray()` strips condNNN suffix; `Cond.eval()` wired into all rotation modules and `CastWhat` condNumber gate; burn condNo/abortFlag; ConOn bind and integration test deferred |
 | 12 — Mez System | #12 | `mez.lua`: full mez subsystem — `Mez.init` (Config load), local `mezRadar`, `mezMobsAE`, `mezMobs`, public `Mez.check`, `Mez.aeCheck`, `Mez.breakMez`; `state.mez` expanded to 20 fields; `MezBroke` event enhanced with per-slot timer-clearing; `/addimmune` bind fully implemented; `[Mez]` + `PetBreakMezSpell` config loaded in `Mez.init`; wired into `combat.lua` fight loop, `checkForCombat`, and `combatPet` (pettank BreakMez); precedence bug fixed in `Combat.assist` and `Combat.getCombatTarget` |
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
+| 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
 
-### Milestone 14 — Debuff Rotation
+### Milestone 14 — Debuff Rotation ✅ COMPLETE
 
 **Goal:** Port the `DoDebuffStuff` / `DebuffCast` debuff rotation to a new `debuff.lua` module, giving enchanters, shamans, beastlords, and other debuffing classes the ability to land and maintain debuffs on primary and X-target mobs during combat.
 
@@ -149,6 +150,16 @@ Create `modules/debuff.lua` with:
 - `require` and instantiate `debuff.lua`; pass to `Combat.init`
 
 **Done when:** Debuff slots in `[DPS]` INI with tag ≥ 101 land on the primary and X-target mobs during combat, timers suppress re-casting while the debuff is active, and the fight-end reset clears all tracking state.
+
+#### Implemented
+
+- **14.1** — `state.debuff` sub-table added (`on`, `count`, `slots`, `timers`, `lists`); `state.combat.debuffAllOn/dboList/dboTimer` and `state.mez.debuffCount` removed
+- **14.2** — `Combat.init` single-pass DPS/debuff split: threshold≥101 → `state.debuff.slots[]`; `cast.lua` `debuffCast` updated to read `state.debuff.slots[i].spell`
+- **14.3** — `modules/debuff.lua` created: `Debuff.init`, local `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `debuffCast`/`Cast.doDebuffStuff` removed from `cast.lua`
+- **14.4** — `combat.lua`: `_debuff` peer added to `Combat.init`; `_cast.doDebuffStuff` → `_debuff.check` (2 sites); `combatReset` calls `_debuff.resetFight()`
+- **14.5** — `init.lua`: `require modules.debuff`; `Debuff.init(State, Utils, Cast, Heal, Cond)`; `Combat.init` receives `Debuff` as ninth peer
+- **Bonus** — `FaceMobOn` fixed: stored as integer (0/1/2); face check moved outside engage block; guard changed from `Me.Standing()` to `Me.State() ~= 'FEIGN'/'DEAD'/'SIT'`
+- **Bonus** — `/peton` `/petoff` binds added; legacy MQ2 alias cleared at startup via `mq.TLO.Alias` guard; pickle-persisted via `_config.set`/`_config.save`
 
 ---
 
