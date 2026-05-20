@@ -373,8 +373,11 @@ end
 -- Mirrors Bind_AddToPull (kissassist.mac). Appends name to MobsToPull list; persists to INI.
 local function onAddPull(name)
     if not name or name == '' then
-        printf('\ay/addpull [mobname]')
-        return
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addpull [mobname] — no argument and no target')
+            return
+        end
     end
     local cur = state.pull.mobsToPullFirst or 'all'
     if cur == 'all' or cur == 'null' or cur == '' then
@@ -389,8 +392,11 @@ end
 -- Mirrors Bind_AddToIgnore (kissassist.mac). Appends name to MobsToIgnore list; persists to INI.
 local function onAddIgnore(name, _byID)
     if not name or name == '' then
-        printf('\ay/addignore [mobname]')
-        return
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addignore [mobname] — no argument and no target')
+            return
+        end
     end
     local cur = state.pull.mobsToIgnore or 'null'
     if cur == 'null' or cur == '' then
