@@ -636,4 +636,40 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
-*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 15.*
+## Section 16 — Combat Extensions
+
+### 16.1 Summon Companion AA
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 16.1.1 | Pet resummons mid-fight when too far | Pet class in combat; move pet far away (> 79 units) while pulling | `/echo Pet! Get over here!` + Summon Companion AA cast |
+| [ ] | 16.1.2 | No resummon when pet in range | Pet within 79 units during pull | AA not cast |
+| [ ] | 16.1.3 | No resummon when not pulling | Not in pull phase; pet far away | AA not cast (guard: `_state.pull.pulling`) |
+
+### 16.2 AutoFireOn state machine
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 16.2.1 | `/autofireon` toggles 0→1 | INI has `AutoFireOn=0`; run `/autofireon` | `state.combat.autoFireOn` = 1; pickle updated |
+| [ ] | 16.2.2 | `/autofireon` toggles 1→0 | `AutoFireOn=1`; run `/autofireon` | `state.combat.autoFireOn` = 0 |
+| [ ] | 16.2.3 | AutoFireOn=1 first engage skips melee stick | `AutoFireOn=1`; engage mob | No Taunt/stick/ZAxis; only BeforeAttack |
+| [ ] | 16.2.4 | AutoFireOn=1 re-engage fires `/autofire` | `AutoFireOn=1`; engage mob; `Me.AutoFire` = false mid-fight | `/autofire` issued to toggle back on |
+| [ ] | 16.2.5 | TooClose event sets 1→2 and clears autofire | `AutoFireOn=1` in combat; game fires TooClose message | `autoFireOn` = 2; `/autofire` toggled off |
+| [ ] | 16.2.6 | combatReset resets 2→1 | `AutoFireOn=2` at fight end | `autoFireOn` = 1 after `combatReset` |
+| [ ] | 16.2.7 | combatReset clears autofire if active | `Me.AutoFire` = true at fight end | `/autofire` issued; autofire off |
+| [ ] | 16.2.8 | AutoFireOn=0 normal melee unaffected | `AutoFireOn=0`; engage mob | Normal Taunt/stick/attack path |
+
+### 16.3 Comms.announce()
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 16.3.1 | Tank-announce with DanNet peers | Tank/pullertank/hunter role; DanNet active with peers; engage mob | `/dgtell all TANKING-> <name> <- ID:<id>` sent |
+| [ ] | 16.3.2 | Tank-announce without DanNet | Same role; DanNet off or no peers | `/echo TANKING-> <name> <- ID:<id>` |
+| [ ] | 16.3.3 | Pet-tank announce | Pettank/pullerpettank/hunterpettank role | `<pet name> is TANKING-> ...` announced |
+| [ ] | 16.3.4 | Add-spam announces to group | MA or tank role; adds detected in camp (mobCount > 1, aggroID set) | `Add(s) in camp detected` announced |
+| [ ] | 16.3.5 | Add-spam 5s debounce | Adds detected; trigger again within 5s | Second announce suppressed |
+| [ ] | 16.3.6 | Add-spam debounce expires | Wait > 5s after first announce with adds still present | Second announce fires |
+
+---
+
+*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 16.*

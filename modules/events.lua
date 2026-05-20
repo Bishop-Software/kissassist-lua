@@ -200,6 +200,12 @@ end
 local function onTooClose()
     utils.debug('move', 'TooClose')
     state.movement.toClose = true
+    -- AutoFireOn: mob too close, pause ranged autofire (mac:11178-11180)
+    if state.combat.autoFireOn == 1 and state.combat.combatStart
+       and (state.combat.myTargetID or 0) ~= 0 then
+        if mq.TLO.Me.AutoFire() then mq.cmd('/autofire') end
+        state.combat.autoFireOn = 2
+    end
     if state.pull.pulling and state.pull.withAlt == 'Melee' then
         -- pull module handles TooClose during pulls
         return
