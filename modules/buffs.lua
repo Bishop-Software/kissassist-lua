@@ -361,6 +361,66 @@ function Buffs.castMount()
     end
 end
 
+-- Mirrors Sub CastMana (mac:13892). Scans buffsArray for |mana entries and casts on self.
+-- Called from combat loop and OOC main loop independently of the full checkBuffs cycle.
+function Buffs.castMana()
+    if mq.TLO.Me.Invis() then return end
+    if _state.timers.justZoned > os.clock() then return end
+    if (mq.TLO.Me.Buff('Revival Sickness').ID() or 0) ~= 0 then return end
+
+    for i, slot in ipairs(_state.buffs.buffsArray) do
+        local aggroID = _state.combat.aggroTargetID or ''
+        if aggroID ~= '' and aggroID ~= '0' then return end
+
+        if not slot then goto mncontinue end
+        local entry = slot.name or ''
+        if entry:find('|0', 1, true) then goto mncontinue end
+
+        local parts = {}
+        for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
+        if (parts[2] or '') ~= 'mana' then goto mncontinue end
+
+        local spellName  = parts[1] or ''
+        if spellName == '' then goto mncontinue end
+
+        local manaThresh = tonumber(parts[3]) or 0
+        local hpFloor    = tonumber(parts[4]) or 0
+        local pctMana    = tonumber(mq.TLO.Me.PctMana()) or 100
+        local pctHPs     = tonumber(mq.TLO.Me.PctHPs())  or 100
+        if pctMana > manaThresh or pctHPs <= hpFloor then goto mncontinue end
+
+        -- Bard: skip Dichotomic Psalm when endurance is sufficient (mac:13916)
+        if spellName:find('Dichotomic Psalm', 1, true) then
+            if (tonumber(mq.TLO.Me.CurrentEndurance()) or 0) >= 6600 then goto mncontinue end
+        end
+
+        -- Per-slot cooldown: skip if Druid Growth timer still active (mac:13919 BufXGM0 check)
+        if _state.buffs.slotTimers[i] and (_state.buffs.slotTimers[i][0] or 0) > os.clock() then
+            goto mncontinue
+        end
+
+        local result = _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CastMana')
+        if result == 'CAST_SUCCESS' then
+            -- Druid Growth: set per-slot cooldown to spell duration + 5s (mac:13926)
+            if mq.TLO.Me.Class.ShortName() == 'DRU'
+                and spellName:find('Growth', 1, true)
+                and (mq.TLO.Spell(spellName).Skill() or '') == 'Conjuration' then
+                if not _state.buffs.slotTimers[i] then
+                    _state.buffs.slotTimers[i] = {}
+                    for j = 0, 5 do _state.buffs.slotTimers[i][j] = 0 end
+                end
+                local dur = tonumber(mq.TLO.Spell(spellName).Duration.TotalSeconds()) or 0
+                _state.buffs.slotTimers[i][0] = os.clock() + dur + 5
+            end
+        elseif result == 'CAST_COMPONENTS' then
+            mq.cmd(string.format('/echo Missing components for %s — disabling.', spellName))
+            _state.buffs.buffsArray[i].name = 'NULL'
+        end
+
+        ::mncontinue::
+    end
+end
+
 -- Mirrors PowerSource refuel block (mac:4192-4198).
 -- If the PowerSource item has no charges, clicks it to cursor then destroys it to refill.
 local function refuelPowerSource()
