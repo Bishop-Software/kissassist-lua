@@ -298,12 +298,27 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
     -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
 
-    -- DPS spell/AA/disc array — parsed into { name, condNo } slots.
+    -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
+    -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN
+    _state.debuff.on = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
     local rawDps = Config.get('DPS', 'DPS', nil)
     if type(rawDps) == 'table' then
         for _, slot in ipairs(Config.parseCondArray(rawDps)) do
             if slot and slot.name and slot.name ~= '' then
-                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+                local parts = {}
+                for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
+                local thresh = tonumber(parts[2]) or 0
+                if thresh >= 101 then
+                    _state.debuff.slots[#_state.debuff.slots + 1] = {
+                        spell  = parts[1] or '',
+                        tag1   = parts[3] or '',
+                        tag2   = parts[4] or '',
+                        condNo = slot.condNo,
+                    }
+                    _state.debuff.count = _state.debuff.count + 1
+                else
+                    _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+                end
             end
         end
     end
@@ -317,19 +332,6 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
             end
         end
     end
-
-    -- Debuff-all: compute debuffCount from DPS array (slots with hp threshold >= 101 are debuff-all entries)
-    _state.debuff.on = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
-    local debuffCount = 0
-    for _, dpsEntry in ipairs(_state.combat.dpsArray) do
-        local thresh = tonumber(dpsEntry.name:match('^[^|]*|([^|]*)') or '') or 0
-        if thresh >= 101 then
-            debuffCount = debuffCount + 1
-        else
-            break  -- debuff slots are always first in the array
-        end
-    end
-    _state.debuff.count = debuffCount
 
     -- Aggro management array — parsed into { name, condNo } slots.
     _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
@@ -962,6 +964,16 @@ function Combat.fight(fromWhere)
     local inRange  = mobDist < combatRadius
                   or (campToMA <= cr and maToTgt <= cr)
 
+    -- Face mob every tick when enabled (mac:1094)
+    local faceMob = _state.movement.faceMobOn or 0
+    if faceMob > 0 and (mq.TLO.Target.ID() or 0) ~= 0 then
+        local meState = mq.TLO.Me.State() or ''
+        if meState ~= 'FEIGN' and meState ~= 'DEAD' and meState ~= 'SIT' then
+            local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
+            mq.cmdf('/squelch /face %s', faceMode)
+        end
+    end
+
     -- ─── Main engage block: not corpse, HP ≤ assistAt (MA always engages), in range ──
     if spType:lower() ~= 'corpse'
        and (_state.session.iAmMA or mobPct <= _state.combat.assistAt)
@@ -983,12 +995,6 @@ function Combat.fight(fromWhere)
                 mq.cmd('/echo [KA] ' .. petName .. ' is TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
             end
             -- Hunter LOS position (deferred M7)
-        end
-
-        -- Face mob every tick when enabled (mac:1094)
-        if _state.movement.faceMobOn and (mq.TLO.Target.ID() or 0) ~= 0
-           and (mq.TLO.Me.Standing() or mq.TLO.Me.Mount.ID()) then
-            mq.cmd('/squelch /face fast nolook')
         end
 
         -- Look level when not underwater (mac:1095)

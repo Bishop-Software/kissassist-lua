@@ -1272,10 +1272,10 @@ local function debuffCast(targetID, fwait)
     local tidStr = tostring(targetID)
 
     for i = 1, debuffCount do
-        local entry = state.combat.dpsArray[i]
-        if not entry or entry == 'null' or entry == '' then break end
+        local slot = state.debuff.slots[i]
+        if not slot then break end
 
-        local spellName = entry:match('^([^|]+)') or ''
+        local spellName = slot.spell or ''
         if spellName == '' or spellName == 'null' then goto next_debuff end
 
         -- DBOTimer/DBOList: skip if mob was recently debuffed with this slot (mac:7634-7648)

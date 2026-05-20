@@ -205,7 +205,7 @@ local State = {
         stayPut         = false,
         stickDist       = 13,
         stickDistUW     = 10,
-        faceMobOn       = false,
+        faceMobOn       = 0,   -- 0=off 1=fast nolook 2=nolook (mac FaceMobOn)
         scatterOn       = false,
         scatterDistance = 20,
         toClose         = false,
