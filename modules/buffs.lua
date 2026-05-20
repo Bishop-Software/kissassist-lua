@@ -336,10 +336,13 @@ function Buffs.writeBuffsMerc()
 end
 
 -- Mirrors Sub CastMount (mac:13875). Scans buffsArray for |Mount entries and casts on self.
-local function castMount()
+-- Public so init.lua can call it after rez (mac:6906/6968).
+function Buffs.castMount()
     if not _state.misc.mountOn then return end
     if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then return end
     if mq.TLO.Me.CombatState() == 'COMBAT' then return end
+    local zType = mq.TLO.Zone.Type()
+    if not mq.TLO.Zone.Outdoor() and zType ~= 1 and zType ~= 2 and zType ~= 5 then return end
     for _, slot in ipairs(_state.buffs.buffsArray) do
         if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then break end
         if not slot then goto mcontinue end
@@ -394,13 +397,8 @@ function Buffs.checkBuffs(forceGroup)
     -- PowerSource refuel (mac:4192)
     refuelPowerSource()
 
-    -- Mount cast (mac:4200) — zone/outdoor guard here; all other guards inside castMount()
-    if _state.misc.mountOn and (mq.TLO.Me.Mount.ID() or 0) == 0 then
-        local zType = mq.TLO.Zone.Type()
-        if mq.TLO.Zone.Outdoor() or zType == 1 or zType == 2 or zType == 5 then
-            castMount()
-        end
-    end
+    -- Mount cast (mac:4200)
+    Buffs.castMount()
 
     -- Per-entry loop (mac:4207)
     for i, slot in ipairs(_state.buffs.buffsArray) do
