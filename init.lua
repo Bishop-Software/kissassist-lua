@@ -99,7 +99,7 @@ Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')

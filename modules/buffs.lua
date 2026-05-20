@@ -369,9 +369,6 @@ function Buffs.castMana()
     if (mq.TLO.Me.Buff('Revival Sickness').ID() or 0) ~= 0 then return end
 
     for i, slot in ipairs(_state.buffs.buffsArray) do
-        local aggroID = _state.combat.aggroTargetID or ''
-        if aggroID ~= '' and aggroID ~= '0' then return end
-
         if not slot then goto mncontinue end
         local entry = slot.name or ''
         if entry:find('|0', 1, true) then goto mncontinue end
@@ -412,6 +409,9 @@ function Buffs.castMana()
                 local dur = tonumber(mq.TLO.Spell(spellName).Duration.TotalSeconds()) or 0
                 _state.buffs.slotTimers[i][0] = os.clock() + dur + 5
             end
+            -- Stop scanning if aggro fires mid-cast (mac:13929)
+            local ag = _state.combat.aggroTargetID or ''
+            if ag ~= '' and ag ~= '0' then break end
         elseif result == 'CAST_COMPONENTS' then
             mq.cmd(string.format('/echo Missing components for %s — disabling.', spellName))
             _state.buffs.buffsArray[i].name = 'NULL'
