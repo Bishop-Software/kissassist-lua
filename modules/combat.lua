@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -267,7 +267,7 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -276,6 +276,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez)
     _bard     = bard
     _cond     = cond
     _mez      = mez
+    _debuff   = debuff
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -1132,8 +1133,8 @@ function Combat.fight(fromWhere)
                         mq.cmd('/makemevisible')
                     end
                     -- DoDebuffStuff: apply debuff-all DPS slots to target + nearby haters (mac:1179)
-                    if (_state.debuff.on or 0) > 0 and _cast.doDebuffStuff then
-                        _cast.doDebuffStuff(_state.combat.myTargetID)
+                    if (_state.debuff.on or 0) > 0 and _debuff then
+                        _debuff.check(_state.combat.myTargetID)
                         myID = _state.combat.myTargetID
                         if myID == 0 then
                             Combat.combatReset(0, fromWhere .. '_afterDebuff')
@@ -1268,8 +1269,8 @@ function Combat.fight(fromWhere)
         -- Deferred: Bard twist (mac:1327, M8)
         -- DebuffAllOn==2: debuff adds even when not at melee range (mac:1328)
         if (_state.debuff.on or 0) == 2 and _state.combat.myTargetID ~= 0
-           and (_state.combat.aggroTargetID or '') ~= '' and _cast.doDebuffStuff then
-            _cast.doDebuffStuff(_state.combat.myTargetID)
+           and (_state.combat.aggroTargetID or '') ~= '' and _debuff then
+            _debuff.check(_state.combat.myTargetID)
         end
         -- BeforeAttack condCheck=2: fire only |cond entries (mac:1330)
         if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
@@ -1535,6 +1536,8 @@ function Combat.combatReset(sFlag, calledFrom)
     until not _state.combat.eventFlag
 
     -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
+
+    if _debuff then _debuff.resetFight() end
 
     _utils.debug('combat', 'combatReset: done from=%s', tostring(calledFrom))
 end

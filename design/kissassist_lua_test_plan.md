@@ -45,10 +45,10 @@ All tests are manual and in-game. No automated test framework exists.
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
 | [ ] | 1.3.1 | Assist role with MA name | `/lua run kissassist-lua assist TankName` | Role = assist; MA = TankName |
-| [X] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
+| [x] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
 | [ ] | 1.3.3 | Puller role | `/lua run kissassist-lua puller TankName` | Role = puller; pull system active |
 | [ ] | 1.3.4 | Pettank role | `/lua run kissassist-lua pettank` | Pet module active; BreakMez path enabled |
-| [X] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
+| [x] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
 
 ---
 
@@ -58,17 +58,17 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Command | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [X] | 2.1.1 | `/debug on` | Run command | General debug output enabled; confirmation printed |
-| [X] | 2.1.2 | `/debug off` | Run command | General debug output disabled |
+| [x] | 2.1.1 | `/debug on` | Run command | General debug output enabled; confirmation printed |
+| [x] | 2.1.2 | `/debug off` | Run command | General debug output disabled |
 | [ ] | 2.1.3 | `/debug all on` | Run command | All debug sub-systems enabled |
 | [ ] | 2.1.4 | `/debug combat on` | Run command | Combat debug enabled; other systems unchanged |
 | [ ] | 2.1.5 | `/debug combat off` | Run command | Combat debug disabled |
-| [X] | 2.1.6 | `/debug` (no args) | Run command | Toggles current debug state; prints new state |
-| [X] | 2.1.7 | `/debug help` | Run command | Prints valid sub-command list |
+| [x] | 2.1.6 | `/debug` (no args) | Run command | Toggles current debug state; prints new state |
+| [x] | 2.1.7 | `/debug help` | Run command | Prints valid sub-command list |
 | [x] | 2.1.8 | `/parse Me.Level` | Run command | Current level printed to chat |
-| [X] | 2.1.9 | `/zoneinfo` | Run command | Zone name, short name, or relevant zone data printed |
-| [X] | 2.1.10 | `/aggroinfo` | Run command | Aggro target or mob count info printed |
-| [X] | 2.1.11 | `/kisscheck` | Run command | Prints role, MA, assist-at %, combat state, key system on/off flags; no error |
+| [x] | 2.1.9 | `/zoneinfo` | Run command | Zone name, short name, or relevant zone data printed |
+| [x] | 2.1.10 | `/aggroinfo` | Run command | Aggro target or mob count info printed |
+| [x] | 2.1.11 | `/kisscheck` | Run command | Prints role, MA, assist-at %, combat state, key system on/off flags; no error |
 | [!] | 2.1.12 | `/kasettings` | Run command | Prints current config or settings summary; no error |
 
 ### 2.2 — Config and persistence
@@ -76,7 +76,7 @@ All tests are manual and in-game. No automated test framework exists.
 | Status | # | Command | Steps | Expected |
 | --- | --- | --- | --- | --- |
 | [x] | 2.2.1 | `/iniwrite` | Run command | Config pickle flushed to disk; no Lua error |
-| [X] | 2.2.2 | `/writespells` | Run command | Current spell set written to pickle; no Lua error |
+| [x] | 2.2.2 | `/writespells` | Run command | Current spell set written to pickle; no Lua error |
 | [ ] | 2.2.3 | `/memmyspells` | Run command | Spells memorized from saved spell set; no Lua error |
 | [x] | 2.2.4 | `/togglevariable healsOn` | Run with heals on | `state.heal.healsOn` toggled off; confirmation printed |
 | [x] | 2.2.5 | `/togglevariable healsOn` | Run again | `state.heal.healsOn` toggled back on |
