@@ -24,8 +24,8 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 1.1.1 | All required plugins already loaded | Start with `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2AutoLoot` loaded | Script starts; no plugin messages printed |
-| [ ] | 1.1.2 | Missing plugin auto-loads | Unload one required plugin; start script | Script prints loading message, loads the plugin, continues normally |
+| [x] | 1.1.1 | All required plugins already loaded | Start with `MQ2Exchange`, `MQ2MoveUtils`, `MQ2Posse`, `MQ2Rez`, `MQ2AutoLoot` loaded | Script starts; no plugin messages printed |
+| [x] | 1.1.2 | Missing plugin auto-loads | Unload one required plugin; start script | Script prints loading message, loads the plugin, continues normally |
 | [ ] | 1.1.3 | Plugin fails to load | Unload a plugin and make it unavailable; start script | Error message names the failed plugin; `checkPlugins` returns false |
 | [ ] | 1.1.4 | Bard with MQ2Medley already loaded | Start as Bard role with `MQ2Medley` loaded | Script starts; no plugin messages printed |
 | [ ] | 1.1.5 | Bard auto-loads MQ2Medley | Start as Bard role without `MQ2Medley` loaded | `Bard.init` loads MQ2Medley; yellow notice printed; medley switching functions normally |
@@ -35,8 +35,8 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 1.2.1 | First-run INI migration | Start with existing `.ini`, no `.lua` pickle present | Pickle created; `.ini.bak` written; no data loss |
-| [ ] | 1.2.2 | Subsequent run loads pickle | Run again after migration | Loads `.lua` directly; `.ini.bak` untouched |
+| [] | 1.2.1 | First-run INI migration | Start with existing `.ini`, no `.lua` pickle present | Pickle created; `.ini.bak` written; no data loss |
+| [x] | 1.2.2 | Subsequent run loads pickle | Run again after migration | Loads `.lua` directly; `.ini.bak` untouched |
 | [ ] | 1.2.3 | All 18 sections round-trip | Compare pickle values to original `.ini` | No keys dropped; no defaults incorrectly applied |
 | [ ] | 1.2.4 | Role configs migrate | Test with melee, pet, puller, healer INIs | All role configs migrate and load correctly |
 
@@ -45,10 +45,10 @@ All tests are manual and in-game. No automated test framework exists.
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
 | [ ] | 1.3.1 | Assist role with MA name | `/lua run kissassist-lua assist TankName` | Role = assist; MA = TankName |
-| [ ] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
+| [x] | 1.3.2 | Tank role | `/lua run kissassist-lua tank` | Role = tank; script assumes self as MA |
 | [ ] | 1.3.3 | Puller role | `/lua run kissassist-lua puller TankName` | Role = puller; pull system active |
 | [ ] | 1.3.4 | Pettank role | `/lua run kissassist-lua pettank` | Pet module active; BreakMez path enabled |
-| [ ] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
+| [x] | 1.3.5 | Clean shutdown | `/lua stop` | No Lua errors; all event and bind handlers cleaned up |
 
 ---
 
@@ -58,28 +58,28 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Command | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 2.1.1 | `/debug on` | Run command | General debug output enabled; confirmation printed |
-| [ ] | 2.1.2 | `/debug off` | Run command | General debug output disabled |
+| [x] | 2.1.1 | `/debug on` | Run command | General debug output enabled; confirmation printed |
+| [x] | 2.1.2 | `/debug off` | Run command | General debug output disabled |
 | [ ] | 2.1.3 | `/debug all on` | Run command | All debug sub-systems enabled |
 | [ ] | 2.1.4 | `/debug combat on` | Run command | Combat debug enabled; other systems unchanged |
 | [ ] | 2.1.5 | `/debug combat off` | Run command | Combat debug disabled |
-| [ ] | 2.1.6 | `/debug` (no args) | Run command | Toggles current debug state; prints new state |
-| [ ] | 2.1.7 | `/debug help` | Run command | Prints valid sub-command list |
-| [ ] | 2.1.8 | `/parse Me.Level` | Run command | Current level printed to chat |
-| [ ] | 2.1.9 | `/zoneinfo` | Run command | Zone name, short name, or relevant zone data printed |
-| [ ] | 2.1.10 | `/aggroinfo` | Run command | Aggro target or mob count info printed |
-| [ ] | 2.1.11 | `/kisscheck` | Run command | Prints role, MA, assist-at %, combat state, key system on/off flags; no error |
-| [ ] | 2.1.12 | `/kasettings` | Run command | Prints current config or settings summary; no error |
+| [x] | 2.1.6 | `/debug` (no args) | Run command | Toggles current debug state; prints new state |
+| [x] | 2.1.7 | `/debug help` | Run command | Prints valid sub-command list |
+| [x] | 2.1.8 | `/parse Me.Level` | Run command | Current level printed to chat |
+| [x] | 2.1.9 | `/zoneinfo` | Run command | Zone name, short name, or relevant zone data printed |
+| [x] | 2.1.10 | `/aggroinfo` | Run command | Aggro target or mob count info printed |
+| [x] | 2.1.11 | `/kisscheck` | Run command | Prints role, MA, assist-at %, combat state, key system on/off flags; no error |
+| [!] | 2.1.12 | `/kasettings` | Run command | Prints current config or settings summary; no error |
 
 ### 2.2 — Config and persistence
 
 | Status | # | Command | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 2.2.1 | `/iniwrite` | Run command | Config pickle flushed to disk; no Lua error |
-| [ ] | 2.2.2 | `/writespells` | Run command | Current spell set written to pickle; no Lua error |
+| [x] | 2.2.1 | `/iniwrite` | Run command | Config pickle flushed to disk; no Lua error |
+| [x] | 2.2.2 | `/writespells` | Run command | Current spell set written to pickle; no Lua error |
 | [ ] | 2.2.3 | `/memmyspells` | Run command | Spells memorized from saved spell set; no Lua error |
-| [ ] | 2.2.4 | `/togglevariable healsOn` | Run with heals on | `state.heal.healsOn` toggled off; confirmation printed |
-| [ ] | 2.2.5 | `/togglevariable healsOn` | Run again | `state.heal.healsOn` toggled back on |
+| [x] | 2.2.4 | `/togglevariable healsOn` | Run with heals on | `state.heal.healsOn` toggled off; confirmation printed |
+| [x] | 2.2.5 | `/togglevariable healsOn` | Run again | `state.heal.healsOn` toggled back on |
 | [ ] | 2.2.6 | `/togglevariable conOn` | Run command | `state.cond.on` toggled; condition evaluation state flips |
 | [ ] | 2.2.7 | `/changevarint assistAt 90` | Run command | `state.session.assistAt` updated to 90; confirmed via `/kisscheck` |
 | [ ] | 2.2.8 | `/changevarint mezOn 1` | Run command | `state.mez.on` updated to 1; confirmed via `/kisscheck` or debug |
@@ -103,9 +103,9 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Command | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 2.4.1 | `/makecamphere` | Run at current location | Camp coordinates set; `state.movement.campX/Y/Z` updated |
-| [ ] | 2.4.2 | `/stayhere` | Run command | `state.movement.returnToCamp = true`; chase cleared |
-| [ ] | 2.4.3 | `/campoff` | Run after camp is set | Camp disabled; return-to-camp stops |
+| [x] | 2.4.1 | `/makecamphere` | Run at current location | Camp coordinates set; `state.movement.campX/Y/Z` updated |
+| [x] | 2.4.2 | `/stayhere` | Run command | `state.movement.returnToCamp = true`; chase cleared |
+| [x] | 2.4.3 | `/campoff` | Run after camp is set | Camp disabled; return-to-camp stops |
 | [ ] | 2.4.4 | `/chaseme` | Run on MA character | Other Lua chars begin chasing MA |
 | [ ] | 2.4.5 | `/trackmedown` | Run command | Tracking behavior activated; no error |
 | [ ] | 2.4.6 | `/campfire` | Stand at target spot; run command | Campfire placed; confirmation printed |
@@ -353,9 +353,9 @@ All tests are manual and in-game. No automated test framework exists.
 
 | Status | # | Scenario | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| [ ] | 9.1.1 | Loot on enables MQ2AutoLoot | `/kalooton` | MQ2AutoLoot enabled; items looted from corpses |
-| [ ] | 9.1.2 | Loot off disables MQ2AutoLoot | `/kalootoff` | MQ2AutoLoot disabled; corpses not auto-looted |
-| [ ] | 9.1.3 | Loot default on startup | `loot.on=1` in state | MQ2AutoLoot enabled automatically on script start |
+| [x] | 9.1.1 | Loot on enables MQ2AutoLoot | `/kalooton` | MQ2AutoLoot enabled; items looted from corpses |
+| [x] | 9.1.2 | Loot off disables MQ2AutoLoot | `/kalootoff` | MQ2AutoLoot disabled; corpses not auto-looted |
+| [x] | 9.1.3 | Loot default on startup | `loot.on=1` in state | MQ2AutoLoot enabled automatically on script start |
 
 ### 9.2 — Sell / deposit / barter
 
@@ -534,4 +534,62 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
-*Last updated: 2026-05-19. Covers all implemented functionality through Milestone 13.*
+## Section 14 — Debuff Rotation
+
+### 14.1 State initialization
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.1.1 | `state.debuff` sub-table present | Start script; inspect `state.debuff` | Sub-table exists with `on`, `count`, `slots`, `timers`, `lists` fields |
+| [ ] | 14.1.2 | `DebuffAllOn=0` disables system | Set `DebuffAllOn=0` in `[DPS]` INI; start script | `state.debuff.on == 0`; no debuff casts occur |
+| [ ] | 14.1.3 | `DebuffAllOn=1` enables combat-only | Set `DebuffAllOn=1`; engage mob | Debuff casts fire during combat; no OOC debuff casts |
+| [ ] | 14.1.4 | `DebuffAllOn=2` enables OOC debuffing | Set `DebuffAllOn=2`; stay near mob without engaging | `Debuff.check` called when `state.debuff.on==2` and assist target exists |
+
+### 14.2 DPS/debuff slot split
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.2.1 | Threshold < 101 → DPS slot | Set `[DPS]` slot `SpellName\|90` | Slot placed in `state.combat.dpsArray`; not in `state.debuff.slots` |
+| [ ] | 14.2.2 | Threshold ≥ 101 → debuff slot | Set `[DPS]` slot `SpellName\|101` | Slot placed in `state.debuff.slots` with correct `spell/tag1/tag2/condNo` fields |
+| [ ] | 14.2.3 | `state.debuff.count` accurate | Configure 3 debuff slots (threshold ≥ 101) | `state.debuff.count == 3` after `Combat.init` |
+| [ ] | 14.2.4 | Mixed array splits correctly | Configure both DPS and debuff slots | Each slot lands in the correct array; counts match |
+
+### 14.3 Debuff.cast
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.3.1 | Slot on cooldown — skipped | Mob in `state.debuff.lists[i]` and timer not expired | Slot skipped; no cast attempted |
+| [ ] | 14.3.2 | Mob out of cast range — skipped | Target beyond spell range | Slot skipped |
+| [ ] | 14.3.3 | Condition gate fails — skipped | Attach false KCondition to slot | Slot skipped; condition evaluated before readiness check |
+| [ ] | 14.3.4 | Not ready + `fwait=false` — skipped | Spell on cooldown; call `Debuff.cast(..., false)` | Returns immediately without waiting |
+| [ ] | 14.3.5 | Not ready + `fwait=true` — waits | Spell on cooldown; call `Debuff.cast(..., true)` | Waits up to 2s; casts when ready |
+| [ ] | 14.3.6 | `CAST_SUCCESS` — timer and list set | Debuff lands | Mob ID appended to `state.debuff.lists[i]`; `state.debuff.timers[i]` set to `os.clock() + duration` |
+| [ ] | 14.3.7 | `CAST_IMMUNE` — long suppress | Target immune to debuff | `state.debuff.timers[i]` set to `os.clock() + 600`; mob added to list |
+
+### 14.4 Debuff.check
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.4.1 | `debuff.on == 0` — early return | Set `DebuffAllOn=0` | `Debuff.check` returns immediately; no casts |
+| [ ] | 14.4.2 | `debuff.count == 0` — early return | No debuff slots in INI | Returns immediately |
+| [ ] | 14.4.3 | RespawnWnd open — early return | Open the respawn window | Returns immediately |
+| [ ] | 14.4.4 | Stale mob cleanup | Previously debuffed mob dies or moves > 200 units away | Mob removed from `state.debuff.lists[i]` before cast loop |
+| [ ] | 14.4.5 | Primary target debuffed | Engage mob with debuff slot configured | `Debuff.cast(firstMobID, true)` fires; debuff applied |
+| [ ] | 14.4.6 | XTarget auto-haters debuffed | Multiple mobs on XTarget auto-hater slots in melee range with LOS | `Debuff.cast` called for each eligible XTarget mob |
+| [ ] | 14.4.7 | Target restored after XTarget cast | Off-target debuff fired | Target returns to primary mob; melee re-enabled if active |
+| [ ] | 14.4.8 | `Debuff.resetFight` clears state | Combat ends (`combatReset` fires) | `state.debuff.timers` and `state.debuff.lists` both empty after reset |
+
+### 14.5 Face mob and /peton /petoff
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 14.5.1 | `FaceMobOn=1` faces mob each tick | Set `FaceMobOn=1`; turn character away from mob in combat | Character re-faces mob every tick via `/face fast nolook` |
+| [ ] | 14.5.2 | `FaceMobOn=2` uses nolook | Set `FaceMobOn=2` | Character re-faces via `/face nolook` |
+| [ ] | 14.5.3 | Face skipped when FEIGN | Feign death with `FaceMobOn=1` | No `/face` command issued while `Me.State() == 'FEIGN'` |
+| [ ] | 14.5.4 | `/peton` enables pet system | Run `/peton` | `state.pet.on = true`; `PetOn=1` written to pickle |
+| [ ] | 14.5.5 | `/petoff` disables pet system | Run `/petoff` | `state.pet.on = false`; `PetOn=0` written to pickle |
+| [ ] | 14.5.6 | Pet state persists after restart | Run `/peton`; stop and restart script | `state.pet.on` restored from pickle as `true` |
+
+---
+
+*Last updated: 2026-05-20. Covers all implemented functionality through Milestone 14.*

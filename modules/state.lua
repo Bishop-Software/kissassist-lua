@@ -97,9 +97,6 @@ local State = {
         -- Step 4.8
         aggroArray         = {},
         aggroOn            = false,
-        debuffAllOn        = 0,
-        dboList            = {},   -- per-debuff-slot: string of "|id|id..." already-debuffed mobs
-        dboTimer           = {},   -- per-debuff-slot: os.clock() expiry for re-debuff
         slotTimers         = {},   -- per-DPS-slot os.clock() expiry (0=expired); mac ABTimer/DPSTimer
         dpsSkip            = 20,  -- stop DPS rotation when mob HP% is at or below this (mac DPSSkip)
         dpsInterval        = 2,   -- fallback timer (seconds) for zero-duration spells (mac DPSInterval)
@@ -208,7 +205,7 @@ local State = {
         stayPut         = false,
         stickDist       = 13,
         stickDistUW     = 10,
-        faceMobOn       = false,
+        faceMobOn       = 0,   -- 0=off 1=fast nolook 2=nolook (mac FaceMobOn)
         scatterOn       = false,
         scatterDistance = 20,
         toClose         = false,
@@ -310,7 +307,6 @@ local State = {
     mez = {
         on             = 0,      -- 0=Off 1=Single&AE 2=Single 3=AE
         broke          = false,
-        debuffCount    = 0,
         immuneIDs      = '',
         mobCount       = 0,
         mobAECount     = 0,
@@ -364,6 +360,14 @@ local State = {
         on          = false,  -- set from INI [KConditions] ConOn
         size        = 5,      -- set from INI [KConditions] CondSize
         expressions = {},     -- [n] = TLO expression string (1-indexed)
+    },
+
+    debuff = {
+        on     = 0,   -- DebuffAllOn: 0=off 1=in-combat only 2=OOC also
+        count  = 0,   -- number of debuff slots parsed from [DPS] array
+        slots  = {},  -- array of slot defs: { spell, tag1, tag2, condNo }
+        timers = {},  -- slot index → expiry timestamp (os.clock())
+        lists  = {},  -- slot index → string of "|id|id..." already-debuffed mobs
     },
 
     dps = {
