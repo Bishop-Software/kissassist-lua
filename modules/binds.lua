@@ -185,6 +185,14 @@ local function onMountOff()
     printf('\ayMount system \arOFF')
 end
 
+local function onAutoFireOn()
+    local cur = state.combat.autoFireOn or 0
+    state.combat.autoFireOn = cur == 0 and 1 or 0
+    _config.set('Melee', 'AutoFireOn', tostring(state.combat.autoFireOn))
+    _config.save()
+    printf('\ayAutoFireOn \ag%d', state.combat.autoFireOn)
+end
+
 -- Shared sub-table list used by changevarint and togglevariable to search state.
 local function stateSubtables()
     return {
@@ -697,6 +705,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/petoff',         onPetOff)
     bind('/mounton',        onMountOn)
     bind('/mountoff',       onMountOff)
+    bind('/autofireon',     onAutoFireOn)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)

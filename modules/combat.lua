@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -88,7 +88,7 @@ local function combatPet()
            and mq.TLO.Me.AltAbilityReady('Summon Companion')()
            and (mq.TLO.Me.Pet.Distance() or 0) > 79 then
             mq.cmd('/echo Pet! Get over here!')
-            -- CastAA deferred — cast module not yet wired
+            _cast.castWhat('Summon Companion', mq.TLO.Me.Pet.ID(), 'CombatPet')
         end
     end
 
@@ -267,7 +267,7 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -278,6 +278,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _mez      = mez
     _debuff   = debuff
     _buffs    = buffs
+    _comms    = comms
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -294,6 +295,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
                                 or _state.session.assistAt
 
     _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '30')) or 30
+    _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
 
     -- Burn flags
     _state.combat.burnOnNamed = Config.get('Burn', 'BurnAllNamed', '0') == '1'
@@ -989,12 +991,16 @@ function Combat.fight(fromWhere)
             local tgtName = mq.TLO.Spawn('id ' .. myID).CleanName() or '?'
             mq.cmd('/echo  ATTACKING -> ' .. tgtName .. ' <-')
             if _bard then _bard.doBardStuff() end
-            -- BroadCast (deferred M9); echo locally for now
+            -- Tank-announce on first engage (mac:1088-1089)
             if role == 'tank' or role == 'pullertank' or role == 'hunter' then
-                mq.cmd('/echo [KA] TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
+                if _comms then
+                    _comms.announce(string.format('TANKING-> %s <- ID:%d', tgtName, myID))
+                end
             elseif role == 'pettank' or role == 'pullerpettank' or role == 'hunterpettank' then
                 local petName = mq.TLO.Me.Pet.CleanName() or 'Pet'
-                mq.cmd('/echo [KA] ' .. petName .. ' is TANKING-> ' .. tgtName .. ' <- ID:' .. myID)
+                if _comms then
+                    _comms.announce(string.format('%s is TANKING-> %s <- ID:%d', petName, tgtName, myID))
+                end
             end
             -- Hunter LOS position (deferred M7)
         end
@@ -1002,7 +1008,7 @@ function Combat.fight(fromWhere)
         -- Look level when not underwater (mac:1095)
         if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 
-        -- Initiate attack (mac:1097-1127); AutoFireOn treated as always off (deferred)
+        -- Initiate attack (mac:1097-1127)
         if not _state.combat.attacking then
             if _state.combat.meleeOn then
                 if (mq.TLO.Me.Casting.ID() or 0) ~= 0
@@ -1011,26 +1017,31 @@ function Combat.fight(fromWhere)
                 end
                 _state.combat.attacking = true
                 if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
-                -- Taunt for tank/hunter on first engage (mac:1105)
-                local isTankLike = role == 'tank' or role == 'pullertank' or role == 'hunter'
-                if isTankLike and (mq.TLO.Me.Skill('Taunt')() or 0) > 0
-                   and mq.TLO.Me.AbilityReady('Taunt')() then
-                    mq.cmd('/doability Taunt')
-                end
-                -- BeforeAttack abilities before first swing (mac:1107)
-                if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
-                    beforeAttack(myID, 1)
-                end
-                -- Pet (mac:1108-1110)
-                if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
-                    sp = mq.TLO.Spawn('id ' .. myID)
-                    if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
-                       and not mq.TLO.Pet.Combat() then
-                        combatPet()
+                if _state.combat.autoFireOn ~= 1 then
+                    -- Normal melee first engage (mac:1101-1114)
+                    local isTankLike = role == 'tank' or role == 'pullertank' or role == 'hunter'
+                    if isTankLike and (mq.TLO.Me.Skill('Taunt')() or 0) > 0
+                       and mq.TLO.Me.AbilityReady('Taunt')() then
+                        mq.cmd('/doability Taunt')
+                    end
+                    if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
+                        beforeAttack(myID, 1)
+                    end
+                    if _state.pet.combatOn and (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
+                        sp = mq.TLO.Spawn('id ' .. myID)
+                        if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
+                           and not mq.TLO.Pet.Combat() then
+                            combatPet()
+                        end
+                    end
+                    if _movement then _movement.checkStick(0, 1) end
+                    if _movement then _movement.zAxisCheck() end
+                else
+                    -- AutoFireOn==1: ranged only — BeforeAttack, no melee stick (mac:1116)
+                    if not mq.TLO.Me.Combat() and _state.arrays.beforeArray[1] ~= 'null' then
+                        beforeAttack(myID, 1)
                     end
                 end
-                if _movement then _movement.checkStick(0, 1) end
-                if _movement then _movement.zAxisCheck() end
             else
                 -- MeleeOn off: pet-only combat (mac:1119-1127)
                 if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
@@ -1173,26 +1184,37 @@ function Combat.fight(fromWhere)
             sp = mq.TLO.Spawn('id ' .. (myID ~= 0 and myID or 0))
             if myID ~= 0 and (sp and sp.Type() or ''):lower() ~= 'corpse'
                and not _state.dps.paused then
-                -- Melee re-attack (mac:1218-1240); AutoFireOn always off here (deferred)
-                if _state.combat.attacking and _state.combat.meleeOn then
-                    local tgtPct  = sp and sp.PctHPs() or 100
-                    local tgtDist = sp and sp.Distance() or 999
-                    if tgtPct <= _state.combat.assistAt and tgtDist < combatRadius then
-                        -- Re-target if we drifted (mac:1222-1224)
-                        if not _state.combat.targetSwitchingOn
-                           and (mq.TLO.Target.ID() or 0) ~= myID then
-                            mq.cmd('/squelch /target id ' .. myID)
-                            mq.delay(500, function()
-                                return (mq.TLO.Target.ID() or 0) == myID
-                            end)
+                -- Melee re-attack or autofire re-engage (mac:1218-1248)
+                if _state.combat.autoFireOn ~= 1 then
+                    if _state.combat.attacking and _state.combat.meleeOn then
+                        local tgtPct  = sp and sp.PctHPs() or 100
+                        local tgtDist = sp and sp.Distance() or 999
+                        if tgtPct <= _state.combat.assistAt and tgtDist < combatRadius then
+                            -- Re-target if we drifted (mac:1222-1224)
+                            if not _state.combat.targetSwitchingOn
+                               and (mq.TLO.Target.ID() or 0) ~= myID then
+                                mq.cmd('/squelch /target id ' .. myID)
+                                mq.delay(500, function()
+                                    return (mq.TLO.Target.ID() or 0) == myID
+                                end)
+                            end
+                            -- CheckStick (deferred M7)
                         end
-                        -- CheckStick (deferred M7)
+                        -- Keep attack on while standing (mac:1237)
+                        if (mq.TLO.Target.ID() or 0) ~= 0 then
+                            local meState = (mq.TLO.Me.State() or ''):lower()
+                            if meState == 'stand' or meState == 'mount' then
+                                mq.cmd('/squelch /attack on')
+                            end
+                        end
                     end
-                    -- Keep attack on while standing (mac:1237)
-                    if (mq.TLO.Target.ID() or 0) ~= 0 then
-                        local meState = (mq.TLO.Me.State() or ''):lower()
-                        if meState == 'stand' or meState == 'mount' then
-                            mq.cmd('/squelch /attack on')
+                elseif _state.combat.autoFireOn == 1 then
+                    -- AutoFireOn==1: re-enable autofire if toggled off (mac:1241-1248)
+                    if _state.combat.combatStart and not mq.TLO.Me.AutoFire() then
+                        local tgtMezzed = (mq.TLO.Target.Mezzed.ID() or 0)
+                        if (mq.TLO.Target.ID() or 0) == myID and tgtMezzed == 0 then
+                            if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
+                            mq.cmd('/autofire')
                         end
                     end
                 end
@@ -1474,8 +1496,10 @@ function Combat.combatReset(sFlag, calledFrom)
     -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOR medley.
     if _bard and _state.session.iAmABard then _state.bard.dpsTwisting = false end
 
-    -- Stop attacking and clear target (mac:2247,2250)
+    -- Stop attacking and clear target; reset autofire (mac:2247-2250)
     mq.cmd('/squelch /attack off')
+    if mq.TLO.Me.AutoFire() then mq.cmd('/autofire') end
+    if _state.combat.autoFireOn == 2 then _state.combat.autoFireOn = 1 end
     mq.cmd('/squelch /target clear')
 
     -- Reset XTarget slot to auto-hater for non-MA (mac:2252–2254)
@@ -1597,8 +1621,11 @@ function Combat.checkForAdds(calledFrom)
             local isTank = role == 'tank' or role == 'pullertank'
                         or role == 'pettank' or role == 'pullerpettank'
             if _state.session.iAmMA or isTank then
-                -- BroadCast (deferred — DanNet/EQBC Step M9)
-                mq.cmd('/echo [KA] Add(s) in camp detected')
+                if _comms then
+                    _comms.announce('Add(s) in camp detected')
+                else
+                    mq.cmd('/echo Add(s) in camp detected')
+                end
             end
             if role == 'pullertank' or role == 'pullerpettank' then
                 _state.pull.pulled = false

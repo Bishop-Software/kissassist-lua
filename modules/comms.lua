@@ -96,6 +96,15 @@ function Comms.broadcast(msgType, data)
     _utils.debug('comms', 'broadcast %s from %s', msgType, msg.from)
 end
 
+-- Group-visible announcement: /dgtell all if DanNet+peers, else /echo (mac:Sub BroadCast)
+function Comms.announce(msg)
+    if _state.session.danNetOn and (mq.TLO.DanNet.PeerCount() or 0) > 0 then
+        mq.cmdf('/dgtell all %s', msg)
+    else
+        mq.cmd('/echo ' .. msg)
+    end
+end
+
 -- Called each main loop iteration. Actors are event-driven via mq.doevents(),
 -- so no polling is needed; this is a placeholder for future DanNet-specific polling.
 function Comms.tick()

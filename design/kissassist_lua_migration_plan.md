@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–15 (of 23)
+### Completed — Milestones 1–16 (of 23)
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -70,6 +70,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
 | 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
 | 15 — Buff System Extensions | #15 | `buffs.lua`: `Buffs.castMount()` scans buffsArray for `\|Mount` tag (FeetWet + cond guards); `Buffs.castMana()` scans for `\|mana` tag (invis/justZoned/Revival Sickness guards, Bard Dichotomic Psalm endurance check, Druid Growth per-slot cooldown); `castMana` wired into `Combat.fight()` and OOC main loop; `castMount` wired into Phase 3 post-rez; `/mounton` `/mountoff` binds; `MountSpell` config key removed |
+| 16 — Combat Extensions | #16 | `combat.lua`: Summon Companion AA wired in `combatPet()`; `AutoFireOn` state machine (0=off/1=ranged/2=paused) with first-engage and re-engage branches; `onTooClose` event sets 1→2 and toggles `/autofire`; `combatReset` resets 2→1 and clears autofire; `/autofireon` bind (toggle 0↔1, persists to pickle); `comms.lua`: `Comms.announce()` (`/dgtell all` or `/echo` fallback); `_comms` wired as 11th param to `Combat.init()`; tank-announce and add-spam announce replace deferred stubs |
 
 ### Milestone 15 — Buff System Extensions
 
