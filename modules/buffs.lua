@@ -335,10 +335,90 @@ function Buffs.writeBuffsMerc()
     _utils.debug('buffs', 'Buffs.writeBuffsMerc: id=%s buffs=%d', id, buffCount)
 end
 
--- Mirrors Sub CastMount (mac:4200 call site). Casts the configured mount spell on self.
-local function castMount()
-    if _state.buffs.mountSpell == '' then return end
-    _cast.castWhat(_state.buffs.mountSpell, mq.TLO.Me.ID(), 'Buffs')
+-- Mirrors Sub CastMount (mac:13875). Scans buffsArray for |Mount entries and casts on self.
+-- Public so init.lua can call it after rez (mac:6906/6968).
+function Buffs.castMount()
+    if not _state.misc.mountOn then return end
+    if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then return end
+    if mq.TLO.Me.CombatState() == 'COMBAT' then return end
+    local zType = mq.TLO.Zone.Type()
+    if not mq.TLO.Zone.Outdoor() and zType ~= 1 and zType ~= 2 and zType ~= 5 then return end
+    for _, slot in ipairs(_state.buffs.buffsArray) do
+        if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then break end
+        if not slot then goto mcontinue end
+        local entry = slot.name or ''
+        if entry:find('|0', 1, true) then goto mcontinue end
+        local parts = {}
+        for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
+        if (parts[2] or '') ~= 'Mount' then goto mcontinue end
+        local spellName = parts[1] or ''
+        if spellName == '' then goto mcontinue end
+        if mq.TLO.Me.FeetWet() then goto mcontinue end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto mcontinue end
+        _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CastMount')
+        ::mcontinue::
+    end
+end
+
+-- Mirrors Sub CastMana (mac:13892). Scans buffsArray for |mana entries and casts on self.
+-- Called from combat loop and OOC main loop independently of the full checkBuffs cycle.
+function Buffs.castMana()
+    if mq.TLO.Me.Invis() then return end
+    if _state.timers.justZoned > os.clock() then return end
+    if (mq.TLO.Me.Buff('Revival Sickness').ID() or 0) ~= 0 then return end
+
+    for i, slot in ipairs(_state.buffs.buffsArray) do
+        if not slot then goto mncontinue end
+        local entry = slot.name or ''
+        if entry:find('|0', 1, true) then goto mncontinue end
+
+        local parts = {}
+        for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
+        if (parts[2] or '') ~= 'mana' then goto mncontinue end
+
+        local spellName  = parts[1] or ''
+        if spellName == '' then goto mncontinue end
+
+        local manaThresh = tonumber(parts[3]) or 0
+        local hpFloor    = tonumber(parts[4]) or 0
+        local pctMana    = tonumber(mq.TLO.Me.PctMana()) or 100
+        local pctHPs     = tonumber(mq.TLO.Me.PctHPs())  or 100
+        if pctMana > manaThresh or pctHPs <= hpFloor then goto mncontinue end
+
+        -- Bard: skip Dichotomic Psalm when endurance is sufficient (mac:13916)
+        if spellName:find('Dichotomic Psalm', 1, true) then
+            if (tonumber(mq.TLO.Me.CurrentEndurance()) or 0) >= 6600 then goto mncontinue end
+        end
+
+        -- Per-slot cooldown: skip if Druid Growth timer still active (mac:13919 BufXGM0 check)
+        if _state.buffs.slotTimers[i] and (_state.buffs.slotTimers[i][0] or 0) > os.clock() then
+            goto mncontinue
+        end
+
+        local result = _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CastMana')
+        if result == 'CAST_SUCCESS' then
+            -- Druid Growth: set per-slot cooldown to spell duration + 5s (mac:13926)
+            if mq.TLO.Me.Class.ShortName() == 'DRU'
+                and spellName:find('Growth', 1, true)
+                and (mq.TLO.Spell(spellName).Skill() or '') == 'Conjuration' then
+                if not _state.buffs.slotTimers[i] then
+                    _state.buffs.slotTimers[i] = {}
+                    for j = 0, 5 do _state.buffs.slotTimers[i][j] = 0 end
+                end
+                local dur = tonumber(mq.TLO.Spell(spellName).Duration.TotalSeconds()) or 0
+                _state.buffs.slotTimers[i][0] = os.clock() + dur + 5
+            end
+            -- Stop scanning if aggro fires mid-cast (mac:13929)
+            local ag = _state.combat.aggroTargetID or ''
+            if ag ~= '' and ag ~= '0' then break end
+        elseif result == 'CAST_COMPONENTS' then
+            mq.cmd(string.format('/echo Missing components for %s — disabling.', spellName))
+            _state.buffs.buffsArray[i].name = 'NULL'
+        end
+
+        ::mncontinue::
+    end
 end
 
 -- Mirrors PowerSource refuel block (mac:4192-4198).
@@ -378,14 +458,7 @@ function Buffs.checkBuffs(forceGroup)
     refuelPowerSource()
 
     -- Mount cast (mac:4200)
-    if _state.misc.mountOn and not mq.TLO.Me.Mount.ID() then
-        local zType = mq.TLO.Zone.Type()
-        if mq.TLO.Zone.Outdoor() or zType == 1 or zType == 2 or zType == 5 then
-            if mq.TLO.Me.CombatState() ~= 'COMBAT' then
-                castMount()
-            end
-        end
-    end
+    Buffs.castMount()
 
     -- Per-entry loop (mac:4207)
     for i, slot in ipairs(_state.buffs.buffsArray) do
@@ -557,11 +630,14 @@ function Buffs.checkBuffs(forceGroup)
                 mq.cmd(string.format('/removebuff "%s"', spellToCast))
             end
             goto continue
+        elseif p2 == 'Mount' then
+            -- |Mount: handled by the pre-loop castMount() block; skip here (mac:13880)
+            goto continue
         elseif p2 ~= 'begfor'
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > 0
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > (mq.TLO.Me.CurrentMana() or 0) then
             -- Global mana bail: inside elseif chain so it only fires for entries not caught
-            -- by the branches above (Endgroup, mana, End, Remove) (mac:4350).
+            -- by the branches above (Endgroup, mana, End, Remove, Mount) (mac:4350).
             goto continue
         elseif p2 == 'Aura' then
             -- |Aura: cast aura if slot not already matching (mac:4353-4354)
@@ -1050,12 +1126,11 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
         end
     end
 
-    -- Mount fields from [General] (mac:4200)
+    -- Mount toggle from [General] (mac:4200); mount spell comes from |Mount entry in buffsArray
     local mountOnRaw = Config.get('General', 'MountOn', nil)
     if mountOnRaw ~= nil then
         _state.misc.mountOn = mountOnRaw == '1'
     end
-    _state.buffs.mountSpell = Config.get('General', 'MountSpell', '') or ''
 
     -- [Pet] buff list
     _state.buffs.petBuffsOn = Config.get('Pet', 'PetBuffsOn', '0') == '1'

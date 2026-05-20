@@ -171,6 +171,20 @@ local function onPetOff()
     printf('\ayPet system \arOFF')
 end
 
+local function onMountOn()
+    state.misc.mountOn = true
+    _config.set('General', 'MountOn', '1')
+    _config.save()
+    printf('\ayMount system \agON')
+end
+
+local function onMountOff()
+    state.misc.mountOn = false
+    _config.set('General', 'MountOn', '0')
+    _config.save()
+    printf('\ayMount system \arOFF')
+end
+
 -- Shared sub-table list used by changevarint and togglevariable to search state.
 local function stateSubtables()
     return {
@@ -681,6 +695,8 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     if mq.TLO.Alias('/petoff')() then mq.cmd('/alias /petoff delete') end
     bind('/peton',          onPetOn)
     bind('/petoff',         onPetOff)
+    bind('/mounton',        onMountOn)
+    bind('/mountoff',       onMountOff)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)

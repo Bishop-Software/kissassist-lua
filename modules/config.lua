@@ -162,7 +162,6 @@ function Config.migrateIni(state)
         TwistMed         = r('General','TwistMed'),
         TwistWhat        = r('General','TwistWhat'),
         MountOn          = r('General','MountOn'),
-        MountSpell       = r('General','MountSpell'),
     }
 
     -- [SpellS] / [Spells] — gem assignments and casting options
@@ -393,7 +392,7 @@ function Config.defaultCfg()
             IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
             DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
             UseSpawnMaster   = '0', TwistOn = '0', TwistMed = '0', TwistWhat = '',
-            MountOn          = '0', MountSpell = '',
+            MountOn          = '0',
         },
         SpellS = {
             MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',

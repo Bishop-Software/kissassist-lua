@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -267,7 +267,7 @@ Combat.validateTarget = validateTarget
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -277,6 +277,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _cond     = cond
     _mez      = mez
     _debuff   = debuff
+    _buffs    = buffs
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -1277,6 +1278,9 @@ function Combat.fight(fromWhere)
             beforeAttack(myID, 2)
         end
     end
+
+    -- Mana item cast after rotation (mac:1213 CastMana combat)
+    if _buffs and _state.buffs.buffsOn then _buffs.castMana() end
 
     _utils.debug('combat', 'fight: done from=%s', tostring(fromWhere))
 end

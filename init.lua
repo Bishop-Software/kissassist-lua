@@ -99,7 +99,7 @@ Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
@@ -120,6 +120,7 @@ while not State.terminate do
     Heal.writeDebuffs()
     Heal.checkCures()
     Heal.checkHealth('MainLoop')
+    Buffs.castMount()  -- post-rez mount attempt (mac:6906/6968)
     -- Phase 4: movement
     if not State.combat.combatStart and State.movement.returnToCamp then
         Movement.doWeMove(0, 'mainloop')
@@ -136,6 +137,7 @@ while not State.terminate do
         Buffs.writeBuffsMerc()
     end
     if State.buffs.buffsOn then
+        Buffs.castMana()  -- mana restore before full buff cycle (mac:394 MainLoop)
         Buffs.checkBuffs(State.buffs.forceBuffs)
         State.buffs.forceBuffs = false
     end
