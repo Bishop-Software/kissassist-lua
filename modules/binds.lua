@@ -370,7 +370,8 @@ end
 
 -- ─── Pull management ──────────────────────────────────────────────────────────
 
--- Mirrors Bind_AddToPull (kissassist.mac). Appends name to MobsToPull list; persists to INI.
+-- Mirrors Bind_AddToPull (kissassist.mac:8315). Appends name to zone-scoped MobsToPull
+-- in KissAssist_Info.ini (shared across all characters in the zone), comma-delimited.
 local function onAddPull(name)
     if not name or name == '' then
         name = mq.TLO.Target.CleanName() or ''
@@ -379,17 +380,29 @@ local function onAddPull(name)
             return
         end
     end
-    local cur = state.pull.mobsToPullFirst or 'all'
-    if cur == 'all' or cur == 'null' or cur == '' then
-        state.pull.mobsToPullFirst = name
-    else
-        state.pull.mobsToPullFirst = cur .. '|' .. name
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addpull: zone not available yet')
+        return
     end
-    mq.cmdf('/ini "%s" "Pull" "MobsToPull" "%s"', state.session.iniFileName, state.pull.mobsToPullFirst)
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToPull')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the pull list.', name)
+            return
+        end
+    end
+    local updated = (existing == '' or existing == 'all' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.pull.mobsToPullFirst = updated
+    mq.cmdf('/ini "%s" "%s" "MobsToPull" "%s"', iniFile, zone, updated)
     printf('\ayAdded \at%s\ay to pull list.', name)
 end
 
--- Mirrors Bind_AddToIgnore (kissassist.mac). Appends name to MobsToIgnore list; persists to INI.
+-- Mirrors Bind_AddToIgnore (kissassist.mac:8266). Appends name to zone-scoped MobsToIgnore
+-- in KissAssist_Info.ini (shared across all characters in the zone), comma-delimited.
 local function onAddIgnore(name, _byID)
     if not name or name == '' then
         name = mq.TLO.Target.CleanName() or ''
@@ -398,13 +411,24 @@ local function onAddIgnore(name, _byID)
             return
         end
     end
-    local cur = state.pull.mobsToIgnore or 'null'
-    if cur == 'null' or cur == '' then
-        state.pull.mobsToIgnore = name
-    else
-        state.pull.mobsToIgnore = cur .. '|' .. name
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addignore: zone not available yet')
+        return
     end
-    mq.cmdf('/ini "%s" "Pull" "MobsToIgnore" "%s"', state.session.iniFileName, state.pull.mobsToIgnore)
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToIgnore')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the ignore list.', name)
+            return
+        end
+    end
+    local updated = (existing == '' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.pull.mobsToIgnore = updated
+    mq.cmdf('/ini "%s" "%s" "MobsToIgnore" "%s"', iniFile, zone, updated)
     printf('\ayAdded \at%s\ay to ignore list.', name)
 end
 
