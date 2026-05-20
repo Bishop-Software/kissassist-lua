@@ -272,7 +272,6 @@ local State = {
         rebuffOn           = false,
         checkBuffsTimer    = 15,   -- seconds between buff check passes (INI CheckBuffsTimer)
         powerSource        = '',
-        mountSpell         = '',   -- mountOn lives in state.misc
         petBuffsOn         = false,
         petBuffsArray      = {},
         blockedBuffsCount  = 30,   -- 30 emu / 40 live

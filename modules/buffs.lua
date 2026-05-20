@@ -335,10 +335,27 @@ function Buffs.writeBuffsMerc()
     _utils.debug('buffs', 'Buffs.writeBuffsMerc: id=%s buffs=%d', id, buffCount)
 end
 
--- Mirrors Sub CastMount (mac:4200 call site). Casts the configured mount spell on self.
+-- Mirrors Sub CastMount (mac:13875). Scans buffsArray for |Mount entries and casts on self.
 local function castMount()
-    if _state.buffs.mountSpell == '' then return end
-    _cast.castWhat(_state.buffs.mountSpell, mq.TLO.Me.ID(), 'Buffs')
+    if not _state.misc.mountOn then return end
+    if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then return end
+    if mq.TLO.Me.CombatState() == 'COMBAT' then return end
+    for _, slot in ipairs(_state.buffs.buffsArray) do
+        if (mq.TLO.Me.Mount.ID() or 0) ~= 0 then break end
+        if not slot then goto mcontinue end
+        local entry = slot.name or ''
+        if entry:find('|0', 1, true) then goto mcontinue end
+        local parts = {}
+        for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
+        if (parts[2] or '') ~= 'Mount' then goto mcontinue end
+        local spellName = parts[1] or ''
+        if spellName == '' then goto mcontinue end
+        if mq.TLO.Me.FeetWet() then goto mcontinue end
+        local condNo = slot.condNo or 0
+        if condNo > 0 and _cond and not _cond.eval(condNo) then goto mcontinue end
+        _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CastMount')
+        ::mcontinue::
+    end
 end
 
 -- Mirrors PowerSource refuel block (mac:4192-4198).
@@ -377,13 +394,11 @@ function Buffs.checkBuffs(forceGroup)
     -- PowerSource refuel (mac:4192)
     refuelPowerSource()
 
-    -- Mount cast (mac:4200)
-    if _state.misc.mountOn and not mq.TLO.Me.Mount.ID() then
+    -- Mount cast (mac:4200) — zone/outdoor guard here; all other guards inside castMount()
+    if _state.misc.mountOn and (mq.TLO.Me.Mount.ID() or 0) == 0 then
         local zType = mq.TLO.Zone.Type()
         if mq.TLO.Zone.Outdoor() or zType == 1 or zType == 2 or zType == 5 then
-            if mq.TLO.Me.CombatState() ~= 'COMBAT' then
-                castMount()
-            end
+            castMount()
         end
     end
 
@@ -557,11 +572,14 @@ function Buffs.checkBuffs(forceGroup)
                 mq.cmd(string.format('/removebuff "%s"', spellToCast))
             end
             goto continue
+        elseif p2 == 'Mount' then
+            -- |Mount: handled by the pre-loop castMount() block; skip here (mac:13880)
+            goto continue
         elseif p2 ~= 'begfor'
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > 0
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > (mq.TLO.Me.CurrentMana() or 0) then
             -- Global mana bail: inside elseif chain so it only fires for entries not caught
-            -- by the branches above (Endgroup, mana, End, Remove) (mac:4350).
+            -- by the branches above (Endgroup, mana, End, Remove, Mount) (mac:4350).
             goto continue
         elseif p2 == 'Aura' then
             -- |Aura: cast aura if slot not already matching (mac:4353-4354)
@@ -1050,12 +1068,11 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
         end
     end
 
-    -- Mount fields from [General] (mac:4200)
+    -- Mount toggle from [General] (mac:4200); mount spell comes from |Mount entry in buffsArray
     local mountOnRaw = Config.get('General', 'MountOn', nil)
     if mountOnRaw ~= nil then
         _state.misc.mountOn = mountOnRaw == '1'
     end
-    _state.buffs.mountSpell = Config.get('General', 'MountSpell', '') or ''
 
     -- [Pet] buff list
     _state.buffs.petBuffsOn = Config.get('Pet', 'PetBuffsOn', '0') == '1'

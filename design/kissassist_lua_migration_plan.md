@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–14
+### Completed — Milestones 1–14 (of 23)
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -70,9 +70,103 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 13 — Advanced Combat Rotation | #13 | `cast.lua` + `combat.lua`: per-slot `slotTimers[]`, `setSlotTimer()` with `DAMod` arithmetic; `DPSSkip` HP floor; `DPSOn==2` OOC mode; `DPSInterval` zero-duration fallback; feign-death sequence (`tType=='feign'`); `TargetSwitchingOn` mid-rotation retarget (from `[Melee]`); `CheckStuckGem` re-mem in `castSpell` |
 | 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
 
-### Milestone 15 — ImGui UI (Optional)
+### Milestone 15 — Buff System Extensions
 
-**Goal:** In-game configuration panel.
+**Goal:** Add mount and mana item casting to the buff rotation.
+
+- `CastMount` — auto-cast mount from `[Buffs]` INI using `|Mount` type tag; dismount on combat entry
+- `CastMana` — auto-cast mana restoration items (Canni, Paragon, Harvest, Managroup type tags from `[Buffs]` INI)
+
+**Done when:** Characters auto-mount when out of combat and auto-use mana items when mana is low, driven entirely by INI config.
+
+---
+
+### Milestone 16 — Combat Extensions
+
+**Goal:** Fill three remaining combat gaps present in the `.mac` but not yet ported.
+
+- `AutoFireOn` ranged auto-fire branches in `combat.lua` — gates ranged attack on range/arc conditions
+- `combatPet` Summon Companion AA — in-combat pet resummon when pet dies (extends `pet.lua`)
+- `BroadCast` burn/add/tank-announce — chat announces on burn activation, add detection, MA death (extends `comms.lua`)
+
+**Done when:** Rangers/casters use ranged auto-fire correctly; pets auto-resummon mid-fight; group sees burn/add chat notifications.
+
+---
+
+### Milestone 17 — Named Watch List
+
+**Goal:** Port `namedWatchList` / `NamedWatch` — the named mob radar that prioritizes kills by name.
+
+- Load named mob list from `KissAssist_Info.ini` (INI loader not yet implemented for this file)
+- `namedRadar` scans nearby spawns against the watch list
+- Priority targeting: named mobs jump the assist queue ahead of normal mobs
+
+**Done when:** Named mobs on the watch list are pulled and killed first when in camp radius.
+
+---
+
+### Milestone 18 — Safety & Escape Systems
+
+**Goal:** Port two defensive recovery systems gated behind class checks.
+
+- `GroupEscape` — DRU/WIZ emergency group evac (Exodus/Succor/Evacuate) when MA dies mid-combat
+- `RecoverCorpses` / `GrabCorpse` — SHD/NEC/ROG auto-summon own/group corpses using Tiny Jade Inlaid Coffin; class-gated
+
+**Done when:** Druid/Wizard characters auto-evac the group on MA death; Shadowknight/Necro/Rogue characters auto-summon corpses after a wipe.
+
+---
+
+### Milestone 19 — AFK Tools
+
+**Goal:** Port the `AFKTools` subsystem for safe AFK play.
+
+- Stranger-in-camp detection via MQ2Posse — pause automation when unknown player enters camp radius
+- GM detection with configurable response action: `hold` (pause), `endmacro` (stop), `unload` (unload MQ2), `quit` (exit EQ)
+- Configurable from `[AFKTools]` INI section
+
+**Done when:** Script auto-pauses on strangers and responds to GM presence per configured action.
+
+---
+
+### Milestone 20 — Merc Control
+
+**Goal:** Port `MercsDoWhat` — automated mercenary management.
+
+- New module: `merc.lua`
+- Suspend/resume merc based on group composition and combat state
+- Set merc stance (passive, balanced, aggressive) based on context
+- Wired into the main loop alongside pet and combat phases
+
+**Done when:** Mercs automatically adjust stance and active state based on fight context.
+
+---
+
+### Milestone 21 — Rogue
+
+**Goal:** Port `Roguestuff` — rogue-specific stealth and hide automation.
+
+- Auto-hide when out of combat and not moving
+- Stealth management during pull approach
+- Class-gated to ROG only; no-op for all other classes
+
+**Done when:** Rogue characters auto-hide between fights and manage stealth correctly during pulls.
+
+---
+
+### Milestone 22 — Raid Support
+
+**Goal:** Port raid-mode targeting and MA failover.
+
+- `CombatTargetCheckRaid` — raid-mode cross-character target selection (mac:1420)
+- `SwitchMA` on offtank / MA-dead path — cross-character MA failover via `comms.lua` actors
+
+**Done when:** Script operates correctly in a raid context with proper target selection and auto-reassigns MA when the primary goes down.
+
+---
+
+### Milestone 23 — ImGui UI
+
+**Goal:** In-game configuration and status panel.
 
 - Status display: role, MA, combat state, camp location
 - Toggle buttons for HealsOn, BuffsOn, CuresOn, PullOn, etc.
@@ -211,26 +305,33 @@ Migrate one character at a time while the rest stay on `.mac`. Suggested order b
 
 ## Not Ported / Out of Scope
 
-Features present in the original `.mac` that are not ported to Lua and will not be tested.
+Features present in the original `.mac` that are explicitly out of scope and will not be tested.
 
 | Area | Mac location | Notes |
 | --- | --- | --- |
-| `CombatTargetCheckRaid` | mac:1420 | Raid/cross-char target selection; not ported |
-| `MercsDoWhat` | mac:8569 | Merc control; not ported |
-| `AutoFireOn` branches | in `CombatCast` | Ranged auto-fire logic; not ported |
-| `namedWatchList` / `NamedWatch` | mac:12886 | Named mob watch list from `KissAssist_Info.ini`; INI loader not implemented |
-| `SwitchMA` on offtank / MA-dead path | `Bind_SwitchMA` | Cross-char MA failover; not ported |
-| `BroadCast` burn/add/tank-announce | mac:12820 | In-group announce on burn/add events; not ported |
-| `combatReset`: DPS meter output (`MQ2DPSAdv`) | mac:2144 | End-of-fight parse output; requires MQ2DPSAdv plugin; not in scope |
-| `combatPet` Summon Companion AA | mac:2056 | In-combat pet resummon; not ported |
-| **`AFKTools`** | mac:11665 | AFK automation: pause on stranger in camp radius (MQ2Posse); GM detection with configurable action (hold / endmacro / unload / quit); not ported |
-| **Corpse recovery** (`RecoverCorpses`, `GrabCorpse`) | mac:15331 | SHD/NEC/ROG: auto-summons own/group corpses using Tiny Jade Inlaid Coffin; not ported |
-| **`GroupEscape`** | mac:6335 | DRU/WIZ emergency group evac (Exodus/Succor/Evacuate) when MA dies mid-combat; not ported |
-| **KissTrack integration** (`Event_KTDismount/Target/Hail/Say/DoorClick/Invite`) | mac:14313–14459 | Six event handlers for cross-macro NPC interaction with KissTrack; not ported |
-| **`CastMount`** | mac:13875 | Auto-mount from `[Buffs]` INI using `\|Mount` type tag; not ported |
-| **`CastMana`** | mac:13892 | Auto-cast mana restoration items (Canni, Paragon, Harvest, Managroup type from `[Buffs]` INI); not ported |
-| **EQBC events** (`Event_GUEQBC`, `Event_FSEQBC`, `Event_EQBCIRC`) | mac:11588–11664 | Group/server EQBC broadcast and IRC-style command handling; intentionally dropped — EQBC deprecated per Arch Decision 3 |
-| **`Roguestuff`** | mac:15205 | Rogue-specific stealth/hide management; not ported |
+| `combatReset`: DPS meter output (`MQ2DPSAdv`) | mac:2144 | End-of-fight parse output; requires MQ2DPSAdv plugin; dropped |
+| **EQBC events** (`Event_GUEQBC`, `Event_FSEQBC`, `Event_EQBCIRC`) | mac:11588–11664 | EQBC deprecated per Arch Decision 3; dropped |
+| **KissTrack integration** (`Event_KTDismount/Target/Hail/Say/DoorClick/Invite`) | mac:14313–14459 | Requires external KissTrack macro; no Lua port exists; dropped |
+
+## Planned — Future Milestones (15–23)
+
+Features from the original `.mac` deferred from the initial port; planned for implementation.
+
+| Area | Mac location | Milestone |
+| --- | --- | --- |
+| `CastMount` | mac:13875 | 15 — Buff System Extensions |
+| `CastMana` | mac:13892 | 15 — Buff System Extensions |
+| `AutoFireOn` branches | in `CombatCast` | 16 — Combat Extensions |
+| `combatPet` Summon Companion AA | mac:2056 | 16 — Combat Extensions |
+| `BroadCast` burn/add/tank-announce | mac:12820 | 16 — Combat Extensions |
+| `namedWatchList` / `NamedWatch` | mac:12886 | 17 — Named Watch List |
+| `GroupEscape` | mac:6335 | 18 — Safety & Escape Systems |
+| Corpse recovery (`RecoverCorpses`, `GrabCorpse`) | mac:15331 | 18 — Safety & Escape Systems |
+| `AFKTools` | mac:11665 | 19 — AFK Tools |
+| `MercsDoWhat` | mac:8569 | 20 — Merc Control |
+| `Roguestuff` | mac:15205 | 21 — Rogue |
+| `CombatTargetCheckRaid` | mac:1420 | 22 — Raid Support |
+| `SwitchMA` on offtank / MA-dead path | `Bind_SwitchMA` | 22 — Raid Support |
 
 ---
 
