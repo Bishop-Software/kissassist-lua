@@ -583,7 +583,8 @@ local function onParse(expr, p2, p3, p4, p5, p6, p7, p8)
         printf('\ay/parse <expression>')
         return
     end
-    mq.cmdf('/parse %s', exprStr)
+    local result = mq.parse('${' .. exprStr .. '}')
+    printf('\ay%s\aw = \ag%s', exprStr, tostring(result))
 end
 
 local function onMyCmds(cmd, p1, p2, p3)
