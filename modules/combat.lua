@@ -164,6 +164,79 @@ local function isSpawnNamed(spawnID)
     return sp.Named() or false
 end
 
+-- Mirrors Sub NamedWatch (mac:12886). Two paths:
+--   ignoreTarget=false — evaluate current target (melee path, mac:12889)
+--   ignoreTarget=true  — scan xtarhater for a nearby named (SkipCombat healer path, mac:12915)
+local function namedWatch(ignoreTarget)
+    if _state.combat.burnAllNamed == 0 then return end
+    local myID = _state.combat.myTargetID or 0
+
+    if not ignoreTarget then
+        if myID == 0 then return end
+        local sp = mq.TLO.Spawn('id ' .. myID)
+        if not sp or not sp() then return end
+        if (sp.Distance() or 999) > _state.combat.meleeDistance then return end
+        local tName = (sp.CleanName() or ''):lower()
+        local named = isSpawnNamed(myID)
+        -- BurnAllNamed==2: named flag not enough — must also be on the watch list
+        if named and _state.combat.burnAllNamed == 2 then
+            named = false
+            for _, wn in ipairs(_state.combat.namedWatchList) do
+                if wn == tName then named = true; break end
+            end
+        end
+        -- BurnAllNamed==1 miss OR mode==2: check watch list directly
+        if not named and #_state.combat.namedWatchList > 0 then
+            for _, wn in ipairs(_state.combat.namedWatchList) do
+                if wn == tName then named = true; break end
+            end
+        end
+        if named then
+            mq.cmd('\\popup *** Mob:(' .. sp.CleanName() .. ') is a NAMED!')
+            mq.cmd('\\echo *** Mob:('  .. sp.CleanName() .. ') is a NAMED!')
+            if _cast.doBurn then _cast.doBurn() end
+            _state.combat.namedCheck = true
+        end
+    else
+        -- Healer/caster path: scan xtarhater for a nearby named (mac:12915)
+        local dist    = _state.combat.meleeDistance
+        local foundID = 0
+        if _state.session.useSpawnMaster then
+            local cnt = mq.TLO.SpawnCount('xtarhater radius ' .. dist .. ' alert 5')() or 0
+            if cnt > 0 then
+                local ns = mq.TLO.Spawn('xtarhater radius ' .. dist .. ' alert 5')
+                if ns and ns.ID() then foundID = ns.ID() end
+            end
+        else
+            local cnt = mq.TLO.SpawnCount('xtarhater named radius ' .. dist)() or 0
+            if cnt > 0 then
+                local ns = mq.TLO.Spawn('xtarhater named radius ' .. dist)
+                if ns and ns.ID() then foundID = ns.ID() end
+            end
+        end
+        if foundID == 0 then return end
+        -- BurnAllNamed==2: filter against watch list
+        if _state.combat.burnAllNamed == 2 then
+            local ns    = mq.TLO.Spawn('id ' .. foundID)
+            local tName = ns and (ns.CleanName() or ''):lower() or ''
+            local found = false
+            for _, wn in ipairs(_state.combat.namedWatchList) do
+                if wn == tName then found = true; break end
+            end
+            if not found then return end
+        end
+        local ns    = mq.TLO.Spawn('id ' .. foundID)
+        local tName = ns and ns.CleanName() or ''
+        _state.combat.myTargetID   = foundID
+        _state.combat.myTargetName = tName
+        mq.cmd('\\popup *** Mob:(' .. tName .. ') is a NAMED!')
+        mq.cmd('\\echo *** Mob:('  .. tName .. ') is a NAMED!')
+        if _cast.doBurn then _cast.doBurn() end
+        _state.combat.namedCheck = true
+        _state.combat.myTargetID = 0   -- reset after burn (mac:12945)
+    end
+end
+
 -- Returns true if valid. Sets state.combat.validTarget as a side-effect.
 -- Pull-specific checks (PullValid loop, PCNear, BadLevel, etc.) deferred to pull.lua (Step 5.x).
 local function validateTarget(spawnID)
@@ -1125,31 +1198,7 @@ function Combat.fight(fromWhere)
             end
 
             -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
-            if not _state.combat.namedCheck and _state.combat.burnAllNamed ~= 0 then
-                sp = mq.TLO.Spawn('id ' .. myID)
-                if sp and (sp.Distance() or 999) <= _state.combat.meleeDistance then
-                    local tName   = sp.CleanName() or ''
-                    local isNamed = sp.Named() or false
-                    -- Also check namedWatchList (BurnAllNamed==2 mode: specific mobs only)
-                    if not isNamed and #_state.combat.namedWatchList > 0 then
-                        for _, wName in ipairs(_state.combat.namedWatchList) do
-                            if wName ~= '' and wName ~= 'null' then
-                                local ws = mq.TLO.Spawn(wName)
-                                if ws and ws.ID() == myID and ws.CleanName() == tName then
-                                    isNamed = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    if isNamed then
-                        mq.cmd('/popup *** Mob:(' .. tName .. ') is a NAMED!')
-                        mq.cmd('/echo *** Mob:(' .. tName .. ') is a NAMED!')
-                        if _cast.doBurn then _cast.doBurn() end
-                        _state.combat.namedCheck = true
-                    end
-                end
-            end
+            if not _state.combat.namedCheck then namedWatch(false) end
 
             -- Non-chainpull DPS path (mac:1178-1200)
             if not (isPuller and _state.pull.chainPull) then
