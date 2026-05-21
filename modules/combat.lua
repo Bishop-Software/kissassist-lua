@@ -298,9 +298,8 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
 
     -- Burn flags
-    _state.combat.burnOnNamed = Config.get('Burn', 'BurnAllNamed', '0') == '1'
+    _state.combat.burnAllNamed = tonumber(Config.get('Burn', 'BurnAllNamed', '0')) or 0
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
-    -- TODO: add AutoBurnTimer key to config.lua [Burn] section when available
 
     -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
     -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN
@@ -352,9 +351,18 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.pet.assistAt = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
     _state.pet.combatOn = Config.get('Pet', 'PetCombatOn', '1') == '1'
 
-    -- Named-mob watch list — sourced from KissAssist_Info.ini (zone-specific shared file).
-    -- TODO: load NamedWatch entries from KissAssist_Info.ini when that file is added to Config.
-    -- _state.combat.namedWatchList stays empty until that config path is wired.
+    -- Named-mob watch list — zone-scoped MobsToBurn from KissAssist_Info.ini (shared across chars).
+    local _infoFile = _state.session.infoFileName or ''
+    local _zone     = _state.session.zoneName     or ''
+    local _rawBurn  = (_infoFile ~= '' and _zone ~= '')
+        and (mq.TLO.Ini(_infoFile, _zone, 'MobsToBurn')() or '') or ''
+    _state.combat.namedWatchList = {}
+    for entry in (_rawBurn .. ','):gmatch('([^,]+),') do
+        local e = entry:match('^%s*(.-)%s*$')
+        if e ~= '' and e ~= 'null' then
+            _state.combat.namedWatchList[#_state.combat.namedWatchList + 1] = e:lower()
+        end
+    end
 
     utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d debuffCount=%d aggroOn=%s campRadius=%d',
         tostring(_state.combat.dpsOn),
@@ -1101,7 +1109,7 @@ function Combat.fight(fromWhere)
             end
 
             -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
-            if not _state.combat.namedCheck and _state.combat.burnOnNamed then
+            if not _state.combat.namedCheck and _state.combat.burnAllNamed ~= 0 then
                 sp = mq.TLO.Spawn('id ' .. myID)
                 if sp and (sp.Distance() or 999) <= _state.combat.meleeDistance then
                     local tName   = sp.CleanName() or ''
