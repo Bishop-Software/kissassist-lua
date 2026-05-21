@@ -370,35 +370,65 @@ end
 
 -- ─── Pull management ──────────────────────────────────────────────────────────
 
--- Mirrors Bind_AddToPull (kissassist.mac). Appends name to MobsToPull list; persists to INI.
+-- Mirrors Bind_AddToPull (kissassist.mac:8315). Appends name to zone-scoped MobsToPull
+-- in KissAssist_Info.ini (shared across all characters in the zone), comma-delimited.
 local function onAddPull(name)
     if not name or name == '' then
-        printf('\ay/addpull [mobname]')
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addpull [mobname] — no argument and no target')
+            return
+        end
+    end
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addpull: zone not available yet')
         return
     end
-    local cur = state.pull.mobsToPullFirst or 'all'
-    if cur == 'all' or cur == 'null' or cur == '' then
-        state.pull.mobsToPullFirst = name
-    else
-        state.pull.mobsToPullFirst = cur .. '|' .. name
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToPull')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the pull list.', name)
+            return
+        end
     end
-    mq.cmdf('/ini "%s" "Pull" "MobsToPull" "%s"', state.session.iniFileName, state.pull.mobsToPullFirst)
+    local updated = (existing == '' or existing == 'all' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.pull.mobsToPullFirst = updated
+    mq.cmdf('/ini "%s" "%s" "MobsToPull" "%s"', iniFile, zone, updated)
     printf('\ayAdded \at%s\ay to pull list.', name)
 end
 
--- Mirrors Bind_AddToIgnore (kissassist.mac). Appends name to MobsToIgnore list; persists to INI.
+-- Mirrors Bind_AddToIgnore (kissassist.mac:8266). Appends name to zone-scoped MobsToIgnore
+-- in KissAssist_Info.ini (shared across all characters in the zone), comma-delimited.
 local function onAddIgnore(name, _byID)
     if not name or name == '' then
-        printf('\ay/addignore [mobname]')
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addignore [mobname] — no argument and no target')
+            return
+        end
+    end
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addignore: zone not available yet')
         return
     end
-    local cur = state.pull.mobsToIgnore or 'null'
-    if cur == 'null' or cur == '' then
-        state.pull.mobsToIgnore = name
-    else
-        state.pull.mobsToIgnore = cur .. '|' .. name
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToIgnore')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the ignore list.', name)
+            return
+        end
     end
-    mq.cmdf('/ini "%s" "Pull" "MobsToIgnore" "%s"', state.session.iniFileName, state.pull.mobsToIgnore)
+    local updated = (existing == '' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.pull.mobsToIgnore = updated
+    mq.cmdf('/ini "%s" "%s" "MobsToIgnore" "%s"', iniFile, zone, updated)
     printf('\ayAdded \at%s\ay to ignore list.', name)
 end
 
@@ -441,6 +471,37 @@ local function onAddMezImmune(_mti)
     printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 
+-- Add current target (or named arg) to zone-scoped MobsToBurn list in KissAssist_Info.ini.
+-- Updates state.combat.namedWatchList at runtime so the change takes effect immediately.
+local function onAddBurn(name)
+    if not name or name == '' then
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addburn [mobname] — no argument and no target')
+            return
+        end
+    end
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addburn: zone not available yet')
+        return
+    end
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToBurn')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the burn list.', name)
+            return
+        end
+    end
+    local updated = (existing == '' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.combat.namedWatchList[#state.combat.namedWatchList + 1] = lname
+    mq.cmdf('/ini "%s" "%s" "MobsToBurn" "%s"', iniFile, zone, updated)
+    printf('\ayAdded \at%s\ay to burn list.', name)
+end
+
 -- ─── Info display ─────────────────────────────────────────────────────────────
 
 local function onZoneInfo()
@@ -450,8 +511,12 @@ local function onZoneInfo()
     printf('MobsToPullRaw:   %s', state.pull.mobsToPullRaw)
     printf('MobsToPullFirst: %s', state.pull.mobsToPullFirst)
     printf('MobsToPull:      %s', state.pull.mob)
+    local infoFile = state.session.infoFileName or ''
+    local zone     = state.session.zoneName     or ''
+    local burnList = (infoFile ~= '' and zone ~= '')
+        and (mq.TLO.Ini(infoFile, zone, 'MobsToBurn')() or 'null') or 'null'
+    printf('MobsToBurn:      %s', burnList)
     printf('-------------------------------------------------------------------------')
-    -- INI-sourced MezImmune/MobsToIgnore/etc. displayed in M7 (pull.lua)
 end
 
 local function onAggroInfo()
@@ -679,6 +744,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     _comms  = comms
 
     -- Debug / utility
+    if mq.TLO.Alias('/debug')() then mq.cmd('/alias /debug delete') end
     bind('/debug',          onDebug)
     bind('/parse',          onParse)
     bind('/zoneinfo',       onZoneInfo)
@@ -697,6 +763,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/burn',           onBurn)
     bind('/backoff',        onBackOff)
     bind('/switchnow',      onSwitch)
+    if mq.TLO.Alias('/switchma')() then mq.cmd('/alias /switchma delete') end
     bind('/switchma',       onSwitchMA)
     bind('/kisscast',       onKissCast)
     if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
@@ -705,6 +772,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/petoff',         onPetOff)
     bind('/mounton',        onMountOn)
     bind('/mountoff',       onMountOff)
+    if mq.TLO.Alias('/autofireon')() then mq.cmd('/alias /autofireon delete') end
     bind('/autofireon',     onAutoFireOn)
 
     -- Movement / camp
@@ -726,6 +794,8 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/addpull',        onAddPull)
     bind('/addignore',      onAddIgnore)
     bind('/addimmune',      onAddMezImmune)
+    if mq.TLO.Alias('/addburn')() then mq.cmd('/alias /addburn delete') end
+    bind('/addburn',        onAddBurn)
 
     -- Loot
     bind('/kalooton',       onLootOn)
