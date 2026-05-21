@@ -3,15 +3,35 @@ local Config = require('modules.config')
 
 local Heal = {}
 
-local _state, _utils, _cast, _cond
+local _state, _utils, _cast, _cond, _movement, _comms
+
+-- Spell priority table for SHD/NEC corpse summoning (mac:15386-15422).
+-- Checked in order; first entry whose spell is memmed AND whose maxLevel >= target level is used.
+-- Summon Remains AA handled separately (requires coffins > 3).
+local SUMMON_CORPSE_SPELLS = {
+    { spell = "Death's Proclamation",       maxLevel = 999 },
+    { spell = "Thanatos' Proclamation",     maxLevel = 120 },
+    { spell = "Duskreaper's Proclamation",  maxLevel = 115 },
+    { spell = "Shadereaper's Proclamation", maxLevel = 110 },
+    { spell = "Stormreaper's Proclamation", maxLevel = 105 },
+    { spell = "Reaper's Proclamation",      maxLevel = 100 },
+    { spell = "Reaper's Decree",            maxLevel = 95  },
+    { spell = "Reaper's Beckon",            maxLevel = 90  },
+    { spell = "Reaper's Call",              maxLevel = 85  },
+    { spell = "Procure Corpse",             maxLevel = 80  },
+    { spell = "Exhumer's Corpse",           maxLevel = 75  },
+    { spell = "Conjure Corpse",             maxLevel = 70  },
+}
 
 -- Mirrors Bind_Settings heals/cures/general-med sections (kissassist.mac:14750).
 -- Defaults match LoadIni defaults in the mac.
-function Heal.init(state, utils, cast, cond)
-    _state = state
-    _utils = utils
-    _cast  = cast
-    _cond  = cond
+function Heal.init(state, utils, cast, cond, movement, comms)
+    _state    = state
+    _utils    = utils
+    _cast     = cast
+    _cond     = cond
+    _movement = movement
+    _comms    = comms
 
     -- [General] medding + group-watch (GroupWatchOn may encode pct as "1|20")
     _state.heal.medOn           = Config.get('General', 'MedOn',     '1') == '1'
@@ -817,6 +837,152 @@ function Heal.rezCheck()
     end
 
     _utils.debug('heals', 'rezCheck leave')
+end
+
+-- Port of Sub RecoverCorpses (mac:15331).
+-- rc_flag: "me" = own corpse only; nil/other = self + group scan.
+-- rc_dist: summon threshold distance (default 150).
+-- Returns true if at least one corpse was summoned.
+function Heal.recoverCorpses(rc_flag, rc_dist)
+    if (_state.combat.aggroTargetID or 0) ~= 0 then return false end
+    if mq.TLO.Me.Invis() then return false end
+
+    local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+    if cls ~= 'shd' and cls ~= 'nec' and cls ~= 'rog' then return false end
+
+    -- ROG: unsupported (mac:15457)
+    if cls == 'rog' then
+        mq.cmd('/echo Rogues are not supported for corpse recovery at this time.')
+        _state.heal.corpsRecoveryOn = 2
+        return false
+    end
+
+    -- SHD/NEC: require at least 2 Tiny Jade Inlaid Coffins (mac:15349)
+    local coffins = mq.TLO.FindItemCount('Tiny Jade Inlaid Coffin')() or 0
+    if coffins < 2 then
+        _state.heal.corpsRecoveryOn = 2
+        return false
+    end
+
+    rc_dist = rc_dist or 150
+
+    -- Return to camp before summoning if ReturnToCamp is on (mac:15346)
+    if _state.movement.returnToCamp and _movement then
+        local campY = _state.movement.campY or 0
+        local campX = _state.movement.campX or 0
+        if mq.TLO.Math.Distance(campY .. ',' .. campX)() > 10 then
+            _movement.doWeMove(1, 'summoncorpse')
+        end
+    end
+
+    -- No corpses at all: exit early (mac:15347)
+    local selfName = mq.TLO.Me.CleanName() or ''
+    if (mq.TLO.SpawnCount('pccorpse ' .. selfName)() or 0) == 0
+       and (mq.TLO.SpawnCount('pccorpse group')() or 0) == 0 then
+        return false
+    end
+
+    local summoned = false
+
+    while true do
+        coffins = mq.TLO.FindItemCount('Tiny Jade Inlaid Coffin')() or 0
+
+        -- Find a candidate: own corpse beyond threshold first (mac:15357)
+        local summonID    = 0
+        local summonLevel = 0
+        local selfCorpse  = mq.TLO.NearestSpawn('1,' .. selfName .. ' pccorpse')
+        if selfCorpse and (selfCorpse.ID() or 0) ~= 0 then
+            if (selfCorpse.Distance3D() or 0) > rc_dist then
+                summonID    = mq.TLO.Me.ID() or 0
+                summonLevel = mq.TLO.Me.Level() or 0
+            end
+        end
+
+        -- If no self-candidate and not "me"-only, scan group members (mac:15363)
+        if summonID == 0 and rc_flag ~= 'me' then
+            for i = 1, 5 do
+                local member = mq.TLO.Group.Member(i)
+                if not member or (member.ID() or 0) == 0 then goto next_member end
+                if member.OtherZone() then goto next_member end
+                if (member.Type() or ''):lower() == 'corpse' then goto next_member end
+                if (member.Distance3D() or 999) > 100 then goto next_member end
+
+                local mName  = member.CleanName() or ''
+                local mCount = mq.TLO.SpawnCount(mName .. ' pccorpse')() or 0
+                for j = 1, mCount do
+                    local cs = mq.TLO.NearestSpawn(j .. ',' .. mName .. ' pccorpse')
+                    if cs and (cs.Distance3D() or 0) > rc_dist then
+                        summonID    = member.ID() or 0
+                        summonLevel = member.Level() or 0
+                        break
+                    end
+                end
+                if summonID ~= 0 then break end
+                ::next_member::
+            end
+        end
+
+        if summonID == 0 then break end
+
+        -- Select summon method (mac:15383)
+        local useWhat = nil
+        if mq.TLO.Me.AltAbilityReady('Summon Remains')() and coffins > 3 then
+            useWhat = 'Summon Remains'
+        else
+            for _, entry in ipairs(SUMMON_CORPSE_SPELLS) do
+                if mq.TLO.Me.Spell(entry.spell).ID() and summonLevel <= entry.maxLevel then
+                    useWhat = entry.spell
+                    break
+                end
+            end
+        end
+
+        if not useWhat then break end
+
+        -- Wait for global cooldown (mac:15426)
+        local cooldownEnd = os.clock() + 5
+        while mq.TLO.Me.SpellInCooldown() and os.clock() < cooldownEnd do
+            mq.delay(50)
+        end
+
+        -- Wait for spell ready (mac:15431), up to 35s
+        if mq.TLO.Me.Gem(useWhat) then
+            local readyEnd = os.clock() + 35
+            while not mq.TLO.Me.SpellReady(useWhat)() and os.clock() < readyEnd do
+                if _state.session.chaseAssist and _movement then
+                    _movement.doWeChase(0, 'summoncorpse')
+                else
+                    mq.doevents()
+                    mq.delay(50)
+                end
+            end
+            if not mq.TLO.Me.SpellReady(useWhat)() then break end
+        end
+
+        if mq.TLO.Me.Invis() then break end
+
+        -- Target and cast (mac:15444)
+        if (mq.TLO.Target.ID() or 0) ~= summonID then
+            mq.cmdf('/squelch /target id %d', summonID)
+            mq.delay(500, function() return (mq.TLO.Target.ID() or 0) == summonID end)
+        end
+
+        local result = _cast.castWhat(useWhat, summonID, 'summoncorpse-nomem', 0, 0)
+        if result == 'CAST_SUCCESS' then
+            local tgtName = (mq.TLO.Spawn('id ' .. summonID).CleanName() or '')
+            if _comms then
+                _comms.announce('Summoned Corpse for: ' .. tgtName .. ' Using: ' .. useWhat)
+            end
+            summoned = true
+            mq.delay(200)
+        else
+            break
+        end
+
+        if rc_flag == 'me' then break end
+    end
+
+    return summoned
 end
 
 return Heal
