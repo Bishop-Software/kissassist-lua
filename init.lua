@@ -88,17 +88,17 @@ Config.checkPlugins()
 Events.register(State, Utils, Movement)
 Cast.init(State, Utils)
 Cast.setCond(Cond)
-Heal.init(State, Utils, Cast, Cond)
+Heal.init(State, Utils, Cast, Cond, Movement, Comms)
 Movement.init(State, Utils)
 Comms.init(State, Utils)
 Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
-Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
+Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard, Heal)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
-Debuff.init(State, Utils, Cast, Heal, Cond)
+Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
@@ -116,6 +116,8 @@ while not State.terminate do
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    -- Phase 2.5: corpse recovery (mac:369)
+    if State.heal.corpsRecoveryOn == 1 then Heal.recoverCorpses() end
     -- Phase 3: heal / cure / rez
     Heal.writeDebuffs()
     Heal.checkCures()
