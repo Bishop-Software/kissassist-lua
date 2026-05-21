@@ -672,4 +672,46 @@ All tests are manual and in-game. No automated test framework exists.
 
 ---
 
+## Section 17 — Named Watch List
+
+### 17.1 BurnAllNamed modes
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 17.1.1 | BurnAllNamed=0 — disabled | Set `BurnAllNamed=0`; engage a named mob | `namedWatch` never fires; no burn triggered |
+| [ ] | 17.1.2 | BurnAllNamed=1 — any named | Set `BurnAllNamed=1`; engage mob where `Spawn.Named=true` | Burn triggered; `namedCheck` set true; popup shown |
+| [ ] | 17.1.3 | BurnAllNamed=1 — non-named ignored | Set `BurnAllNamed=1`; engage mob where `Spawn.Named=false` and not on list | No burn |
+| [ ] | 17.1.4 | BurnAllNamed=2 — listed mob burns | Set `BurnAllNamed=2`; mob name in `MobsToBurn` list | Burn triggered |
+| [ ] | 17.1.5 | BurnAllNamed=2 — unlisted named skipped | Set `BurnAllNamed=2`; engage `Spawn.Named` mob not on list | No burn |
+| [ ] | 17.1.6 | namedCheck prevents double-burn | Named detected; `namedCheck` already true | `namedWatch` skips burn call |
+| [ ] | 17.1.7 | namedCheck resets after fight | Kill named mob; `combatReset` fires | `state.combat.namedCheck` returns to false |
+
+### 17.2 namedWatchList load and runtime update
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 17.2.1 | Startup load from infoFileName | Add mob to `KissAssist_Info.ini [zone] MobsToBurn`; start script | `state.combat.namedWatchList` contains the mob name (lowercase) |
+| [ ] | 17.2.2 | Empty list loads clean | No `MobsToBurn` key in INI | `namedWatchList` is empty table; no errors |
+| [ ] | 17.2.3 | `/addburn` updates list at runtime | Run `/addburn GoblinKing` | Name added to `namedWatchList`; INI written; no restart required |
+| [ ] | 17.2.4 | `/addburn` duplicate check | `/addburn GoblinKing` twice | Second call prints "already on burn list"; INI unchanged |
+| [ ] | 17.2.5 | `/addburn` target fallback | `/addburn` with no arg; NPC targeted | Uses `Target.CleanName()`; adds to list |
+| [ ] | 17.2.6 | `/addburn` no arg no target | `/addburn` with no arg; no target | Prints usage error; no crash |
+
+### 17.3 IgnoreTarget healer path (SkipCombat=1)
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 17.3.1 | Healer detects named in xtarhater | `skipCombat=1`; named mob in xtarhater within `meleeDistance` | `namedWatch(true)` fires; burn triggered; `myTargetID` reset to 0 after |
+| [ ] | 17.3.2 | BurnAllNamed=2 healer path filters list | `skipCombat=1`; named in xtarhater not on `MobsToBurn` list | No burn |
+| [ ] | 17.3.3 | No named in range — no burn | `skipCombat=1`; no named in xtarhater | `namedWatch(true)` returns silently |
+
+### 17.4 /zoneinfo MobsToBurn display
+
+| Status | # | Scenario | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| [ ] | 17.4.1 | /zoneinfo shows MobsToBurn | `/addburn` a mob; run `/zoneinfo` | `MobsToBurn: <name>` line appears in output |
+| [ ] | 17.4.2 | /zoneinfo shows null when list empty | No mobs added; run `/zoneinfo` | `MobsToBurn: null` |
+
+---
+
 *Last updated: 2026-05-20. Covers all implemented functionality through Milestone 16.*
