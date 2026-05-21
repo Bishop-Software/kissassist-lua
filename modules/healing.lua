@@ -18,7 +18,19 @@ function Heal.init(state, utils, cast, cond)
     _state.heal.medStart        = tonumber(Config.get('General', 'MedStart',   '20'))  or 20
     _state.heal.medStop         = tonumber(Config.get('General', 'MedStop',    '100')) or 100
     _state.heal.medCombat       = Config.get('General', 'MedCombat', '0') == '1'
-    _state.heal.corpsRecoveryOn = Config.get('General', 'CorpseRecoveryOn', '0') ~= '0'
+    local rawCRO = tonumber(Config.get('General', 'CorpseRecoveryOn', '0')) or 0
+    if rawCRO == 1 then
+        local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+        if cls == 'shd' or cls == 'nec' then
+            local coffins = mq.TLO.FindItemCount('Tiny Jade Inlaid Coffin')() or 0
+            if coffins < 2 or (mq.TLO.Me.Level() or 0) < 70 then rawCRO = 2 end
+        elseif cls == 'rog' then
+            if not mq.TLO.Me.AltAbility('Shroud of Stealth')() then rawCRO = 2 end
+        else
+            rawCRO = 2
+        end
+    end
+    _state.heal.corpsRecoveryOn = rawCRO
 
     local gwRaw = Config.get('General', 'GroupWatchOn', '0') or '0'
     if gwRaw:find('|', 1, true) then

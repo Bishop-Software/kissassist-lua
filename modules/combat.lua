@@ -386,6 +386,12 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
     _state.session.useSpawnMaster = Config.get('General', 'UseSpawnMaster', '0') == '1'
 
+    -- GroupEscape: WIZ/DRU only — auto-evac group when MA dies mid-combat (mac:14611).
+    local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+    if cls == 'wiz' or cls == 'dru' then
+        _state.session.groupEscapeOn = tonumber(Config.get('General', 'GroupEscapeOn', '0')) or 0
+    end
+
     -- Burn flags
     _state.combat.burnAllNamed = tonumber(Config.get('Burn', 'BurnAllNamed', '0')) or 0
     -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
