@@ -511,8 +511,12 @@ local function onZoneInfo()
     printf('MobsToPullRaw:   %s', state.pull.mobsToPullRaw)
     printf('MobsToPullFirst: %s', state.pull.mobsToPullFirst)
     printf('MobsToPull:      %s', state.pull.mob)
+    local infoFile = state.session.infoFileName or ''
+    local zone     = state.session.zoneName     or ''
+    local burnList = (infoFile ~= '' and zone ~= '')
+        and (mq.TLO.Ini(infoFile, zone, 'MobsToBurn')() or 'null') or 'null'
+    printf('MobsToBurn:      %s', burnList)
     printf('-------------------------------------------------------------------------')
-    -- INI-sourced MezImmune/MobsToIgnore/etc. displayed in M7 (pull.lua)
 end
 
 local function onAggroInfo()
