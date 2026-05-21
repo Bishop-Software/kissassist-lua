@@ -98,7 +98,7 @@ Cast.setBard(Bard)
 Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
-Debuff.init(State, Utils, Cast, Heal, Cond)
+Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 

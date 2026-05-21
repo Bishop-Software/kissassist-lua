@@ -2,14 +2,15 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Debuff = {}
-local _state, _utils, _cast, _healing, _cond
+local _state, _utils, _cast, _healing, _cond, _combat
 
-function Debuff.init(state, utils, cast, healing, cond)
+function Debuff.init(state, utils, cast, healing, cond, combat)
     _state   = state
     _utils   = utils
     _cast    = cast
     _healing = healing
     _cond    = cond
+    _combat  = combat
 end
 
 -- Scan XTarget auto-haters in melee range with LOS; return array of spawn IDs.
@@ -109,6 +110,9 @@ function Debuff.cast(targetID, fwait)
             end
             if not ready then goto next_debuff end
         end
+
+        -- GroupEscape check before each slot cast (mac:7858)
+        if _combat then _combat.groupEscape() end
 
         -- Cast via central dispatcher (mac:7738-7744)
         local result = _cast.castWhat(spellName, targetID, 'DebuffCast')
