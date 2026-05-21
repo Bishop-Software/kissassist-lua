@@ -29,6 +29,7 @@ local State = {
         forceAlias      = true,
         broadcastSay    = 'bc',
         danNetOn        = false,
+        useSpawnMaster  = false,
         bindActive      = false,
         mercInGroup     = false,
         mercAssisting   = false,

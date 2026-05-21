@@ -151,6 +151,19 @@ end
 
 -- Mirrors Sub ValidateTarget (kissassist.mac:948).
 -- Validates current Target (or spawnID) as a legal attack target.
+-- Mirrors Sub IsSpawnNamed (mac:12872).
+-- Returns true if spawnID is a named mob.
+-- SpawnMaster mode checks Alert[5] instead of Spawn.Named (requires MQ2SpawnMaster).
+local function isSpawnNamed(spawnID)
+    if not spawnID or spawnID == 0 then return false end
+    local sp = mq.TLO.Spawn('id ' .. spawnID)
+    if not sp or not sp() then return false end
+    if _state.session.useSpawnMaster then
+        return (mq.TLO.SpawnCount('id ' .. spawnID .. ' alert 5')() or 0) > 0
+    end
+    return sp.Named() or false
+end
+
 -- Returns true if valid. Sets state.combat.validTarget as a side-effect.
 -- Pull-specific checks (PullValid loop, PCNear, BadLevel, etc.) deferred to pull.lua (Step 5.x).
 local function validateTarget(spawnID)
@@ -296,6 +309,9 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
 
     _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '30')) or 30
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
+
+    -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
+    _state.session.useSpawnMaster = Config.get('General', 'UseSpawnMaster', '0') == '1'
 
     -- Burn flags
     _state.combat.burnAllNamed = tonumber(Config.get('Burn', 'BurnAllNamed', '0')) or 0
