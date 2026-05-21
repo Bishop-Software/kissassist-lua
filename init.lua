@@ -95,7 +95,7 @@ Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
 Bard.init(State, Utils, Cast)
 Cast.setBard(Bard)
-Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard)
+Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard, Heal)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
@@ -116,6 +116,8 @@ while not State.terminate do
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
     end
+    -- Phase 2.5: corpse recovery (mac:369)
+    if State.heal.corpsRecoveryOn == 1 then Heal.recoverCorpses() end
     -- Phase 3: heal / cure / rez
     Heal.writeDebuffs()
     Heal.checkCures()

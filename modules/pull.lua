@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Pull = {}
-local _state, _utils, _cast, _movement, _combat, _pet, _bard
+local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -58,7 +58,7 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Pull.init(state, utils, cast, movement, combat, pet, bard)
+function Pull.init(state, utils, cast, movement, combat, pet, bard, healing)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -66,6 +66,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard)
     _combat   = combat
     _pet      = pet
     _bard     = bard
+    _healing  = healing
 
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
@@ -734,6 +735,16 @@ local function executePull(mobID)
 
         mq.doevents()
 
+        -- GrabCorpse: own corpse within MaxRadius during pull (mac:9645)
+        if (_state.heal.corpsRecoveryOn or 0) > 0 and _healing then
+            local selfName = mq.TLO.Me.CleanName() or ''
+            if not s.misc.dragCorpse and
+               (mq.TLO.SpawnCount('pccorpse ' .. selfName .. ' radius ' .. s.pull.maxRadius)() or 0) > 0 then
+                _healing.grabCorpse(1)
+                if s.misc.dragCorpse then returnStat = 'btcr'; goto done end
+            end
+        end
+
         -- Aggro already detected via event.
         if s.pull.aggroTargetID ~= '' then
             s.pull.pulled         = true
@@ -793,6 +804,15 @@ local function executePull(mobID)
                         s.timers.pullTimer = s.timers.pullTimer + 0.5
                     end
                     mq.delay(100)
+                    -- GrabCorpse: own corpse found on nav path (mac:10370)
+                    if (_state.heal.corpsRecoveryOn or 0) > 0 and _healing then
+                        local selfName = mq.TLO.Me.CleanName() or ''
+                        if not s.misc.dragCorpse and
+                           (mq.TLO.SpawnCount('pccorpse ' .. selfName .. ' radius 89')() or 0) > 0 then
+                            _healing.grabCorpse(2)
+                            if s.misc.dragCorpse then returnStat = 'btcr'; goto done end
+                        end
+                    end
                 elseif moveUse == 'los' then
                     if hasLOS then
                         local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''

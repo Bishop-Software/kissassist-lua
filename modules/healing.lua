@@ -985,4 +985,39 @@ function Heal.recoverCorpses(rc_flag, rc_dist)
     return summoned
 end
 
+-- Port of Sub GrabCorpse (mac:15467).
+-- checkFlag==1: summon if far, drag if within 89 (main pull loop).
+-- checkFlag==2: drag if outside camp radius (nav approach path).
+function Heal.grabCorpse(checkFlag)
+    local selfName = mq.TLO.Me.CleanName() or ''
+    if checkFlag == 1 then
+        if (mq.TLO.SpawnCount('pccorpse ' .. selfName)() or 0) == 0 then return end
+        -- Summon if nearest own corpse is beyond 89 units (mac:15473)
+        if _state.heal.corpsRecoveryOn == 1 then
+            local nearest = mq.TLO.NearestSpawn('1,' .. selfName .. ' pccorpse')
+            if nearest and (nearest.Distance3D() or 0) > 89 then
+                Heal.recoverCorpses('me', 89)
+                mq.delay(300)
+            end
+        end
+        -- Drag if own corpse is now within 89 (mac:15478)
+        if (mq.TLO.SpawnCount('pccorpse ' .. selfName .. ' radius 89')() or 0) > 0 then
+            mq.cmd('/corpsedrag')
+            _state.misc.dragCorpse = true
+        end
+    elseif checkFlag == 2 then
+        -- Drag if outside camp radius — puller found own corpse on nav path (mac:15484)
+        local campY = _state.movement.campY or 0
+        local campX = _state.movement.campX or 0
+        local distToCamp = mq.TLO.Math.Distance(campY .. ',' .. campX)() or 0
+        if distToCamp >= (_state.movement.campRadius or 50) then
+            mq.cmdf('/target %s', selfName)
+            mq.delay(100)
+            mq.cmd('/corpsedrag')
+            _state.misc.dragCorpse = true
+            mq.cmd('/echo Hey I found my corpse. Running back to camp for a rez')
+        end
+    end
+end
+
 return Heal

@@ -425,6 +425,7 @@ local State = {
     misc = {
         aeDisplayMobInfo     = false,
         ammoSwitch           = false,
+        dragCorpse           = false,
         banestrike           = '',
         colorIdx             = 0,
         colorList            = 'tWgtuwyr',
