@@ -237,6 +237,34 @@ local function namedWatch(ignoreTarget)
     end
 end
 
+-- Mirrors Sub GroupEscape (mac:6335). WIZ/DRU only, non-raid.
+-- Triggers group evac when in combat (or have aggro) and the MA is dead or missing.
+local function groupEscape()
+    if (_state.session.groupEscapeOn or 0) == 0 then return end
+    if (mq.TLO.Raid.Members() or 0) > 0 then return end
+    local inCombat = mq.TLO.Me.CombatState() == 'COMBAT'
+    local hasAggro = (_state.combat.aggroTargetID or 0) ~= 0
+    if not (inCombat or hasAggro) then return end
+    local maSpawn = mq.TLO.Spawn('=' .. (_state.session.mainAssist or ''))
+    if (maSpawn.ID() or 0) ~= 0 and (maSpawn.Type() or ''):lower() ~= 'corpse' then return end
+    mq.cmd('/echo + The MA is dead, activating Group Escape!')
+    local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+    if cls == 'dru' then
+        mq.cmd('/removebuff "Divine Barrier"')
+        if mq.TLO.Me.AltAbilityReady('Exodus')() then
+            _cast.castWhat('Exodus', mq.TLO.Me.ID(), 'GroupEscape', 0, 0)
+        elseif mq.TLO.Me.Book('Succor')() then
+            _cast.castWhat('Succor', mq.TLO.Me.ID(), 'GroupEscape', 0, 0)
+        end
+    elseif cls == 'wiz' then
+        if mq.TLO.Me.AltAbilityReady('Exodus')() then
+            _cast.castWhat('Exodus', mq.TLO.Me.ID(), 'GroupEscape', 0, 0)
+        elseif mq.TLO.Me.Book('Evacuate')() then
+            _cast.castWhat('Evacuate', mq.TLO.Me.ID(), 'GroupEscape', 0, 0)
+        end
+    end
+end
+
 -- Returns true if valid. Sets state.combat.validTarget as a side-effect.
 -- Pull-specific checks (PullValid loop, PCNear, BadLevel, etc.) deferred to pull.lua (Step 5.x).
 local function validateTarget(spawnID)
@@ -351,6 +379,9 @@ end
 -- Expose validateTarget for pull.lua (Step 7.8).
 Combat.validateTarget = validateTarget
 
+-- Expose groupEscape for debuff.lua (mac:7858).
+Combat.groupEscape = groupEscape
+
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
 function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms)
@@ -385,6 +416,12 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
 
     -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
     _state.session.useSpawnMaster = Config.get('General', 'UseSpawnMaster', '0') == '1'
+
+    -- GroupEscape: WIZ/DRU only — auto-evac group when MA dies mid-combat (mac:14611).
+    local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+    if cls == 'wiz' or cls == 'dru' then
+        _state.session.groupEscapeOn = tonumber(Config.get('General', 'GroupEscapeOn', '0')) or 0
+    end
 
     -- Burn flags
     _state.combat.burnAllNamed = tonumber(Config.get('Burn', 'BurnAllNamed', '0')) or 0
@@ -1199,6 +1236,9 @@ function Combat.fight(fromWhere)
 
             -- NamedWatch: trigger burn on named mob in range (mac:1177, mac:12884)
             if not _state.combat.namedCheck then namedWatch(false) end
+
+            -- GroupEscape: evac if MA dies mid-combat (mac:1589 CheckBeforeCast)
+            groupEscape()
 
             -- Non-chainpull DPS path (mac:1178-1200)
             if not (isPuller and _state.pull.chainPull) then

@@ -30,6 +30,7 @@ local State = {
         broadcastSay    = 'bc',
         danNetOn        = false,
         useSpawnMaster  = false,
+        groupEscapeOn   = 0,
         bindActive      = false,
         mercInGroup     = false,
         mercAssisting   = false,
@@ -255,7 +256,7 @@ local State = {
         medStop         = 100,
         medCombat       = false,
         groupWatchOn    = false,
-        corpsRecoveryOn = false,
+        corpsRecoveryOn = 0,
     },
 
     buffs = {
@@ -424,6 +425,7 @@ local State = {
     misc = {
         aeDisplayMobInfo     = false,
         ammoSwitch           = false,
+        dragCorpse           = false,
         banestrike           = '',
         colorIdx             = 0,
         colorList            = 'tWgtuwyr',
