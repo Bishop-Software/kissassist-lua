@@ -1871,6 +1871,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     if skipCombat == 1 and _heal then
         _heal.checkCures()
         _heal.checkHealth('SkipCombat')
+        -- NamedWatch IgnoreTarget=true: scan xtarhater for nearby named (mac:576)
+        if not _state.combat.namedCheck then namedWatch(true) end
     end
 
     -- CheckForAdds: scan for new mobs that entered camp during combat (mac:586)
