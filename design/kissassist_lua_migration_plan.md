@@ -51,7 +51,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 
 ## Milestones
 
-### Completed — Milestones 1–16 (of 23)
+### Completed — Milestones 1–17 (of 23)
 
 | Milestone | PR | What was built |
 | --- | --- | --- |
@@ -71,16 +71,7 @@ kissassist-lua/              ← repo root (this folder lives in MQ2's lua/ dire
 | 14 — Debuff Rotation | #14 | `debuff.lua`: `Debuff.init`, `debuffRadar`, `Debuff.cast`, `Debuff.check`, `Debuff.resetFight`; `state.debuff` sub-table; `[DPS]` threshold≥101 split; `FaceMobOn` integer fix; `Me.State()` face guard; `/peton` `/petoff` binds; `combatReset` clears debuff state |
 | 15 — Buff System Extensions | #15 | `buffs.lua`: `Buffs.castMount()` scans buffsArray for `\|Mount` tag (FeetWet + cond guards); `Buffs.castMana()` scans for `\|mana` tag (invis/justZoned/Revival Sickness guards, Bard Dichotomic Psalm endurance check, Druid Growth per-slot cooldown); `castMana` wired into `Combat.fight()` and OOC main loop; `castMount` wired into Phase 3 post-rez; `/mounton` `/mountoff` binds; `MountSpell` config key removed |
 | 16 — Combat Extensions | #16 | `combat.lua`: Summon Companion AA wired in `combatPet()`; `AutoFireOn` state machine (0=off/1=ranged/2=paused) with first-engage and re-engage branches; `onTooClose` event sets 1→2 and toggles `/autofire`; `combatReset` resets 2→1 and clears autofire; `/autofireon` bind (toggle 0↔1, persists to pickle); `comms.lua`: `Comms.announce()` (`/dgtell all` or `/echo` fallback); `_comms` wired as 11th param to `Combat.init()`; tank-announce and add-spam announce replace deferred stubs |
-
-### Milestone 17 — Named Watch List
-
-**Goal:** Port `namedWatchList` / `NamedWatch` — the named mob radar that prioritizes kills by name.
-
-- Load named mob list from `KissAssist_Info.ini` (INI loader not yet implemented for this file)
-- `namedRadar` scans nearby spawns against the watch list
-- Priority targeting: named mobs jump the assist queue ahead of normal mobs
-
-**Done when:** Named mobs on the watch list are pulled and killed first when in camp radius.
+| 17 — Named Watch List | #17 | `combat.lua`: `burnAllNamed` promoted to int (0/1/2); `isSpawnNamed()` helper (Spawn.Named + SpawnMaster Alert[5]); `namedWatch(ignoreTarget)` replaces inline block — melee path (ignoreTarget=false) and SkipCombat healer scan path (ignoreTarget=true); `namedWatchList` loaded from `KissAssist_Info.ini [zoneName] MobsToBurn` at startup; `state.session.useSpawnMaster` wired from config; `binds.lua`: `/addburn` bind (zone-scoped INI write, duplicate check, target fallback, runtime list update); `/zoneinfo` shows MobsToBurn |
 
 ---
 
