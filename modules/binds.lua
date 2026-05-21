@@ -471,6 +471,37 @@ local function onAddMezImmune(_mti)
     printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 
+-- Add current target (or named arg) to zone-scoped MobsToBurn list in KissAssist_Info.ini.
+-- Updates state.combat.namedWatchList at runtime so the change takes effect immediately.
+local function onAddBurn(name)
+    if not name or name == '' then
+        name = mq.TLO.Target.CleanName() or ''
+        if name == '' then
+            printf('\ay/addburn [mobname] — no argument and no target')
+            return
+        end
+    end
+    local iniFile = state.session.infoFileName
+    local zone    = state.session.zoneName
+    if not iniFile or iniFile == '' or not zone or zone == '' then
+        printf('\ay/addburn: zone not available yet')
+        return
+    end
+    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToBurn')() or ''
+    local lname = name:lower()
+    for entry in (existing .. ','):gmatch('([^,]+),') do
+        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+            printf('\ay%s is already on the burn list.', name)
+            return
+        end
+    end
+    local updated = (existing == '' or existing == 'null')
+        and name or (existing .. ',' .. name)
+    state.combat.namedWatchList[#state.combat.namedWatchList + 1] = lname
+    mq.cmdf('/ini "%s" "%s" "MobsToBurn" "%s"', iniFile, zone, updated)
+    printf('\ayAdded \at%s\ay to burn list.', name)
+end
+
 -- ─── Info display ─────────────────────────────────────────────────────────────
 
 local function onZoneInfo()
@@ -759,6 +790,8 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/addpull',        onAddPull)
     bind('/addignore',      onAddIgnore)
     bind('/addimmune',      onAddMezImmune)
+    if mq.TLO.Alias('/addburn')() then mq.cmd('/alias /addburn delete') end
+    bind('/addburn',        onAddBurn)
 
     -- Loot
     bind('/kalooton',       onLootOn)
