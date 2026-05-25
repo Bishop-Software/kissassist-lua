@@ -414,6 +414,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
 
     _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '30')) or 30
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
+    _state.misc.autoHide        = Config.get('General', 'AutoHide', '0') == '1'
 
     -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
     _state.session.useSpawnMaster = Config.get('General', 'UseSpawnMaster', '0') == '1'
@@ -1549,6 +1550,18 @@ function Combat.aggroCheck()
     _utils.debug('combat', 'aggroCheck: leave')
 end
 
+-- Mirrors Sub Roguestuff (kissassist.mac:15205). ROG-only auto-stealth after combat.
+local function rogueHide()
+    if not _state.session.iAmARogue then return end
+    if not _state.misc.autoHide then return end
+    if mq.TLO.Me.Hovering() then return end
+    if mq.TLO.Me.Combat() then return end
+    if mq.TLO.Me.AbilityReady('hide') and mq.TLO.Me.AbilityReady('sneak') then
+        mq.cmd('/doability hide')
+        mq.cmd('/doability sneak')
+    end
+end
+
 -- Mirrors Sub CombatReset (kissassist.mac:2144).
 -- sFlag: 0=full reset (DPS output + loot), 1=quick reset (skip DPS/loot).
 -- Clears CombatStart, stops attack, resets all target tracking fields.
@@ -1683,6 +1696,9 @@ function Combat.combatReset(sFlag, calledFrom)
     -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
 
     if _debuff then _debuff.resetFight() end
+
+    -- ROG auto-stealth after combat ends (mac:2328)
+    rogueHide()
 
     _utils.debug('combat', 'combatReset: done from=%s', tostring(calledFrom))
 end
