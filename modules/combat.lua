@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms, _merc
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 -- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
@@ -384,7 +384,7 @@ Combat.groupEscape = groupEscape
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms, merc)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -396,6 +396,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _debuff   = debuff
     _buffs    = buffs
     _comms    = comms
+    _merc     = merc
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -1141,6 +1142,9 @@ function Combat.fight(fromWhere)
 
         -- Look level when not underwater (mac:1095)
         if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
+
+        -- Merc re-assist on target change (mac:1144)
+        if _merc then _merc.check() end
 
         -- Initiate attack (mac:1097-1127)
         if not _state.combat.attacking then

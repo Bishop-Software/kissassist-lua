@@ -428,6 +428,14 @@ local State = {
         pcRadius  = 500,  -- MQ2Posse camp radius in units (mac AFKPCRadius)
     },
 
+    merc = {
+        on        = 0,    -- 0=off 1=on (mac MercOn)
+        assistAt  = 100,  -- HP% threshold to send merc on target (mac MercAssistAt)
+        assisting = 0,    -- target ID merc is currently assisting (mac MercAssisting)
+        inGroup   = false, -- merc was detected Active at least once this session (mac MercInGroup)
+        myMerc    = '',   -- mercenary's name (mac MyMerc)
+    },
+
     misc = {
         aeDisplayMobInfo     = false,
         ammoSwitch           = false,
