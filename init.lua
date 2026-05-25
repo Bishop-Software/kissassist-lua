@@ -17,6 +17,7 @@ local Comms    = require('modules.comms')
 local Cond     = require('modules.cond')
 local Mez      = require('modules.mez')
 local Debuff   = require('modules.debuff')
+local Afk      = require('modules.afk')
 
 local VERSION = '1.0.0'
 
@@ -100,6 +101,7 @@ Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms)
+Afk.init(State, Utils, Combat, Comms)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
@@ -112,6 +114,8 @@ local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=t
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
+    -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
+    if State.afk.on > 0 then Afk.check() end
     -- Phase 2: combat (first pass — mac:MainLoop1)
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main', 0)
