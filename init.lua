@@ -18,6 +18,7 @@ local Cond     = require('modules.cond')
 local Mez      = require('modules.mez')
 local Debuff   = require('modules.debuff')
 local Afk      = require('modules.afk')
+local Merc     = require('modules.merc')
 
 local VERSION = '1.0.0'
 
@@ -100,7 +101,8 @@ Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard, Heal)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms)
+Merc.init(State, Utils)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc)
 Afk.init(State, Utils, Combat, Comms)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
@@ -136,6 +138,8 @@ while not State.terminate do
     if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    -- Phase 5.5: merc (mac:393)
+    if State.merc.on > 0 then Merc.check() end
     -- Phase 6: buffs
     if not State.combat.combatStart and not State.session.danNetOn then
         Buffs.writeBuffs()
