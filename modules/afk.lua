@@ -37,7 +37,7 @@ function Afk.check()
     -- Stranger detection (AFKToolsOn == 1 or 2) (mac:11673-11693)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
         local holding = false
-        while (mq.TLO.Posse.Strangers() or 0) >= 1 do
+        while (mq.TLO.Posse.Strangers() or 0) >= 1 do ---@diagnostic disable-line: undefined-field
             if not holding then
                 _utils.debug('[AHTools] Macro on hold due to player activity in camp radius.')
                 _comms.announce('**PCS DETECTED IN CAMP RADIUS**')
