@@ -422,6 +422,12 @@ local State = {
         writeBuffsPet  = 0,
     },
 
+    afk = {
+        on        = 0,    -- 0=off 1=both 2=stranger-only 3=GM-only (mac AFKToolsOn)
+        gmAction  = 1,    -- 1=hold 2=endmacro 3=unload 4=quit (mac AFKGMAction)
+        pcRadius  = 500,  -- MQ2Posse camp radius in units (mac AFKPCRadius)
+    },
+
     misc = {
         aeDisplayMobInfo     = false,
         ammoSwitch           = false,
