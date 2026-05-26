@@ -54,6 +54,15 @@ local function onMessage(message)
             _state.buffs.remote[charName] = data
             _utils.debug('comms', 'BUFFS from %s', charName)
         end
+
+    elseif msgType == 'SWITCHMA' then
+        local newMA = data.newMA or ''
+        if newMA ~= '' then
+            _state.session.mainAssist = newMA
+            _state.session.iAmMA = (newMA:lower() == (mq.TLO.Me.CleanName() or ''):lower())
+            _utils.debug('comms', 'SWITCHMA from %s: new MA=%s iAmMA=%s', data.from, newMA, tostring(_state.session.iAmMA))
+            printf('\awMain Assist changed to \at%s\aw via group broadcast (IAmMA=%s)', newMA, tostring(_state.session.iAmMA))
+        end
     end
 end
 

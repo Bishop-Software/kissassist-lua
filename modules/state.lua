@@ -88,6 +88,7 @@ local State = {
         meleeOn            = false,
         namedCheck         = false,
         namedWatchList     = {},
+        petTargetSwitch    = false,    -- set from INI [General] PetTargetSwitch
         targetSwitchingOn  = false,
         useTribute         = false,
         raidAssistEntry    = 1,

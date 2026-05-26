@@ -476,8 +476,9 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     end
 
     -- Pet combat config
-    _state.pet.assistAt = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
-    _state.pet.combatOn = Config.get('Pet', 'PetCombatOn', '1') == '1'
+    _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
+    _state.pet.combatOn            = Config.get('Pet', 'PetCombatOn',      '1') == '1'
+    _state.combat.petTargetSwitch  = Config.get('General', 'PetTargetSwitch', '0') == '1'
 
     -- Named-mob watch list — zone-scoped MobsToBurn from KissAssist_Info.ini (shared across chars).
     local _infoFile = _state.session.infoFileName or ''
@@ -1010,6 +1011,15 @@ function Combat.combatTargetCheck(setTarget)
     local newID = _state.combat.myTargetID
     if cMyTargetID ~= newID and (mq.TLO.Target.ID() or 0) ~= newID
        and newID ~= 0 and (mq.TLO.Spawn('id ' .. newID).ID() or 0) ~= 0 then
+        local function petSwitch()
+            if _state.combat.petTargetSwitch
+               and (mq.TLO.Me.Pet.ID() or 0) ~= 0
+               and mq.TLO.Pet.Combat() then
+                mq.cmd('/pet attack')
+                mq.delay(500)
+                mq.cmd('/pet swarm')
+            end
+        end
         if _state.combat.xTarAutoSet
            and not mq.TLO.Group.Member(ma).Index()
            and not _state.session.iAmMA then
@@ -1023,10 +1033,12 @@ function Combat.combatTargetCheck(setTarget)
                         mq.cmd('/xtarget set ' .. xSlot .. ' currenttarget')
                     end
                 end
+                petSwitch()
             end
         elseif setTarget ~= 0 then
             mq.cmd('/squelch /target id ' .. newID)
             mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == newID end)
+            petSwitch()
         end
         _state.combat.myTargetName = mq.TLO.Spawn('id ' .. newID).CleanName() or ''
         _state.combat.lastTargetID = newID
@@ -1223,7 +1235,11 @@ function Combat.fight(fromWhere)
                 _state.combat.burnID = 0
             end
 
-            -- Deferred: SwitchMA offtank (M9), MercsDoWhat (M6)
+            -- Offtank auto-promote: MA is gone, assume MA role (mac:1143)
+            if _state.session.role == 'offtank'
+               and (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) == 0 then
+                mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
+            end
             -- Deferred: stick/distance maintenance (M7)
             if _mez then _mez.check('Combat') end
             if _mez then _mez.aeCheck() end
@@ -1856,7 +1872,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                     Combat.assist(fromWhere)
                     -- SwitchMA return value (deferred — DanNet/EQBC Step M9)
                 else
-                    -- Offtank with dead MA → would switchMA (deferred)
+                    -- Offtank with dead MA: promote self to MA (mac:508-511)
+                    mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
                     break
                 end
 
