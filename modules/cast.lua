@@ -230,16 +230,6 @@ end
 -- Banestrike race/distance/combat guard; /alt act ID; poll until AA consumed or
 -- cast window clears. Bard twist-pause stubbed → M8 (bard.lua).
 local function castAA(whatAA, sentFrom)
-    -- Banestrike: skip if target race not valid, too far, and in combat
-    if whatAA == 'Banestrike' or whatAA == '15073' then
-        local baneStr    = state.misc.baneStrikeRaces or ''  -- TODO M4: add baneStrikeRaces to state.misc, wire from INI
-        local targetRace = mq.TLO.Target.Race() or ''
-        local dist       = mq.TLO.Spawn(state.combat.myTargetID or 0).Distance3D() or 999
-        if baneStr ~= '' and not baneStr:find('|' .. targetRace .. '|', 1, true)
-                and dist > 70 and state.combat.combatStart then
-            return 'CAST_NO_RESULT'
-        end
-    end
 
     if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
             and sentFrom ~= 'Buffs' and sentFrom ~= 'buffs-nomem' then
@@ -542,7 +532,7 @@ local function castMem(whatMemSpell, sentFrom)
 
     -- Block tanks and healers from memming mid-combat with aggro
     local hasCombatAggro = state.combat.aggroTargetID ~= ''
-                        and state.session.heals  -- TODO M5: wire state.heal.healsOn here
+                        and state.session.heals
                         and sentFrom ~= 'Heal'
                         and not mq.TLO.Me.Mount.ID()
     if (state.combat.attacking and state.session.iAmMA) or hasCombatAggro then
@@ -916,7 +906,7 @@ end
 -- Mirrors MashButtons (kissassist.mac:1973).
 -- Iterates MashArray and fires any ready instant-cast AA/disc/item/skill each tick.
 -- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
-local function mashButtons(_tarID)
+local function mashButtons()
     if not state.combat.dpsOn then return end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     local meState = mq.TLO.Me.State() or ''
@@ -1052,7 +1042,7 @@ function Cast.combatCast()
 
     -- If nothing to cast in DPS slots, still run mash
     if dpsStart > #dpsArr then
-        mashButtons(state.combat.myTargetID)
+        mashButtons()
         return
     end
 
@@ -1270,7 +1260,7 @@ function Cast.combatCast()
         ::next_dps::
     end
 
-    mashButtons(state.combat.myTargetID)
+    mashButtons()
 end
 
 -- ─── Burn sequence (mac:11770) ────────────────────────────────────────────────

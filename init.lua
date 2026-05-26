@@ -53,7 +53,7 @@ State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.iAmARogue = mq.TLO.Me.Class.ShortName() == 'ROG'
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
-State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] == true
+State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] ~= nil
 
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
@@ -104,7 +104,7 @@ Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
 Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc)
-Afk.init(State, Utils, Combat, Comms)
+Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
