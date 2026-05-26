@@ -748,10 +748,18 @@ function Buffs.checkBuffs(forceGroup)
             end
             goto continue
         elseif spellToCast:find('command:', 1, true) then
-            -- |command:: simplified target resolution then cast (mac:4395-4399)
-            -- Full TargetTag resolver (tag-to-spawn lookup) deferred to M7.
-            local targetID = (mq.TLO.Target.ID() or 0) ~= 0
-                         and mq.TLO.Target.ID() or mq.TLO.Me.ID()
+            -- |command:: resolve |pet/|me/|ma tag then execute command (mac:4395-4399, TargetTag mac:4710-4723)
+            local targetID
+            if entry:find('|pet', 1, true) then
+                targetID = mq.TLO.Me.Pet.ID() or 0
+            elseif entry:find('|me', 1, true) then
+                targetID = mq.TLO.Me.ID() or 0
+            elseif entry:find('|ma', 1, true) then
+                local maName = _state.session.mainAssist or ''
+                targetID = (maName ~= '' and mq.TLO.Spawn('PC ' .. maName).ID()) or 0
+            else
+                targetID = mq.TLO.Target.ID() or 0
+            end
             _cast.castWhat(spellToCast, targetID, 'Buffs')
             goto continue
         end
