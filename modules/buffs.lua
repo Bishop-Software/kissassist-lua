@@ -701,9 +701,26 @@ function Buffs.checkBuffs(forceGroup)
             end
             goto continue
         elseif p2 == 'mgb' or p2 == 'DualMgb' or p2:lower() == 'dualmgb' then
-            -- |mgb / |dualmgb: stub cast without MGB flag; massGroupBuff deferred (mac:4370-4371)
-            if (mq.TLO.Me.Buff(buffToCheck).ID() or 0) == 0 then
-                _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+            -- |mgb / |dualmgb: mass group buff via MGB AA (mac:4370-4371)
+            local passes  = (p2 == 'DualMgb' or p2:lower() == 'dualmgb') and 2 or 1
+            local needBuff = false
+            for m = 0, (mq.TLO.Group.Members() or 0) do
+                local member = m == 0 and mq.TLO.Me or mq.TLO.Group.Member(m)
+                if member and (member.ID() or 0) ~= 0 then
+                    if (member.Buff(buffToCheck).ID() or 0) == 0 then
+                        needBuff = true
+                        break
+                    end
+                end
+            end
+            if needBuff then
+                mq.cmd('/keypress MGB hold')
+                mq.delay(200)
+                for _ = 1, passes do
+                    _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+                    if passes > 1 then mq.delay(100) end
+                end
+                mq.cmd('/keypress MGB')
             end
             goto continue
         elseif p2 == 'begfor' then
