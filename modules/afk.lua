@@ -2,21 +2,22 @@ local mq = require('mq')
 
 local Afk = {}
 
-local _state, _utils, _combat, _comms
+local _state, _utils, _combat, _comms, _config
 
 local function posseLoaded()
     return mq.TLO.Plugin('MQ2Posse').IsLoaded() == true
 end
 
-function Afk.init(state, utils, combat, comms)
+function Afk.init(state, utils, combat, comms, config)
     _state  = state
     _utils  = utils
     _combat = combat
     _comms  = comms
+    _config = config
 
-    _state.afk.on       = tonumber(require('modules.config').get('AFKTools', 'AFKToolsOn',  '0')) or 0
-    _state.afk.gmAction = tonumber(require('modules.config').get('AFKTools', 'AFKGMAction', '1')) or 1
-    _state.afk.pcRadius = tonumber(require('modules.config').get('AFKTools', 'AFKPCRadius', '500')) or 500
+    _state.afk.on       = tonumber(_config.get('AFKTools', 'AFKToolsOn',  '0')) or 0
+    _state.afk.gmAction = tonumber(_config.get('AFKTools', 'AFKGMAction', '1')) or 1
+    _state.afk.pcRadius = tonumber(_config.get('AFKTools', 'AFKPCRadius', '500')) or 500
 
     -- Set MQ2Posse camp radius if stranger detection is active (mac:16412-16414)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
@@ -32,7 +33,7 @@ function Afk.check()
     if mq.TLO.Zone.ID() ~= (_state.movement.campZone or 0) then return end
 
     -- Skip while in active combat with heals running (mac:11672)
-    if _state.heal.healsOn and _state.combat.aggroTargetID ~= 0 then return end
+    if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= 0 then return end
 
     -- Stranger detection (AFKToolsOn == 1 or 2) (mac:11673-11693)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then

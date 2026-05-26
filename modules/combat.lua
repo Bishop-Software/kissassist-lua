@@ -361,7 +361,7 @@ local function validateTarget(spawnID)
         local mobY = sp and sp.Y() or 0
         local mobX = sp and sp.X() or 0
         -- Reject if any non-group PC is within 30 units of the mob.
-        if (mq.TLO.SpawnCount('pc radius 30 loc ' .. mobY .. ',' .. mobX .. ' nogroup')() or 0) > 0 then
+        if (mq.TLO.SpawnCount(string.format('pc radius 30 loc %s,%s nogroup', mobY, mobX))() or 0) > 0 then
             return false
         end
         -- Reject if mob level is outside configured pull level range.
@@ -981,7 +981,7 @@ function Combat.combatTargetCheck(setTarget)
                             if role == 'tank' or role == 'pullertank' or role == 'hunter' then
                                 mq.cmd('/echo [KA] TANKING-> ' .. _state.combat.myTargetName .. ' <- ID:' .. tgtID)
                             elseif role == 'pettank' or role == 'pullerpettank' or role == 'hunterpettank' then
-                                mq.cmd('/echo [KA] ' .. petName .. ' is TANKING-> ' .. _state.combat.myTargetName .. ' <- ID:' .. tgtID)
+                                mq.cmdf('/echo [KA] %s is TANKING-> %s <- ID:%s', petName, _state.combat.myTargetName, tgtID)
                             end
                             _state.combat.lastCalledTargetID = tgtID
                         end
@@ -1415,7 +1415,7 @@ function Combat.fight(fromWhere)
             myID = _state.combat.myTargetID
         end
         -- Pet / mez (mac:1322-1329)
-        if _state.pet.activeState and _state.pet.combatOn and myID ~= 0 then
+        if _state.pet.activeState ~= 0 and _state.pet.combatOn and myID ~= 0 then
             if _mez then _mez.check('Combat') end
             sp = mq.TLO.Spawn('id ' .. myID)
             if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt

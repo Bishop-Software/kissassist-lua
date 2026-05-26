@@ -685,7 +685,7 @@ function Heal.rezCheck()
     -- Phase 1: MA corpse (mac:6862-6882)
     if maName ~= '' then
         local maCorpseID = mq.TLO.Spawn(
-            'pccorpse ' .. maName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() or 0
+            string.format('pccorpse %s radius %d zradius 50', maName, RZ_RADIUS)).ID() or 0
         if maCorpseID ~= 0 then
             local spell = rezWithCheck()
             if spell and os.clock() >= (_state.heal.oocRezTimers[maCorpseID] or 0) then
@@ -698,7 +698,7 @@ function Heal.rezCheck()
     -- Self rez helper (mac:6886-6911 and 6947-6973)
     local function rezSelf()
         local corpseID = mq.TLO.Spawn(
-            'pccorpse ' .. meName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() or 0
+            string.format('pccorpse %s radius %d zradius 50', meName, RZ_RADIUS)).ID() or 0
         if corpseID == 0 then return end
         local spell = rezWithCheck()
         if not spell then return end
@@ -787,7 +787,7 @@ function Heal.rezCheck()
                 if corpseID == 0 then goto next_ra end
                 -- Skip own corpse (already handled above)
                 if corpseID == mq.TLO.Spawn(
-                    'pccorpse ' .. meName .. ' radius ' .. RZ_RADIUS .. ' zradius 50').ID() then
+                    string.format('pccorpse %s radius %d zradius 50', meName, RZ_RADIUS)).ID() then
                     goto next_ra
                 end
                 if os.clock() < (_state.heal.oocRezTimers[corpseID] or 0) then goto next_ra end
@@ -815,7 +815,7 @@ function Heal.rezCheck()
                                     tostring(corpseID) .. ':' .. tries .. '|')
                             else
                                 _state.heal.corpseRezCheck =
-                                    tostring(corpseID) .. ':' .. tries .. '|' .. crc
+                                    string.format('%s:%s|%s', corpseID, tries, crc)
                             end
                             mq.cmd('/squelch /target clear')
                         end
