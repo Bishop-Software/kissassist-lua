@@ -161,7 +161,25 @@ local function castSpell(spellName, sentFrom)
                 mq.cmd('/stopcast')
                 return 'CAST_SUCCESS'
             end
-            -- Interrupt checks stub → M4 (dps/burn), M5 (Cure/MezMobs), M6 (Buffs)
+            -- Abort DPS/burn cast if target is dead or MA needs a heal (mac:3255)
+            if sentFrom == 'dps' or sentFrom == 'burn' then
+                local tgt = mq.TLO.Target
+                if (tgt.ID() or 0) == 0 or (tgt.PctHPs() or 100) < 1
+                        or (tgt.Type() or '') == 'corpse' then
+                    mq.cmd('/stopcast')
+                    return 'CAST_CANCELLED'
+                end
+                local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+                if (state.heal.healsOn or 0) > 0 and cls ~= 'nec' and cls ~= 'mag' then
+                    local maName = state.session.mainAssist or ''
+                    local maHP   = (maName ~= '' and mq.TLO.Spawn(maName).PctHPs()) or 100
+                    local intAt  = math.min(state.heal.singleHealPointMA or 70, 70)
+                    if maHP < intAt then
+                        mq.cmd('/stopcast')
+                        return 'CAST_CANCELLED'
+                    end
+                end
+            end
         end
 
         mq.delay(100)   -- let final cast-result event settle
