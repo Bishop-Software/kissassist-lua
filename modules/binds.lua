@@ -140,12 +140,16 @@ local function onSwitch(_lockOnFlag, newTargetID)
     printf('\aw>> Switching to target ID: %d', state.combat.calledTargetID)
 end
 
-local function onSwitchMA(newMA, _newRole, _doWhat)
+local function onSwitchMA(newMA, newRole, doWhat)
     if not newMA or newMA == '' then return end
     state.session.mainAssist = newMA
     state.session.iAmMA = (newMA:lower() == (mq.TLO.Me.CleanName() or ''):lower())
     state.combat.calledTargetID = 0
     _combat.combatReset('switchma', 'switchma')
+    -- Broadcast to group when doWhat is absent or 0 (mac:10973-10978 DanNet equivalent)
+    if (not doWhat or doWhat == '' or tonumber(doWhat) == 0) and _comms then
+        _comms.broadcast('SWITCHMA', { newMA = newMA, newRole = newRole or 'tank' })
+    end
     printf('\awMain Assist changed to \at%s\aw (IAmMA=%s)', newMA, tostring(state.session.iAmMA))
 end
 
