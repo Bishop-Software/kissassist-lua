@@ -131,6 +131,44 @@ local function buffOnce(spellName)
     return _cast.castWhat(spellName, mq.TLO.Me.ID(), 'BuffOnce') == 'CAST_SUCCESS'
 end
 
+-- Mirrors Sub SummonStuff (mac:4839): cast a summon spell until itemName count >= minCount.
+-- INI format: Spell|summon|ItemName|MinCount
+local function summonStuff(spellName, itemName, minCount)
+    if mq.TLO.Me.Invis() then return 'CAST_CANCELLED' end
+    if (mq.TLO.FindItemCount('=' .. itemName)() or 0) >= minCount then return 'CAST_SUCCESS' end
+    local attempts = 0
+    while (mq.TLO.FindItemCount('=' .. itemName)() or 0) < minCount do
+        if (mq.TLO.Me.FreeInventory() or 0) == 0 then
+            printf('\aw[KA] No free inventory — skipping summon of %s', itemName)
+            break
+        end
+        -- If spellName is itself an item clicky, check its recast timer
+        if (mq.TLO.FindItemCount('=' .. spellName)() or 0) > 0
+                and (mq.TLO.FindItem('=' .. spellName).Timer() or 0) ~= 0 then
+            return 'CAST_NOT_READY'
+        end
+        if (mq.TLO.Cursor.ID() or 0) ~= 0 then mq.cmd('/autoinventory') end
+        local result = _cast.castWhat(spellName, mq.TLO.Me.ID(), 'buffs-nomem')
+        if result == 'CAST_SUCCESS' then
+            local t = os.clock() + 5
+            while os.clock() < t and (mq.TLO.Cursor.ID() or 0) == 0 do mq.delay(100) end
+            if (mq.TLO.Cursor.ID() or 0) ~= 0 then
+                mq.cmd('/autoinventory')
+                attempts = attempts + 1
+            elseif attempts > 0 then
+                printf('\aw[KA] Summon %s failed — check reagents/timer', itemName)
+                return 'CAST_COMPONENTS'
+            end
+        elseif result == 'CAST_COMPONENTS' then
+            return 'CAST_COMPONENTS'
+        else
+            break
+        end
+        if attempts > 5 then break end
+    end
+    return 'CAST_SUCCESS'
+end
+
 -- Mirrors Sub CheckEndurance (mac:4820): cast endurance disc/AA on self.
 local function checkEndurance(spellName)
     if mq.TLO.Me.Invis() then return end
@@ -651,13 +689,38 @@ function Buffs.checkBuffs(forceGroup)
             end
             goto continue
         elseif p2:lower() == 'summon' then
-            -- |summon: stub — SummonStuff deferred to M8 (mac:4363-4369)
-            printf('\aw[KA] Summon tag not implemented for %s', spellToCast)
+            -- |summon: cast summon spell until itemName count >= minCount (mac:4363-4369)
+            local itemName = p3 or ''
+            local minCount = tonumber(p4) or 1
+            if itemName ~= '' and (mq.TLO.FindItemCount('=' .. itemName)() or 0) < minCount then
+                local result = summonStuff(spellToCast, itemName, minCount)
+                if result == 'CAST_COMPONENTS' then
+                    mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                    _state.buffs.buffsArray[i].name = 'NULL'
+                end
+            end
             goto continue
         elseif p2 == 'mgb' or p2 == 'DualMgb' or p2:lower() == 'dualmgb' then
-            -- |mgb / |dualmgb: stub cast without MGB flag; massGroupBuff deferred (mac:4370-4371)
-            if (mq.TLO.Me.Buff(buffToCheck).ID() or 0) == 0 then
-                _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+            -- |mgb / |dualmgb: mass group buff via MGB AA (mac:4370-4371)
+            local passes  = (p2 == 'DualMgb' or p2:lower() == 'dualmgb') and 2 or 1
+            local needBuff = false
+            for m = 0, (mq.TLO.Group.Members() or 0) do
+                local member = m == 0 and mq.TLO.Me or mq.TLO.Group.Member(m)
+                if member and (member.ID() or 0) ~= 0 then
+                    if (member.Buff(buffToCheck).ID() or 0) == 0 then
+                        needBuff = true
+                        break
+                    end
+                end
+            end
+            if needBuff then
+                mq.cmd('/keypress MGB hold')
+                mq.delay(200)
+                for _ = 1, passes do
+                    _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+                    if passes > 1 then mq.delay(100) end
+                end
+                mq.cmd('/keypress MGB')
             end
             goto continue
         elseif p2 == 'begfor' then
@@ -685,10 +748,18 @@ function Buffs.checkBuffs(forceGroup)
             end
             goto continue
         elseif spellToCast:find('command:', 1, true) then
-            -- |command:: simplified target resolution then cast (mac:4395-4399)
-            -- Full TargetTag resolver (tag-to-spawn lookup) deferred to M7.
-            local targetID = (mq.TLO.Target.ID() or 0) ~= 0
-                         and mq.TLO.Target.ID() or mq.TLO.Me.ID()
+            -- |command:: resolve |pet/|me/|ma tag then execute command (mac:4395-4399, TargetTag mac:4710-4723)
+            local targetID
+            if entry:find('|pet', 1, true) then
+                targetID = mq.TLO.Me.Pet.ID() or 0
+            elseif entry:find('|me', 1, true) then
+                targetID = mq.TLO.Me.ID() or 0
+            elseif entry:find('|ma', 1, true) then
+                local maName = _state.session.mainAssist or ''
+                targetID = (maName ~= '' and mq.TLO.Spawn('PC ' .. maName).ID()) or 0
+            else
+                targetID = mq.TLO.Target.ID() or 0
+            end
             _cast.castWhat(spellToCast, targetID, 'Buffs')
             goto continue
         end

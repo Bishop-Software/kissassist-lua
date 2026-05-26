@@ -63,6 +63,11 @@ local function onMessage(message)
             _utils.debug('comms', 'SWITCHMA from %s: new MA=%s iAmMA=%s', data.from, newMA, tostring(_state.session.iAmMA))
             printf('\awMain Assist changed to \at%s\aw via group broadcast (IAmMA=%s)', newMA, tostring(_state.session.iAmMA))
         end
+
+    elseif msgType == 'PULL' then
+        local mob  = data.mob  or '?'
+        local dist = data.dist or 0
+        printf('\awPULLING-> \at%s\aw <- at %d feet.', mob, dist)
     end
 end
 
