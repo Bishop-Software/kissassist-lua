@@ -104,7 +104,8 @@ function Config.migrateIni(state)
     local ver = mq.TLO.Ini(iniFile, 'General', 'KissAssistVer')()
     if not ver then
         local cfg = Config.defaultCfg()
-        os.execute('if not exist "' .. pickleDir:gsub('/','\\') .. '" mkdir "' .. pickleDir:gsub('/','\\') .. '"')
+        local dir = pickleDir:gsub('/', '\\')
+        os.execute(string.format('if not exist "%s" mkdir "%s"', dir, dir))
         _picklePath = picklePath
         mq.pickle(picklePath, cfg)
         printf('\agKissAssist: \awNo INI found — created starter config at \at%s', pickleName)
@@ -360,7 +361,8 @@ function Config.migrateIni(state)
     }
 
     -- 3. Ensure output directory exists and write pickle.
-    os.execute('if not exist "' .. pickleDir:gsub('/','\\') .. '" mkdir "' .. pickleDir:gsub('/','\\') .. '"')
+    local dir = pickleDir:gsub('/', '\\')
+    os.execute(string.format('if not exist "%s" mkdir "%s"', dir, dir))
     _picklePath = picklePath
     mq.pickle(picklePath, cfg)
 

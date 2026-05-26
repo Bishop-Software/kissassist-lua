@@ -372,7 +372,7 @@ local function pickUpItem(itemName)
     if slot2 < 0 then
         mq.cmd('/nomodkey /itemnotify pack' .. slot .. ' leftmouseup')
     else
-        mq.cmd('/nomodkey /itemnotify in pack' .. slot .. ' ' .. slot2 .. ' leftmouseup')
+        mq.cmdf('/nomodkey /itemnotify in pack%s %s leftmouseup', slot, slot2)
     end
     mq.delay(2000, function() return (mq.TLO.Cursor.ID() or 0) > 0 end)
 end
@@ -537,7 +537,7 @@ local function giveTo(gItem, gTarget, giveNow)
                 if entry.slot2 < 0 then
                     mq.cmd('/nomodkey /itemnotify pack' .. entry.slot .. ' leftmouseup')
                 else
-                    mq.cmd('/nomodkey /itemnotify in pack' .. entry.slot .. ' ' .. entry.slot2 .. ' leftmouseup')
+                    mq.cmdf('/nomodkey /itemnotify in pack%s %s leftmouseup', entry.slot, entry.slot2)
                 end
                 _toyItems[idx] = 'removed'
                 returned = true
@@ -718,9 +718,9 @@ function Pet.petToys(petName)
 
                 -- Record this item as given
                 if toysTemp:find(':' .. secondPart .. '1', 1, true) then
-                    toysTemp = toysTemp .. '|' .. petToySpell .. ':' .. secondPart .. '2'
+                    toysTemp = toysTemp .. string.format('|%s:%s2', petToySpell, secondPart)
                 else
-                    toysTemp = toysTemp .. '|' .. petToySpell .. ':' .. secondPart .. '1'
+                    toysTemp = toysTemp .. string.format('|%s:%s1', petToySpell, secondPart)
                 end
                 if isMyPet then s.pet.toysGave = toysTemp end
 

@@ -465,7 +465,7 @@ function Pull.findMobToPull(readyFlag, a, b)
 
     if isHunter then
         local base = moveUse == 'nav' and 'npc' or 'npc los'
-        vstStr1    = useCampLoc and (base .. ' loc ' .. cx .. ' ' .. cy) or base
+        vstStr1    = useCampLoc and string.format('%s loc %s %s', base, cx, cy) or base
     elseif moveUse == 'nav' then
         vstStr1 = 'npc loc ' .. cx .. ' ' .. cy
     else
@@ -817,7 +817,7 @@ local function executePull(mobID)
                 elseif moveUse == 'los' then
                     if hasLOS then
                         local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''
-                        mq.cmd('/moveto id ' .. mobID .. ' mdist ' .. math.floor(pullDist) .. uwSuffix)
+                        mq.cmdf('/moveto id %d mdist %d%s', mobID, math.floor(pullDist), uwSuffix)
                         x2 = math.floor(mq.TLO.Me.X())
                         y2 = math.floor(mq.TLO.Me.Y())
                     elseif x2 ~= 0 then
