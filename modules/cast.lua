@@ -99,7 +99,7 @@ local function castSpell(spellName, sentFrom)
         return 'CAST_NO_RESULT'
     end
 
-    -- Bard twist-pause stub → M8 (bard.lua)
+    if state.session.iAmABard and _bard then _bard.pauseMedley() end
 
     -- Gem guard
     if not mq.TLO.Me.Gem(spellName)() then
@@ -195,7 +195,7 @@ local function castSpell(spellName, sentFrom)
         end
     end
 
-    -- Bard cleanup stub → M8 (bard.lua)
+    if state.session.iAmABard and _bard then _bard.resumeMedley() end
 
     -- Restore sit state if we were sitting and combat hasn't started
     if wasSitting and not mq.TLO.Me.Sitting() and not state.combat.combatStart then
@@ -372,7 +372,7 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard twist-pause stub → M8
+    if state.session.iAmABard and _bard then _bard.pauseMedley() end
     ---@diagnostic disable-next-line: undefined-field
     local castTime = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime.TotalSeconds() or 0
 
@@ -420,7 +420,7 @@ local function castItem(whatItem, sentFrom)
         castResult = 'CAST_SUCCESS'
     end
 
-    -- Bard cleanup stub → M8
+    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastItem result: %s', castResult)
     return castResult
 end
@@ -477,7 +477,7 @@ castMemSpell = function(spellToMem, gemNum, forceIt)
 
     -- Mem the spell if slot name doesn't already match
     if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellToMem then
-        -- Bard twist-pause stub → M8
+        if state.session.iAmABard and _bard then _bard.pauseMedley() end
         while mq.TLO.Me.Moving() do mq.delay(100) end
 
         printf('\aw Memming %s in slot %d', spellToMem, gemNum)
@@ -859,8 +859,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         end
     end
 
-    -- Bard twist-restart stub → M8
-    -- SitToMedTimer reset stub → M7
+    if state.session.iAmABard and _bard then _bard.resumeMedley() end
 
     utils.debug('cast', 'CastWhat leave: %s → %s', castWhat, castResult)
     return castResult
