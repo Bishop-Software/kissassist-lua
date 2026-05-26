@@ -426,8 +426,8 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     end
 
     -- Burn flags
-    _state.combat.burnAllNamed = tonumber(Config.get('Burn', 'BurnAllNamed', '0')) or 0
-    -- autoBurnTimer: not yet in INI — defaults to 0 (disabled)
+    _state.combat.burnAllNamed  = tonumber(Config.get('Burn',    'BurnAllNamed',  '0')) or 0
+    _state.combat.autoBurnTimer = tonumber(Config.get('General', 'AutoBurnTimer', '0')) or 0
 
     -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
     -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN

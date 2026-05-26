@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Pull = {}
-local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing
+local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing, _comms
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -58,7 +58,7 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Pull.init(state, utils, cast, movement, combat, pet, bard, healing)
+function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, comms)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -67,6 +67,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing)
     _pet      = pet
     _bard     = bard
     _healing  = healing
+    _comms    = comms
 
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
@@ -1033,10 +1034,11 @@ function Pull.pullCheck()
         end
     end
 
-    -- Announce pull (mac:9343–9350; /bc cross-char comms deferred to M9).
+    -- Announce pull (mac:9343–9350)
     local mobName = sp.CleanName() or '?'
     local mobFeet = math.floor(dist2D(sp.Y(), sp.X(), s.movement.campY, s.movement.campX))
     printf('\awPULLING-> \at%s\aw <- ID:%d at %d feet.', mobName, pullMob, mobFeet)
+    if _comms then _comms.broadcast('PULL', {mob = mobName, dist = mobFeet}) end
 
     s.combat.myTargetID   = pullMob
     s.combat.myTargetName = mobName
