@@ -309,6 +309,16 @@ function Config.migrateIni(state)
         MezAESpell        = r('Mez','MezAESpell'),
     }
 
+    -- [Charm] — charm settings (DRU/ENC/NEC/BRD only)
+    cfg.Charm = {
+        CharmOn       = r('Charm','CharmOn'),
+        CharmSpell    = r('Charm','CharmSpell'),
+        CharmMinLevel = r('Charm','CharmMinLevel'),
+        CharmMaxLevel = r('Charm','CharmMaxLevel'),
+        CharmRadius   = r('Charm','CharmRadius'),
+        CharmKeep     = r('Charm','CharmKeep'),
+    }
+
     -- [Burn] — burn phase spell/disc list (numbered array, sorted by priority)
     local burnSize = tonumber(r('Burn','BurnSize')) or 15
     cfg.Burn = {
@@ -438,6 +448,10 @@ function Config.defaultCfg()
             MezOn = '0', MezRadius = '40', MezMinLevel = '1', MezMaxLevel = '115',
             MezStopHPs = '50', MezSpell = '', MezDebuffOnResist = '0',
             MezDebuffSpell = '', MezAESpell = '',
+        },
+        Charm = {
+            CharmOn = '0', CharmSpell = '', CharmMinLevel = '5', CharmMaxLevel = '0',
+            CharmRadius = '50', CharmKeep = '0',
         },
         Burn = {
             BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
