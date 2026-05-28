@@ -2,7 +2,8 @@
 -- CastSpell/CastAA/CastDisc/CastItem added in Steps 3.2-3.3.
 -- CastMem/CastReMem/CastMemSpell added in Step 3.4.
 -- CastWhat dispatcher completed in Step 3.5.
-local mq = require('mq')
+local mq      = require('mq')
+local Helpers = require('modules.helpers')
 
 local Cast = {}
 
@@ -995,17 +996,8 @@ local function setSlotTimer(spellName, tType, daMod)
         return os.clock() + 300
     end
 
-    -- Apply DAMod to a base duration (seconds). Returns adjusted seconds, or 0 if no timer.
     local function applyMod(baseDur)
-        if not daMod or daMod == '' or daMod == '+0' then
-            return baseDur > 0 and baseDur or 0
-        end
-        local first = daMod:sub(1, 1)
-        if first == '+' or first == '-' then
-            return math.max(0, baseDur + (tonumber(daMod) or 0))
-        else
-            return tonumber(daMod) or 0   -- fixed-second override
-        end
+        return Helpers.applyDAMod(baseDur, daMod)
     end
 
     -- Item: use item spell duration (mac:1781-1782)
