@@ -113,6 +113,10 @@ Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
+-- Expose live State globally so integration tests can access it via mq_eval:
+--   require('tests.integration.test_debug_cmds').run(mq, KAState, TH)
+_G.KAState = State
+
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
 
 -- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
