@@ -118,6 +118,13 @@ function Pet.doPetStuff()
     local petMana = mq.TLO.Spell(petSpell).Mana() or 999999
     local myMana  = mq.TLO.Me.CurrentMana() or 0
 
+    -- Charm-pet guard: if the charm system's tracked pet IS our current pet,
+    -- treat as hasPet=true so we never enter the summon branch for a charm mob.
+    local charmPetId = (_state.charm and _state.charm.petId or 0)
+    if not hasPet and charmPetId > 0 and (mq.TLO.Me.Pet.ID() or 0) == charmPetId then
+        hasPet = true
+    end
+
     -- -------------------------------------------------------------------------
     -- No-pet path (mac:5237-5352)
     -- -------------------------------------------------------------------------
