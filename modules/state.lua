@@ -15,6 +15,7 @@ local State = {
         originalRole    = '',
         iAmABard        = false,  -- set at startup from Me.Class
         iAmARogue       = false,  -- set at startup from Me.Class
+        iAmACharmClass  = false,  -- set at startup: DRU/ENC/NEC/BRD
         iAmMA           = false,
         iAmDead         = false,
         zoneName        = '',
@@ -375,6 +376,27 @@ local State = {
         lists  = {},  -- slot index → string of "|id|id..." already-debuffed mobs
     },
 
+    charm = {
+        on         = false,  -- CharmOn
+        radius     = 50,     -- CharmRadius
+        minLevel   = 5,      -- CharmMinLevel
+        maxLevel   = 0,      -- CharmMaxLevel (0 = no cap)
+        spell      = '',     -- CharmSpell (spell or AA name)
+        keep       = false,  -- CharmKeep: recharm same specific mob
+        petId      = 0,      -- ID of the currently charmed mob (CharmPet)
+        petZone    = '',     -- zone where charm pet was acquired (CharmPetZone)
+        immuneList = '',     -- comma-sep mob names never to charm (CharmImmune)
+        aaImmune   = false,  -- AACharmImmune: auto-write immune names to Info INI
+        immuneIds  = '',     -- pipe-sep spawn IDs confirmed immune e.g. "|12345|67890"
+        mobCount   = 0,      -- CharmMobCount: total haters in zone
+        mobAECount = 0,      -- CharmMobAECount: haters within radius
+        aeClosest  = 0,      -- CharmAEClosest: nearest hater ID within radius
+        mobDone    = false,  -- CharmMobDone: charm attempt completed this pass
+        slotTimers = {},     -- [i] = os.clock() expiry (90% of spell duration)
+        cmTimers   = {},     -- [i] = os.clock() expiry for immune debounce
+        count      = {},     -- [i] = cast count per slot (recharm counter)
+    },
+
     dps = {
         lastCast   = '',
         parseTimer = 0,
@@ -476,6 +498,7 @@ local State = {
         mashArray    = {'null','null','null','null','null','null','null','null','null','null'},
         weaveArray   = {},  -- [50]  string, 'null'
         mezArray     = {},  -- [50][3] string, 'NULL'
+        charmArray   = {},  -- [50]{id,level,name}
         xTarToHeal   = {},  -- [20]  int, 0
         pullPathX    = {},  -- [999] float, 0.0
         pullPathY    = {},
@@ -486,6 +509,7 @@ local State = {
 -- Initialize variable-length arrays to their .mac defaults.
 for i = 1, 50  do State.arrays.weaveArray[i] = 'null' end
 for i = 1, 50  do State.arrays.mezArray[i]   = {'NULL','NULL','NULL'} end
+for i = 1, 50  do State.arrays.charmArray[i] = {0, 0, 'NULL'} end  -- {id, level, name}
 for i = 1, 20  do State.arrays.xTarToHeal[i] = 0 end
 for i = 1, 999 do
     State.arrays.pullPathX[i] = 0.0
