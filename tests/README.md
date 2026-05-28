@@ -13,7 +13,7 @@ Unit tests run entirely inside MQ without needing combat or group members. They 
 Start any character in EverQuest, then:
 
 ```
-/lua run kissassist-lua tests/run_tests
+/lua run kissassist-lua test
 ```
 
 kissassist does **not** need to be running. The test runner is a standalone script.
@@ -70,8 +70,9 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | `integration/test_toggle_cmds.lua` | 12 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard |
 | `integration/test_camp_cmds.lua` | 11 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears flag; `/stayhere` sets flag and coords |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
+| `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
 
-**Total: ~46 integration assertions**
+**Total: ~62 integration assertions**
 
 ---
 

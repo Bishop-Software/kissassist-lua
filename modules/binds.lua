@@ -809,11 +809,11 @@ end
 
 -- ─── Integration test runner ──────────────────────────────────────────────────
 
-local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma' }
+local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds' }
 
 local function onKaTest(testName)
     if not testName or testName == '' then
-        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|all>')
+        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|charm_cmds|all>')
         return
     end
     local names = testName:lower() == 'all' and INTEGRATION_TESTS or { testName }
