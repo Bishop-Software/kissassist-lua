@@ -24,6 +24,7 @@ local Comms    = require('modules.comms')
 local Cond     = require('modules.cond')
 local Mez      = require('modules.mez')
 local Debuff   = require('modules.debuff')
+local Charm    = require('modules.charm')
 local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 
@@ -55,6 +56,8 @@ end
 -- Seed runtime identity from live TLO; camp is set explicitly via /makecamphere
 State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.iAmARogue = mq.TLO.Me.Class.ShortName() == 'ROG'
+local _CHARM_CLASSES = {DRU=true, ENC=true, NEC=true, BRD=true}
+State.session.iAmACharmClass = _CHARM_CLASSES[mq.TLO.Me.Class.ShortName()] ~= nil
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
 State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] ~= nil
@@ -92,7 +95,7 @@ end
 Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
-Events.register(State, Utils, Movement)
+Events.register(State, Utils, Movement, Charm)
 Cast.init(State, Utils)
 Cast.setCond(Cond)
 Heal.init(State, Utils, Cast, Cond, Movement, Comms)
@@ -106,8 +109,9 @@ Pull.init(State, Utils, Cast, Movement, Combat, Pet, Bard, Heal, Comms)
 Loot.init(State, Utils)
 Mez.init(State, Utils, Cast)
 Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
+Charm.init(State, Utils, Cast, Pet, Bard, Comms)
 Merc.init(State, Utils)
-Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc)
+Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
@@ -138,6 +142,8 @@ while not State.terminate do
     Heal.checkCures()
     Heal.checkHealth('MainLoop')
     Buffs.castMount()  -- post-rez mount attempt (mac:6906/6968)
+    -- Phase 3.5: charm
+    if State.session.iAmACharmClass and State.charm.on then Charm.check('MainLoop') end
     -- Phase 4: movement
     if not State.combat.combatStart and State.movement.returnToCamp then
         Movement.doWeMove(0, 'mainloop')

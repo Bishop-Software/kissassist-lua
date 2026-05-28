@@ -19,7 +19,7 @@ end
 -- Cast event handlers set State.cast.castReturn so the cast engine (cast.lua, M3)
 -- can react. Patterns mirror kissassist.mac lines 48-101.
 
-local state, utils, movement
+local state, utils, movement, charm
 
 -- CAST_BEGIN: optimistic — assume success until a failure event fires
 local function onCastBegin(_, _)
@@ -295,6 +295,7 @@ local function onZoned(_, message)
         if state.session.iAmDead then state.session.iAmDead = false end
     end
     state.misc.lastZone = zoneID
+    if charm then charm.resetFight() end
     -- CombatReset, WinTitle, LoadSpawnMaster in M4/M7
 end
 
@@ -634,10 +635,11 @@ local EVENT_DEFS = {
     { 'MLogOff',         '#*#KissAssist Debug Off Marker!',                      onMLogOff        },
 }
 
-function Events.register(s, u, m)
+function Events.register(s, u, m, c)
     state    = s
     utils    = u
     movement = m
+    charm    = c
     _nameCount = {}
     for _, def in ipairs(EVENT_DEFS) do
         register(def[1], def[2], def[3])

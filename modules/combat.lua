@@ -3,7 +3,7 @@ local Config  = require('modules.config')
 local Helpers = require('modules.helpers')
 
 local Combat = {}
-local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms, _merc
+local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms, _merc, _charm
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
 local dist2D = Helpers.dist2D
@@ -382,7 +382,7 @@ Combat.groupEscape = groupEscape
 
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
-function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms, merc)
+function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms, merc, charm)
     _state    = state
     _utils    = utils
     _cast     = cast
@@ -395,6 +395,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _buffs    = buffs
     _comms    = comms
     _merc     = merc
+    _charm    = charm
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
@@ -1710,6 +1711,7 @@ function Combat.combatReset(sFlag, calledFrom)
     -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
 
     if _debuff then _debuff.resetFight() end
+    if _charm  then _charm.resetFight()  end
 
     -- ROG auto-stealth after combat ends (mac:2328)
     rogueHide()
