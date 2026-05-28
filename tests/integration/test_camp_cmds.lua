@@ -2,37 +2,32 @@
 -- Integration tests for /makecamphere, /stayhere, /campoff binds.
 -- Covers test plan section S2.4.x.
 --
--- REQUIRES: kissassist running on a live character.
--- INVOKE via mq_eval (MQ MCP tool) while the bot is running:
---
---   local TH = require('tests.test_helpers')
---   require('tests.integration.test_camp_cmds').run(mq, KAState, TH)
---   TH.printSummary()
-
+-- Run in-game while kissassist is running: /katest camp_cmds
 local M = {}
+
+local D = 10  -- ms delay after each mq.cmd() to let the deferred bind execute
 
 function M.run(mq, State, TH)
     TH.setSuite('test_camp_cmds')
 
     -- Snapshot original movement state for restore at end.
-    local origReturn      = State.movement.returnToCamp
-    local origCampX       = State.movement.campX
-    local origCampY       = State.movement.campY
-    local origCampZ       = State.movement.campZ
-    local origCampZone    = State.movement.campZone
-    local origChase       = State.session.chaseAssist
-
-    -- Read current character position from TLO for comparison.
-    local preX    = mq.TLO.Me.X()
-    local preY    = mq.TLO.Me.Y()
-    local preZ    = mq.TLO.Me.FloorZ()
-    local zoneID  = mq.TLO.Zone.ID()
+    local origReturn   = State.movement.returnToCamp
+    local origCampX    = State.movement.campX
+    local origCampY    = State.movement.campY
+    local origCampZ    = State.movement.campZ
+    local origCampZone = State.movement.campZone
+    local origChase    = State.session.chaseAssist
 
     -- /makecamphere ---------------------------------------------------------
-    State.movement.returnToCamp = false   -- ensure known start
-    State.session.chaseAssist   = true    -- should be cleared
+    State.movement.returnToCamp = false
+    State.session.chaseAssist   = true
 
-    mq.cmd('/makecamphere')
+    local preX   = mq.TLO.Me.X()
+    local preY   = mq.TLO.Me.Y()
+    local preZ   = mq.TLO.Me.FloorZ()
+    local zoneID = mq.TLO.Zone.ID()
+
+    mq.cmd('/makecamphere') ; mq.delay(D)
 
     TH.assert_true(State.movement.returnToCamp,  '/makecamphere → returnToCamp=true')
     TH.assert_false(State.session.chaseAssist,   '/makecamphere → chaseAssist=false')
@@ -42,20 +37,18 @@ function M.run(mq, State, TH)
     TH.assert_eq(State.movement.campZone, zoneID,   '/makecamphere → campZone matches Zone.ID')
 
     -- /campoff --------------------------------------------------------------
-    mq.cmd('/campoff')
+    mq.cmd('/campoff') ; mq.delay(D)
     TH.assert_false(State.movement.returnToCamp, '/campoff → returnToCamp=false')
-    -- campX/Y/Z are not cleared by /campoff (position is retained for re-enable)
     TH.assert_near(State.movement.campX, preX, 1.0, '/campoff → campX still set')
 
     -- /stayhere ------------------------------------------------------------
-    -- Same state effects as /makecamphere; uses different printf.
     State.movement.returnToCamp = false
     State.session.chaseAssist   = true
 
     local preX2 = mq.TLO.Me.X()
     local preY2 = mq.TLO.Me.Y()
 
-    mq.cmd('/stayhere')
+    mq.cmd('/stayhere') ; mq.delay(D)
 
     TH.assert_true(State.movement.returnToCamp, '/stayhere → returnToCamp=true')
     TH.assert_false(State.session.chaseAssist,  '/stayhere → chaseAssist=false')

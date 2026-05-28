@@ -1,36 +1,29 @@
 -- tests/integration/test_switchma.lua
--- Integration tests for the /switchma bind and SWITCHMA comms broadcast.
+-- Integration tests for the /switchma bind.
 -- Covers test plan section S22.5.x.
 --
--- REQUIRES: kissassist running on a live character.
--- INVOKE via mq_eval (MQ MCP tool) while the bot is running:
---
---   local TH = require('tests.test_helpers')
---   require('tests.integration.test_switchma').run(mq, KAState, TH)
---   TH.printSummary()
-
+-- Run in-game while kissassist is running: /katest switchma
 local M = {}
+
+local D = 10  -- ms delay after each mq.cmd() to let the deferred bind execute
 
 function M.run(mq, State, TH)
     TH.setSuite('test_switchma')
 
-    -- Read the current character's name — used to test iAmMA logic.
     local myName = mq.TLO.Me.CleanName() or ''
 
     -- Snapshot originals
-    local origMA      = State.session.mainAssist
-    local origIAmMA   = State.session.iAmMA
+    local origMA       = State.session.mainAssist
+    local origIAmMA    = State.session.iAmMA
     local origTargetID = State.combat.calledTargetID
 
     -- /switchma <name>: basic MA change ------------------------------------
-    mq.cmd('/switchma NewTank')
+    mq.cmd('/switchma NewTank') ; mq.delay(D)
     TH.assert_eq(State.session.mainAssist, 'NewTank',
         '/switchma NewTank → mainAssist=NewTank')
     TH.assert_eq(State.combat.calledTargetID, 0,
         '/switchma → calledTargetID reset to 0')
 
-    -- iAmMA should be false since 'NewTank' != current character name
-    -- (unless this character's name happens to be 'NewTank', but that's astronomically unlikely)
     if myName:lower() ~= 'newtank' then
         TH.assert_false(State.session.iAmMA,
             '/switchma NewTank → iAmMA=false (not our name)')
@@ -38,7 +31,7 @@ function M.run(mq, State, TH)
 
     -- /switchma <myName>: self-as-MA → iAmMA=true -------------------------
     if myName ~= '' then
-        mq.cmd('/switchma ' .. myName)
+        mq.cmd('/switchma ' .. myName) ; mq.delay(D)
         TH.assert_eq(State.session.mainAssist, myName,
             '/switchma <myName> → mainAssist=myName')
         TH.assert_true(State.session.iAmMA,
@@ -47,21 +40,19 @@ function M.run(mq, State, TH)
 
     -- /switchma with no argument: bind returns early, state unchanged ------
     local maBefore = State.session.mainAssist
-    mq.cmd('/switchma')
+    mq.cmd('/switchma') ; mq.delay(D)
     TH.assert_eq(State.session.mainAssist, maBefore,
         '/switchma (no arg) → mainAssist unchanged')
 
-    -- /switchma <name> with doWhat=1: suppresses broadcast ----------------
-    -- Use the doWhat=1 form to verify state still updates (broadcast skip is observable
-    -- only via comms monitoring; here we just confirm the state change fires).
-    mq.cmd('/switchma SilentTank tank 1')
+    -- /switchma <name> <role> 1: state updates even when broadcast skipped -
+    mq.cmd('/switchma SilentTank tank 1') ; mq.delay(D)
     TH.assert_eq(State.session.mainAssist, 'SilentTank',
         '/switchma <name> <role> 1 → mainAssist=SilentTank')
 
     -- Restore original state
-    State.session.mainAssist      = origMA
-    State.session.iAmMA           = origIAmMA
-    State.combat.calledTargetID   = origTargetID
+    State.session.mainAssist    = origMA
+    State.session.iAmMA         = origIAmMA
+    State.combat.calledTargetID = origTargetID
 end
 
 return M
