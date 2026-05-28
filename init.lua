@@ -1,3 +1,10 @@
+-- Route to the test runner when invoked as: /lua run kissassist-lua test
+local args = {...}
+if args[1] == 'test' then
+    require('tests.run_tests')
+    return
+end
+
 local mq     = require('mq')
 local State  = require('modules.state')
 local Utils  = require('modules.utils')
@@ -21,9 +28,6 @@ local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 
 local VERSION = '1.0.0'
-
--- Collect CLI args passed after /lua run kissassist-lua
-local args = {...}
 
 -- Wire Utils debug flags to State.debug before any other output
 Utils.init(State)
