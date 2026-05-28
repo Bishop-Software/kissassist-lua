@@ -142,7 +142,7 @@ function Charm.check(sentFrom)
     local maName  = _state.session.mainAssist or ''
     local maSpawn = maName ~= '' and mq.TLO.Spawn('=' .. maName) or nil
     local maID    = maSpawn and (maSpawn.ID() or 0) or 0
-    local maAlive = maID > 0 and (maSpawn.Type() or ''):lower() ~= 'mercenary'
+    local maAlive = maID > 0 and maSpawn ~= nil and (maSpawn.Type() or ''):lower() ~= 'mercenary'
 
     -- CharmKeep zone guard (mac: CharmPetZone check at DoCharmStuff entry)
     if keep and _state.charm.petZone ~= '' then
@@ -332,10 +332,129 @@ function Charm.check(sentFrom)
     _utils.debug('charm', 'Charm.check: leave')
 end
 
+-- Append spawnId to immuneIds string and optionally persist the mob name to Info INI.
+-- Port of Sub AddCharmImmune + Bind_AddCharmImmune (KS_Charm.inc / kisscharm.mac).
+local function addCharmImmune(spawnId, mobName)
+    local tag = '|' .. tostring(spawnId)
+    if not _state.charm.immuneIds:find(tag, 1, true) then
+        _state.charm.immuneIds = _state.charm.immuneIds .. tag
+    end
+    if _state.charm.aaImmune and mobName and mobName ~= '' and mobName:lower() ~= 'null' then
+        -- Append name to per-zone CharmImmune list in KissAssist_Info.ini
+        local zoneName = mq.TLO.Zone.ShortName() or ''
+        local infoFile = _state.session.infoFileName or 'KissAssist_Info.ini'
+        local existing = mq.TLO.Ini(infoFile, zoneName, 'CharmImmune', 'NULL')() or 'NULL'
+        local newVal   = (existing:lower() == 'null' or existing == '')
+                         and mobName
+                         or (existing .. ',' .. mobName)
+        mq.cmdf('/iniwrite "%s" "%s" CharmImmune "%s"', infoFile, zoneName, newVal)
+        _state.charm.immuneList = newVal
+        _utils.debug('charm', 'addCharmImmune: wrote %s to %s [%s]', mobName, infoFile, zoneName)
+    end
+end
+
 -- Cast charm spell on mobId; set per-slot recharm timer on success.
 -- Handles resist (retry once with mez debuff), immune (add to immuneIds), cancelled.
--- Port of Sub CharmMobs (KS_Charm.inc) — implemented in step 24.4.
+-- Port of Sub CharmMobs (KS_Charm.inc).
 function Charm.cast(mobId, timerIdx)
+    local spell = _state.charm.spell
+    _utils.debug('charm', 'Charm.cast: mobId=%d timerIdx=%d spell=%s', mobId, timerIdx, spell)
+
+    -- Stop auto-attack before targeting a charm candidate (mac: /attack off guard)
+    if mq.TLO.Me.Combat() then
+        mq.cmd('/squelch /attack off')
+        mq.delay(2500, function() return not mq.TLO.Me.Combat() end)
+    end
+
+    -- Acquire target and wait for buff data to populate
+    mq.cmdf('/squelch /target id %d', mobId)
+    mq.delay(2000, function()
+        return (mq.TLO.Target.ID() or 0) == mobId and (mq.TLO.Target.BuffsPopulated() == true)
+    end)
+
+    if (mq.TLO.Target.ID() or 0) ~= mobId then
+        _utils.debug('charm', 'Charm.cast: failed to target ID:%d — abort', mobId)
+        return
+    end
+
+    -- Recharm timer check: if mob already has our charm buff with >10% duration left,
+    -- just refresh the local timer and skip recasting. (mac: Target.Charmed check)
+    local charmBuff = mq.TLO.Target.Buff(spell)
+    if charmBuff and charmBuff() then
+        local remaining = (charmBuff.Duration and charmBuff.Duration.TotalSeconds()) or 0
+        local spellDur  = (mq.TLO.Spell(spell).Duration and
+                           mq.TLO.Spell(spell).Duration.TotalSeconds()) or 0
+        if spellDur > 0 and remaining > spellDur * 0.10 then
+            _state.charm.count[timerIdx]      = (_state.charm.count[timerIdx] or 0) + 1
+            _state.charm.slotTimers[timerIdx] = os.clock() + remaining * 0.99
+            _utils.debug('charm', 'Charm.cast: %s still charmed (%.0fs left) — timer refreshed',
+                mq.TLO.Target.CleanName() or '?', remaining)
+            return
+        end
+    end
+
+    local mobName  = mq.TLO.Target.CleanName() or '?'
+    local isRecharm = (_state.charm.count[timerIdx] or 0) >= 1
+
+    if isRecharm then
+        _comms.announce(string.format('[Kiss] ReCHARMING -> %s <- ID:%d', mobName, mobId))
+    else
+        _comms.announce(string.format('[Kiss] CHARMING -> %s <- ID:%d', mobName, mobId))
+    end
+
+    -- Cast loop — retry once on resist (mac: while(1) with /continue on resist, /break otherwise)
+    local charmFail = 0
+    repeat
+        local result = _cast.castWhat(spell, mobId, 'CharmMobs', 0, 0) or ''
+        charmFail = charmFail + 1
+
+        if result == 'CAST_SUCCESS' then
+            local tag = isRecharm and 'JUST RECHARMED' or 'JUST CHARMED'
+            _comms.announce(string.format('[Kiss] %s -> %s on %s (ID:%d)',
+                tag, spell, mobName, mobId))
+            -- Increment cast counter and set recharm timer to 90% of spell duration
+            _state.charm.count[timerIdx] = (_state.charm.count[timerIdx] or 0) + 1
+            local spellDur = (mq.TLO.Spell(spell).Duration and
+                              mq.TLO.Spell(spell).Duration.TotalSeconds()) or 60
+            _state.charm.slotTimers[timerIdx] = os.clock() + spellDur * 0.90
+            _utils.debug('charm', 'Charm.cast: success — timer set to %.1fs', spellDur * 0.90)
+            break
+
+        elseif result == 'CAST_RESISTED' and charmFail < 2 then
+            -- One retry: optionally apply a magic debuff first (mac: MezDebuffOnResist guard)
+            _comms.announce(string.format('[Kiss] CHARM Resisted -> %s <- ID:%d', mobName, mobId))
+            if _state.mez and _state.mez.mezDebuffOnResist then
+                local debuffSpell = _state.mez.mezDebuffSpell or ''
+                if debuffSpell ~= '' then
+                    -- Wait for any GCD before casting debuff
+                    mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() end)
+                    local dr = _cast.castWhat(debuffSpell, mobId, 'CharmMezDebuff', 0, 0) or ''
+                    if dr == 'CAST_SUCCESS' then
+                        _comms.announce(string.format(
+                            '[Kiss] Magic Debuffed -> %s <- retrying charm', mobName))
+                        mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() end)
+                    end
+                end
+            end
+            -- loop continues for retry
+
+        elseif result == 'CAST_IMMUNE' then
+            _comms.announce(string.format('[Kiss] CHARM IMMUNE -> %s <- ID:%d', mobName, mobId))
+            addCharmImmune(mobId, mobName)
+            break
+
+        elseif result == 'CAST_CANCELLED' then
+            _utils.debug('charm', 'Charm.cast: cancelled')
+            break
+
+        else
+            -- Any other failure (fizzle, interrupt, etc.) — stop trying
+            _utils.debug('charm', 'Charm.cast: unhandled result=%s — break', result)
+            break
+        end
+    until charmFail >= 2
+
+    _utils.debug('charm', 'Charm.cast: leave mobId=%d', mobId)
 end
 
 -- Clear charmArray and all per-slot timers. Called on zone change and death reset.
