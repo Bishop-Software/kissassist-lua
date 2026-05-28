@@ -1,6 +1,6 @@
 -- tests/run_tests.lua
 -- KissAssist unit test runner.
--- Invoke with: /lua run kissassist-lua tests/run_tests
+-- Invoke with: /lua run kissassist-lua test
 --
 -- Unit tests run with a programmable mock injected into package.loaded['mq'],
 -- so the modules under test get the mock instead of the real MacroQuest mq module.
@@ -54,6 +54,12 @@ local unitTests = {
         path         = 'tests.unit.test_config_args',
         useMock      = true,
         clearModules = { 'modules.config' },
+    },
+    {
+        name         = 'test_charm',
+        path         = 'tests.unit.test_charm',
+        useMock      = true,
+        clearModules = { 'modules.charm', 'modules.config' },
     },
 }
 

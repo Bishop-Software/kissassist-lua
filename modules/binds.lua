@@ -475,6 +475,78 @@ local function onAddMezImmune(_mti)
     printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 
+-- Charm binds — mirrors /charmon, /charmkeep, /setcharmed, /resetcharmed, /addcimmune
+-- (kisscharm.mac alias block).
+
+local function onCharmOn()
+    if not state.session.iAmACharmClass then
+        printf('--CharmOn: not a charm class (DRU/ENC/NEC/BRD).')
+        return
+    end
+    state.charm.on = not state.charm.on
+    printf('\ay>> CharmOn = %s', tostring(state.charm.on))
+end
+
+local function onCharmKeep()
+    if not state.session.iAmACharmClass then
+        printf('--CharmKeep: not a charm class (DRU/ENC/NEC/BRD).')
+        return
+    end
+    state.charm.keep = not state.charm.keep
+    printf('\ay>> CharmKeep = %s', tostring(state.charm.keep))
+end
+
+local function onSetCharmed()
+    local petID = mq.TLO.Me.Pet.ID() or 0
+    if petID == 0 then
+        printf('--SetCharmed: no active pet to record.')
+        return
+    end
+    state.charm.petId   = petID
+    state.charm.petZone = mq.TLO.Zone.ShortName() or ''
+    printf('\ay>> CharmPet set: ID:%d zone:%s', petID, state.charm.petZone)
+end
+
+local function onResetCharmed()
+    state.charm.petId   = 0
+    state.charm.petZone = ''
+    printf('\ay>> CharmPet reset.')
+end
+
+-- Mirrors /addcimmune — adds current target to the runtime charm-immune ID list
+-- and optionally persists the name to KissAssist_Info.ini (when AACharmImmune=1).
+local function onAddCharmImmune()
+    local tID   = mq.TLO.Target.ID() or 0
+    local tType = (mq.TLO.Target.Type() or ''):lower()
+    if tID == 0 or tType ~= 'npc' then
+        printf('--AddCharmImmune: Target an NPC to add to the charm immune list.')
+        return
+    end
+    local name = mq.TLO.Target.CleanName() or ''
+    if name:sub(1, 1) == '#' then name = name:sub(2) end
+    name = name:match("^(.+)'s corpse$") or name:match("^(.+) corpse$") or name
+    local tag = '|' .. tostring(tID)
+    if state.charm.immuneIds:find(tag, 1, true) then
+        printf('>> %s (ID:%d) is already on the charm immune list.', name, tID)
+        return
+    end
+    state.charm.immuneIds = state.charm.immuneIds .. tag
+    if state.charm.aaImmune and name ~= '' then
+        local iniFile = state.session.infoFileName
+        local zone    = state.session.zoneName
+        if iniFile and iniFile ~= '' and zone and zone ~= '' then
+            local existing = mq.TLO.Ini(iniFile, zone, 'CharmImmune')() or ''
+            if not existing:find(name, 1, true) then
+                local updated = (existing == '' or existing:lower() == 'null')
+                                and name or (existing .. ',' .. name)
+                mq.cmdf('/ini "%s" "%s" "CharmImmune" "%s"', iniFile, zone, updated)
+                state.charm.immuneList = updated
+            end
+        end
+    end
+    printf('\ay>> Charm Immune -> %s <- ID:%d added.', name, tID)
+end
+
 -- Add current target (or named arg) to zone-scoped MobsToBurn list in KissAssist_Info.ini.
 -- Updates state.combat.namedWatchList at runtime so the change takes effect immediately.
 local function onAddBurn(name)
@@ -737,11 +809,11 @@ end
 
 -- ─── Integration test runner ──────────────────────────────────────────────────
 
-local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma' }
+local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds' }
 
 local function onKaTest(testName)
     if not testName or testName == '' then
-        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|all>')
+        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|charm_cmds|all>')
         return
     end
     local names = testName:lower() == 'all' and INTEGRATION_TESTS or { testName }
@@ -827,6 +899,13 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/addimmune',      onAddMezImmune)
     if mq.TLO.Alias('/addburn')() then mq.cmd('/alias /addburn delete') end
     bind('/addburn',        onAddBurn)
+
+    -- Charm
+    bind('/charmon',        onCharmOn)
+    bind('/charmkeep',      onCharmKeep)
+    bind('/setcharmed',     onSetCharmed)
+    bind('/resetcharmed',   onResetCharmed)
+    bind('/addcimmune',     onAddCharmImmune)
 
     -- Loot
     bind('/kalooton',       onLootOn)
