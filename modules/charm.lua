@@ -223,6 +223,14 @@ function Charm.check(sentFrom)
             goto continue_charm
         end
 
+        -- Per-slot recharm timer: charm was just applied and hasn't expired yet — skip
+        -- Timer set by Charm.cast to 90% of spell duration; 0 = no active timer
+        if (_state.charm.slotTimers[i] or 0) > os.clock() then
+            _utils.debug('charm', 'Charm.check: slot %d timer active (%.1fs left) — skip',
+                i, _state.charm.slotTimers[i] - os.clock())
+            goto continue_charm
+        end
+
         -- CharmKeep: only recharm the specific saved pet
         if keep and _state.charm.petId ~= 0 and mobID ~= _state.charm.petId then
             clearSlot(entry, i)
@@ -458,20 +466,26 @@ function Charm.cast(mobId, timerIdx)
 end
 
 -- Clear charmArray and all per-slot timers. Called on zone change and death reset.
+-- Intentionally preserves petId/petZone so CharmKeep mode can recharm the same mob
+-- after the next fight starts and the mob re-enters the hater list.
 function Charm.resetFight()
     if not _state then return end
-    local arr = _state.arrays.charmArray
+    local arr       = _state.arrays.charmArray
+    local timerMax  = 30  -- matches CreateTimersCharm slot count
     for i = 1, #arr do
         arr[i][1] = 0
         arr[i][2] = 0
         arr[i][3] = 'NULL'
-        if _state.charm.slotTimers then _state.charm.slotTimers[i] = 0 end
-        if _state.charm.count      then _state.charm.count[i]      = 0 end
+        if i <= timerMax then
+            _state.charm.slotTimers[i] = 0
+            _state.charm.count[i]      = 0
+        end
     end
     _state.charm.mobCount   = 0
     _state.charm.mobAECount = 0
     _state.charm.aeClosest  = 0
     _state.charm.mobDone    = false
+    -- petId and petZone are preserved for CharmKeep recharm across fights
 end
 
 return Charm
