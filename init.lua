@@ -1,3 +1,10 @@
+-- Route to the test runner when invoked as: /lua run kissassist-lua test
+local args = {...}
+if args[1] == 'test' then
+    require('tests.run_tests')
+    return
+end
+
 local mq     = require('mq')
 local State  = require('modules.state')
 local Utils  = require('modules.utils')
@@ -21,9 +28,6 @@ local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 
 local VERSION = '1.0.0'
-
--- Collect CLI args passed after /lua run kissassist-lua
-local args = {...}
 
 -- Wire Utils debug flags to State.debug before any other output
 Utils.init(State)
@@ -108,6 +112,10 @@ Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
 
 printf('\agKissAssist ready. \awEntering main loop.')
+
+-- Expose live State globally so integration tests can access it via mq_eval:
+--   require('tests.integration.test_debug_cmds').run(mq, KAState, TH)
+_G.KAState = State
 
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
 

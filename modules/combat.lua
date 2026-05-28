@@ -1,14 +1,12 @@
-local mq     = require('mq')
-local Config = require('modules.config')
+local mq      = require('mq')
+local Config  = require('modules.config')
+local Helpers = require('modules.helpers')
 
 local Combat = {}
 local _state, _utils, _cast, _heal, _movement, _bard, _cond, _mez, _debuff, _buffs, _comms, _merc
 local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback fires
 
--- 2D camp-distance helper (mirrors Math.Distance[y1,x1:y2,x2] in kissassist.mac)
-local function dist2D(y1, x1, y2, x2)
-    return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
-end
+local dist2D = Helpers.dist2D
 
 -- Mirrors Sub BeforeAttack (kissassist.mac:2022).
 -- Fires pre-combat abilities from beforeArray before first melee swing.
@@ -439,7 +437,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
                 local parts = {}
                 for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
                 local thresh = tonumber(parts[2]) or 0
-                if thresh >= 101 then
+                if Helpers.slotIsDebuff(thresh) then
                     _state.debuff.slots[#_state.debuff.slots + 1] = {
                         spell  = parts[1] or '',
                         tag1   = parts[3] or '',

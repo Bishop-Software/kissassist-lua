@@ -735,6 +735,32 @@ local function onBarter()
     _loot.barter()
 end
 
+-- ─── Integration test runner ──────────────────────────────────────────────────
+
+local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma' }
+
+local function onKaTest(testName)
+    if not testName or testName == '' then
+        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|all>')
+        return
+    end
+    local names = testName:lower() == 'all' and INTEGRATION_TESTS or { testName }
+    -- Single shared TH across all suites so the final summary covers everything.
+    package.loaded['tests.test_helpers'] = nil
+    local TH = require('tests.test_helpers')
+    for _, name in ipairs(names) do
+        local path = 'tests.integration.test_' .. name
+        package.loaded[path] = nil
+        local ok, err = pcall(function()
+            require(path).run(mq, state, TH)
+        end)
+        if not ok then
+            printf('\ar[ERROR]\ax /katest %s: %s', name, tostring(err))
+        end
+    end
+    TH.printSummary()
+end
+
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
 function Binds.register(s, u, b, l, cast, combat, config, comms)
@@ -760,6 +786,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
 
     bind('/kisscheck',      onKissCheck)
     bind('/kasettings',     onKaSettings)
+    bind('/katest',         onKaTest)
     bind('/togglevariable', onToggleVariable)
     bind('/changevarint',   onChangeVarInt)
 
