@@ -9,12 +9,3 @@ Loot.ini
 # Visual Studio Code settings
 .vscode/
 
-# Local Claude Code memory/settings
-.claude/
-CLAUDE.md
-
-# Design/planning docs (local only)
-design/
-
-# CocoIndex Code (ccc)
-/.cocoindex_code/
