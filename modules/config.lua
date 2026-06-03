@@ -77,6 +77,86 @@ function Config.resolveIniName(state)
     end
 end
 
+-- Bard-only migration: convert MQ2Twist gem-slot lists (TwistWhat / MeleeTwistWhat)
+-- to named MQ2Medley sections written into the MQ2 character config INI.
+-- Called during migrateIni before the pickle is written; readFn is the local r() helper.
+local function migrateBardMedley(readFn, cfg)
+    if mq.TLO.Me.Class.ShortName() ~= 'BRD' then return end
+
+    local twistWhat = cfg.General.TwistWhat
+    local meleeWhat = cfg.Melee and cfg.Melee.MeleeTwistWhat
+    if not twistWhat and not meleeWhat then return end
+
+    -- Read memorised gem names from [SpellS] Gem1..Gem13.
+    local gemNames = {}
+    for i = 1, 13 do
+        local name = readFn('SpellS', 'Gem' .. i)
+        if name and name ~= '' then gemNames[i] = name end
+    end
+
+    local function slotsToSongs(slotStr)
+        local songs = {}
+        if not slotStr then return songs end
+        for slot in slotStr:gmatch('%d+') do
+            local n = tonumber(slot)
+            if n and gemNames[n] then songs[#songs + 1] = gemNames[n] end
+        end
+        return songs
+    end
+
+    -- Locate the MQ2 character config INI (ServerShortName_CharName.ini).
+    local charName  = mq.TLO.Me.CleanName()
+    local configWin = mq.configDir:gsub('/', '\\')
+    local mqIniPath, mqIniFile
+    local handle = io.popen(string.format('dir /b "%s\\*_%s.ini" 2>nul', configWin, charName))
+    if handle then
+        for line in handle:lines() do
+            line = line:match('^%s*(.-)%s*$')
+            if line ~= '' and not line:lower():find('kissassist') then
+                mqIniPath = mq.configDir .. '/' .. line
+                mqIniFile = line
+                break
+            end
+        end
+        handle:close()
+    end
+
+    if not mqIniPath then
+        printf('\ayKissAssist: \awCould not find MQ2 character config for %s — add [MQ2Medley-oor] and [MQ2Medley-melee] manually.', charName)
+    else
+        local function writeMedleySection(setName, songs)
+            if #songs == 0 then return end
+            -- Skip if section already populated.
+            if mq.TLO.Ini(mqIniFile, 'MQ2Medley-' .. setName, 'song1')() ~= nil then
+                printf('\ayKissAssist: [MQ2Medley-%s] already exists in %s — skipping', setName, mqIniFile)
+                return
+            end
+            local f = io.open(mqIniPath, 'a')
+            if not f then
+                printf('\arKissAssist: could not open %s for writing', mqIniFile)
+                return
+            end
+            f:write(string.format('\n[MQ2Medley-%s]\n', setName))
+            for i, name in ipairs(songs) do
+                f:write(string.format('song%d=%s\n', i, name))
+            end
+            f:close()
+            printf('\agKissAssist: \awWrote [MQ2Medley-%s] (%d songs) to \at%s', setName, #songs, mqIniFile)
+        end
+        writeMedleySection('oor',   slotsToSongs(twistWhat))
+        writeMedleySection('melee', slotsToSongs(meleeWhat))
+    end
+
+    -- Replace old slot-list keys with medley set names; nil removes them from pickle.
+    cfg.General.OORMedley    = cfg.General.OORMedley   or 'oor'
+    cfg.General.MeleeMedley  = cfg.General.MeleeMedley or 'melee'
+    cfg.General.BurnMedley   = cfg.General.BurnMedley  or 'burn'
+    cfg.General.GoMMedley    = cfg.General.GoMMedley   or 'gomSong'
+    cfg.General.TwistWhat    = nil
+    cfg.General.TwistMed     = nil
+    if cfg.Melee then cfg.Melee.MeleeTwistWhat = nil end
+end
+
 -- Step 1.4b: Migrate an existing .ini to mq.pickle() on first run.
 -- KissAssist_Buffs.ini and KissAssist_Info.ini stay as .ini — they are shared
 -- cross-character files; pickle conversion is unsafe while chars still run .mac.
@@ -162,6 +242,10 @@ function Config.migrateIni(state)
         TwistOn          = r('General','TwistOn'),
         TwistMed         = r('General','TwistMed'),
         TwistWhat        = r('General','TwistWhat'),
+        OORMedley        = r('General','OORMedley') or 'oor',
+        MeleeMedley      = r('General','MeleeMedley') or 'melee',
+        BurnMedley       = r('General','BurnMedley') or 'burn',
+        GoMMedley        = r('General','GoMMedley') or 'gomSong',
         MountOn          = r('General','MountOn'),
     }
 
@@ -370,7 +454,10 @@ function Config.migrateIni(state)
         Cond     = ra('KConditions','Cond', condSize),
     }
 
-    -- 3. Ensure output directory exists and write pickle.
+    -- 3. Bard: convert MQ2Twist slot lists → MQ2Medley sections (one-time migration).
+    migrateBardMedley(r, cfg)
+
+    -- 4. Ensure output directory exists and write pickle.
     local dir = pickleDir:gsub('/', '\\')
     os.execute(string.format('if not exist "%s" mkdir "%s"', dir, dir))
     _picklePath = picklePath
@@ -403,7 +490,8 @@ function Config.defaultCfg()
             EQBCOn           = '0', DanNetOn = '1', DanNetDelay = '25',
             IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
             DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
-            UseSpawnMaster   = '0', TwistOn = '0', TwistMed = '0', TwistWhat = '',
+            UseSpawnMaster   = '0', TwistOn = '0',
+            OORMedley = 'oor', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
         },
         SpellS = {
@@ -417,7 +505,7 @@ function Config.defaultCfg()
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
             TargetSwitchingOn = '0', AutoHide = '0', MeleeTwistOn = '0',
-            MeleeTwistWhat = '', PetTauntOverride = '0',
+            PetTauntOverride = '0',
         },
         DPS = {
             DPSOn = '1', DPSSize = '20', DPSSkip = '0', DPSInterval = '0',
