@@ -124,6 +124,9 @@ printf('\agKissAssist ready. \awEntering main loop.')
 _G.KAState = State
 
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
+if PULLER_ROLES[State.session.role] then
+    printf('\ayCamp not set — run \at/makecamphere\ay before pulling.')
+end
 
 -- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
 -- Verified against .mac source. Two intentional Lua additions: Comms.tick(), mq.delay(50).
