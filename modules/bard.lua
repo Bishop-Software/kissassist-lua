@@ -5,12 +5,11 @@
 local mq     = require('mq')
 local Config = require('modules.config')
 
--- MQ2Medley is a plugin TLO not in the type definitions; alias to suppress warnings.
----@diagnostic disable-next-line: undefined-field
-local Medley = mq.TLO.Medley
-
 local Bard = {}
 local _state, _utils, _cast
+-- Assigned in Bard.init() after MQ2Medley plugin is confirmed loaded.
+---@diagnostic disable-next-line: undefined-field
+local Medley
 
 -- ---------------------------------------------------------------------------
 -- Local helpers
@@ -44,6 +43,8 @@ function Bard.init(state, utils, cast)
             printf('\arKissAssist: MQ2Medley failed to load — bard medley switching will not function')
         end
     end
+    ---@diagnostic disable-next-line: undefined-field
+    Medley = mq.TLO.Medley
 
     -- [General] — medley on/off toggles
     _state.bard.twistOn      = Config.get('General', 'TwistOn',      '0') == '1'
@@ -65,7 +66,7 @@ end
 -- Bard.doBardStuff — MQ2Medley context switching.
 -- Semantic translation of DoBardStuff (mac:6229-6331).
 -- MQ2Twist TLOs (Twist, TwistWhat, MeleeTwistWhat) are replaced with
--- MQ2Medley equivalents: Medley.Active(), Medley.ActiveSet(), /medley <set>.
+-- MQ2Medley equivalents: Medley.Active(), Medley.Medley(), /medley <set>.
 -- The Continuous/non-Continuous MeleeTwistWhat distinction collapses into a
 -- single /medley <meleeMedley> call since MQ2Medley manages the songs itself.
 -- ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ function Bard.doBardStuff()
     -- when meleeTwistOn==2 with an aggro target (pre-combat aggro mode).
     if s.combat.combatStart or (s.bard.meleeTwistOn == 2 and aggroID > 0) then
         if s.bard.meleeTwistOn ~= 0 and not s.bard.dpsTwisting then
-            local activeSet = Medley.ActiveSet() or ''
+            local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.meleeMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.meleeMedley)
@@ -124,7 +125,7 @@ function Bard.doBardStuff()
     -- OOC path (mac:6303-6329): switch to OOR medley set when out of combat.
     elseif not s.combat.combatStart then
         if s.bard.twistOn and not s.bard.twisting then
-            local activeSet = Medley.ActiveSet() or ''
+            local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.oorMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.oorMedley)
