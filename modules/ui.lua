@@ -115,12 +115,6 @@ local function drawControls()
     checkbox('Pull', not s.pull.hold, function(v)
         s.pull.hold = not v
     end)
-    ImGui.SameLine(120)
-    checkbox('Merc', s.merc.on ~= 0, function(v)
-        s.merc.on = v and 1 or 0
-        Config.set('Merc', 'MercOn', v and '1' or '0')
-        Config.save()
-    end)
 
     -- Camp & Movement
     ImGui.Spacing()
@@ -224,6 +218,47 @@ local function drawSpellSlots()
 end
 
 -- ---------------------------------------------------------------------------
+-- Merc panel
+-- ---------------------------------------------------------------------------
+
+local function drawMerc()
+    local s = _state
+
+    checkbox('Merc', s.merc.on ~= 0, function(v)
+        s.merc.on = v and 1 or 0
+        Config.set('Merc', 'MercOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    intInput('Assist %', s.merc.assistAt, 1, 100, 'Merc', 'MercAssistAt',
+        function(v) s.merc.assistAt = v end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+
+    -- Live status
+    local mercName  = s.merc.myMerc ~= '' and s.merc.myMerc or '(none)'
+    local mercState = mq.TLO.Mercenary.State() or ''
+    local sr, sg, sb
+    if mercState == 'Active' then
+        sr, sg, sb = 0.2, 1.0, 0.2
+    elseif mercState == 'DEAD' then
+        sr, sg, sb = 1.0, 0.2, 0.2
+    else
+        sr, sg, sb = 1.0, 0.9, 0.1
+    end
+
+    ImGui.Text('Name:  ' .. mercName)
+    ImGui.Text('State: ')
+    ImGui.SameLine()
+    ImGui.TextColored(sr, sg, sb, 1.0, mercState ~= '' and mercState or 'Unknown')
+
+    local assistID   = tonumber(s.merc.assisting) or 0
+    local assistName = assistID > 0 and (mq.TLO.Spawn(assistID).CleanName() or '') or ''
+    ImGui.Text('Assist: ' .. (assistName ~= '' and assistName or '—'))
+end
+
+-- ---------------------------------------------------------------------------
 -- Bard panel (class-gated)
 -- ---------------------------------------------------------------------------
 
@@ -277,6 +312,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Spells') then
                 drawSpellSlots()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Merc') then
+                drawMerc()
                 ImGui.EndTabItem()
             end
             if _state.session.iAmABard then
