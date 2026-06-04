@@ -229,10 +229,8 @@ end
 -- ---------------------------------------------------------------------------
 
 local function draw()
-    -- ImGui.Begin returns (draw_content, open); track open so the X button works.
-    local visible
-    visible, _open = ImGui.Begin('KissAssist', _open)
-    if visible then
+    if not _open then return end
+    if ImGui.Begin('KissAssist') then
         drawStatus()
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
