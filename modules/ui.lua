@@ -229,6 +229,7 @@ end
 -- ---------------------------------------------------------------------------
 
 local function draw()
+    if not _open then return end
     -- ImGui.Begin returns (draw_content, open); track open so the X button works.
     local visible
     visible, _open = ImGui.Begin('KissAssist', _open)
