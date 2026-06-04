@@ -97,10 +97,6 @@ local function drawControls()
     checkbox('Burn', s.combat.burnOn, function(_)
         mq.cmd('/burn')
     end)
-    ImGui.SameLine(120)
-    checkbox('Pet', s.pet.on, function(v)
-        mq.cmd(v and '/peton' or '/petoff')
-    end)
 
     -- Row 4
     checkbox('Loot', s.loot.on ~= 0, function(v)
@@ -218,6 +214,78 @@ local function drawSpellSlots()
 end
 
 -- ---------------------------------------------------------------------------
+-- Pet panel
+-- ---------------------------------------------------------------------------
+
+local function drawPet()
+    local s = _state
+
+    -- Row 1
+    checkbox('Pet', s.pet.on, function(v)
+        mq.cmd(v and '/peton' or '/petoff')
+    end)
+    ImGui.SameLine(120)
+    checkbox('Pet Buffs', s.buffs.petBuffsOn, function(v)
+        s.buffs.petBuffsOn = v
+        Config.set('Pet', 'PetBuffsOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    -- Row 2
+    checkbox('Shrink', s.pet.shrinkOn, function(v)
+        s.pet.shrinkOn = v
+        Config.set('Pet', 'PetShrinkOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Toys', s.pet.toysOn, function(v)
+        s.pet.toysOn = v
+        Config.set('Pet', 'PetToysOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    -- Row 3
+    checkbox('Suspend', s.pet.suspend, function(v)
+        s.pet.suspend = v
+        Config.set('Pet', 'PetSuspend', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Hold', s.pet.holdOn ~= 0, function(v)
+        s.pet.holdOn = v and 1 or 0
+        Config.set('Pet', 'PetHoldOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    -- Row 4
+    checkbox('Taunt Off', s.pet.tauntOverride, function(v)
+        s.pet.tauntOverride = v
+        Config.set('Pet', 'PetTauntOverride', v and '1' or '0')
+        Config.save()
+    end)
+
+    -- Editable spell fields
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.PushItemWidth(200)
+    local spellVal, spellChanged = ImGui.InputText('Pet Spell##petspell', s.pet.spell, 0)
+    if spellChanged and spellVal ~= s.pet.spell then
+        s.pet.spell = spellVal
+        Config.set('Pet', 'PetSpell', spellVal)
+        Config.save()
+    end
+    if s.pet.shrinkOn then
+        local shrinkVal, shrinkChanged = ImGui.InputText('Shrink Spell##shrinkspell', s.pet.shrinkSpell, 0)
+        if shrinkChanged and shrinkVal ~= s.pet.shrinkSpell then
+            s.pet.shrinkSpell = shrinkVal
+            Config.set('Pet', 'PetShrinkSpell', shrinkVal)
+            Config.save()
+        end
+    end
+    ImGui.PopItemWidth()
+end
+
+-- ---------------------------------------------------------------------------
 -- Merc panel
 -- ---------------------------------------------------------------------------
 
@@ -312,6 +380,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Spells') then
                 drawSpellSlots()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Pet') then
+                drawPet()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Merc') then
