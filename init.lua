@@ -124,6 +124,9 @@ printf('\agKissAssist ready. \awEntering main loop.')
 _G.KAState = State
 
 local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
+if PULLER_ROLES[State.session.role] then
+    printf('\ayCamp not set — run \at/makecamphere\ay before pulling.')
+end
 
 -- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
 -- Verified against .mac source. Two intentional Lua additions: Comms.tick(), mq.delay(50).
@@ -174,7 +177,8 @@ while not State.terminate do
     -- Phase 8: med (only out of combat — mac:409-410)
     Heal.doWeMed()
     -- Phase 9: pull
-    if PULLER_ROLES[State.session.role] then
+    local campSet = (State.movement.campX ~= 0 or State.movement.campY ~= 0)
+    if PULLER_ROLES[State.session.role] and campSet then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
             if State.pull.mob ~= 0 then Pull.pullCheck() end

@@ -554,7 +554,7 @@ function Config.defaultCfg()
             AEOn = '0', AESize = '10', AERadius = '40', AE = emptyArr(10),
         },
         Pull = {
-            PullWith = '', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
+            PullWith = 'Melee', PullRange = '15', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
             UseWayPointZ = '0', PullWait = '5', PullRadiusToUse = '1',
             PullRoleToggle = '0', ChainPull = '0', ChainPullHP = '80',
             PullPause = '0', PullLevel = '0', PullArcWidth = '0',
