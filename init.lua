@@ -159,7 +159,7 @@ while not State.terminate do
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
     -- Phase 5.5: merc (mac:393)
-    if State.merc.on > 0 or not State.merc.inGroup then Merc.check() end
+    if State.merc.on > 0 then Merc.check() end
     -- Phase 6: buffs
     if not State.combat.combatStart and not State.session.danNetOn then
         Buffs.writeBuffs()

@@ -115,14 +115,12 @@ local function drawControls()
     checkbox('Pull', not s.pull.hold, function(v)
         s.pull.hold = not v
     end)
-    if s.merc.inGroup then
-        ImGui.SameLine(120)
-        checkbox('Merc', s.merc.on ~= 0, function(v)
-            s.merc.on = v and 1 or 0
-            Config.set('Merc', 'MercOn', v and '1' or '0')
-            Config.save()
-        end)
-    end
+    ImGui.SameLine(120)
+    checkbox('Merc', s.merc.on ~= 0, function(v)
+        s.merc.on = v and 1 or 0
+        Config.set('Merc', 'MercOn', v and '1' or '0')
+        Config.save()
+    end)
 
     -- Camp & Movement
     ImGui.Spacing()
