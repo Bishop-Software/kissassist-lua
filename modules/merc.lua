@@ -9,8 +9,8 @@ function Merc.init(state, utils)
     _state = state
     _utils = utils
 
-    _state.merc.on       = tonumber(Config.get('General', 'MercOn',       '0')) or 0
-    _state.merc.assistAt = tonumber(Config.get('General', 'MercAssistAt', '100')) or 100
+    _state.merc.on       = tonumber(Config.get('Merc', 'MercOn',       '0')) or 0
+    _state.merc.assistAt = tonumber(Config.get('Merc', 'MercAssistAt', '100')) or 100
 
     -- Detect merc name at startup (mac:8571)
     local member1 = mq.TLO.Group.Member(1)
