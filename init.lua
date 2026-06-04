@@ -177,7 +177,8 @@ while not State.terminate do
     -- Phase 8: med (only out of combat — mac:409-410)
     Heal.doWeMed()
     -- Phase 9: pull
-    if PULLER_ROLES[State.session.role] then
+    local campSet = (State.movement.campX ~= 0 or State.movement.campY ~= 0)
+    if PULLER_ROLES[State.session.role] and campSet then
         if not State.pull.hold then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
             if State.pull.mob ~= 0 then Pull.pullCheck() end
