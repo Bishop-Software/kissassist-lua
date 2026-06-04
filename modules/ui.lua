@@ -10,6 +10,7 @@ local Config = require('modules.config')
 local UI = {}
 local _state
 local _open = true
+local COL    = 130  -- column width for checkbox SameLine and button widths
 
 -- ---------------------------------------------------------------------------
 -- Status panel
@@ -114,6 +115,17 @@ local function drawControls()
     checkbox('Pull', not s.pull.hold, function(v)
         s.pull.hold = not v
     end)
+
+    -- Camp & Movement
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('Camp / Movement')
+    if ImGui.Button('Make Camp Here', COL, 0) then mq.cmd('/makecamphere') end
+    ImGui.SameLine()
+    if ImGui.Button('Camp Off',       COL, 0) then mq.cmd('/campoff')      end
+    if ImGui.Button('Chase Me',       COL, 0) then mq.cmd('/chaseme')      end
+    ImGui.SameLine()
+    if ImGui.Button('Stay Here',      COL, 0) then mq.cmd('/stayhere')     end
 end
 
 -- ---------------------------------------------------------------------------
