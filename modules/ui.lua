@@ -103,6 +103,13 @@ local function drawControls()
     checkbox('AFK', s.afk.on ~= 0, function(v)
         s.afk.on = v and 1 or 0
     end)
+
+    -- Row 5
+    checkbox('Pull', s.pull.on, function(v)
+        s.pull.on = v
+        Config.set('Pull', 'PullOn', v and '1' or '0')
+        Config.save()
+    end)
 end
 
 -- ---------------------------------------------------------------------------
