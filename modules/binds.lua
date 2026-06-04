@@ -282,6 +282,9 @@ end
 
 local function onCampOff()
     state.movement.returnToCamp = false
+    state.movement.campX        = 0
+    state.movement.campY        = 0
+    state.movement.campZ        = 0
     printf('\ay>> Camp mode off.')
 end
 
