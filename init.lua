@@ -27,6 +27,7 @@ local Debuff   = require('modules.debuff')
 local Charm    = require('modules.charm')
 local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
+local UI       = require('modules.ui')
 
 local VERSION = '1.0.0'
 
@@ -114,6 +115,7 @@ Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Utils, Buffs, Loot, Cast, Combat, Config, Comms)
+UI.init(State)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
