@@ -16,8 +16,6 @@ local _open = true
 -- ---------------------------------------------------------------------------
 
 local function drawStatus()
-    if not ImGui.CollapsingHeader('Status') then return end
-
     local s = _state
 
     -- Combat state label + color
@@ -68,8 +66,6 @@ local function checkbox(label, value, onChange)
 end
 
 local function drawControls()
-    if not ImGui.CollapsingHeader('Controls') then return end
-
     local s = _state
 
     -- Row 1
@@ -124,8 +120,6 @@ local function intInput(label, value, min, max, configSection, configKey, stateS
 end
 
 local function drawConfig()
-    if not ImGui.CollapsingHeader('Config') then return end
-
     local s = _state
 
     intInput('Assist %',    s.combat.assistAt,        1,  100, 'Melee',   'AssistAt',  function(v) s.combat.assistAt        = v end)
@@ -156,7 +150,6 @@ end
 local function drawHealThresholds()
     local arr = _state.heal.healsArray
     if not arr or #arr == 0 then return end
-    if not ImGui.CollapsingHeader('Heal Thresholds') then return end
 
     for i, slot in ipairs(arr) do
         local name      = slot.name or ''
@@ -183,8 +176,6 @@ end
 -- ---------------------------------------------------------------------------
 
 local function drawSpellSlots()
-    if not ImGui.CollapsingHeader('Spell Slots') then return end
-
     local gemSlots = _state.cast.gemSlots or 8
     ImGui.PushItemWidth(220)
     for i = 1, gemSlots do
@@ -208,9 +199,6 @@ end
 -- ---------------------------------------------------------------------------
 
 local function drawBard()
-    if not _state.session.iAmABard then return end
-    if not ImGui.CollapsingHeader('Bard') then return end
-
     ---@diagnostic disable-next-line: undefined-field
     local Medley   = mq.TLO.Medley
     local bard     = _state.bard
@@ -246,11 +234,32 @@ local function draw()
     visible, _open = ImGui.Begin('KissAssist', _open)
     if visible then
         drawStatus()
-        drawControls()
-        drawConfig()
-        drawHealThresholds()
-        drawSpellSlots()
-        drawBard()
+        ImGui.Separator()
+        if ImGui.BeginTabBar('KATabs') then
+            if ImGui.BeginTabItem('Controls') then
+                drawControls()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Config') then
+                drawConfig()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Heals') then
+                drawHealThresholds()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Spells') then
+                drawSpellSlots()
+                ImGui.EndTabItem()
+            end
+            if _state.session.iAmABard then
+                if ImGui.BeginTabItem('Bard') then
+                    drawBard()
+                    ImGui.EndTabItem()
+                end
+            end
+            ImGui.EndTabBar()
+        end
     end
     ImGui.End()
 end
