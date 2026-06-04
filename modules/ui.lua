@@ -264,14 +264,25 @@ local function drawPet()
         Config.save()
     end)
 
-    -- Read-only info
+    -- Editable spell fields
     ImGui.Spacing()
     ImGui.Separator()
-    local spell = s.pet.spell ~= '' and s.pet.spell or '(none)'
-    ImGui.Text('Spell:  ' .. spell)
-    if s.pet.shrinkOn and s.pet.shrinkSpell ~= '' then
-        ImGui.Text('Shrink: ' .. s.pet.shrinkSpell)
+    ImGui.PushItemWidth(200)
+    local spellVal, spellChanged = ImGui.InputText('Pet Spell##petspell', s.pet.spell, 0)
+    if spellChanged and spellVal ~= s.pet.spell then
+        s.pet.spell = spellVal
+        Config.set('Pet', 'PetSpell', spellVal)
+        Config.save()
     end
+    if s.pet.shrinkOn then
+        local shrinkVal, shrinkChanged = ImGui.InputText('Shrink Spell##shrinkspell', s.pet.shrinkSpell, 0)
+        if shrinkChanged and shrinkVal ~= s.pet.shrinkSpell then
+            s.pet.shrinkSpell = shrinkVal
+            Config.set('Pet', 'PetShrinkSpell', shrinkVal)
+            Config.save()
+        end
+    end
+    ImGui.PopItemWidth()
 end
 
 -- ---------------------------------------------------------------------------
