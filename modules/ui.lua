@@ -52,8 +52,14 @@ local function drawStatus()
 
     -- Row 4: camp location / radius
     local mv = s.movement
-    ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)  Radius: %d',
-        mv.campY or 0, mv.campX or 0, mv.campZ or 0, mv.campRadius or 0))
+    local isPuller = ({ puller=true, pullertank=true, pullerpettank=true,
+                        hunter=true, hunterpettank=true })[s.session.role or '']
+    if isPuller and (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then
+        ImGui.TextColored(1.0, 0.2, 0.2, 1.0, 'No Camp Set — run /makecamphere')
+    else
+        ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)  Radius: %d',
+            mv.campY or 0, mv.campX or 0, mv.campZ or 0, mv.campRadius or 0))
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -102,6 +108,11 @@ local function drawControls()
     ImGui.SameLine(120)
     checkbox('AFK', s.afk.on ~= 0, function(v)
         s.afk.on = v and 1 or 0
+    end)
+
+    -- Row 5
+    checkbox('Pull', not s.pull.hold, function(v)
+        s.pull.hold = not v
     end)
 end
 

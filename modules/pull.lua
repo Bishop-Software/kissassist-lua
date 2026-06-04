@@ -72,7 +72,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
     _state.pull.withAlt      = Config.get('Pull', 'PullWith',      'Melee')
-    _state.pull.range        = tonumber(Config.get('Pull', 'PullRange',    '0'))  or 0
+    _state.pull.range        = tonumber(Config.get('Pull', 'PullRange',    '15')) or 15
     _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '0'))  or 0
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
     _state.pull.min          = tonumber(Config.get('Pull', 'PullMin',      '0'))  or 0
