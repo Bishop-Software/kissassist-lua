@@ -24,6 +24,12 @@ end
 
 -- Mirrors Sub MercsDoWhat (mac:8569-8590).
 function Merc.check()
+    local mercState = mq.TLO.Mercenary.State() or ''
+
+    -- Track inGroup before the merc.on gate so the UI checkbox can appear
+    -- even when the merc system starts disabled (mac:8573)
+    if mercState == 'Active' then _state.merc.inGroup = true end
+
     if _state.merc.on == 0 then return end
 
     -- Detect merc name if not yet captured (mac:8571)
@@ -33,11 +39,6 @@ function Merc.check()
             _state.merc.myMerc = member1.Name() or ''
         end
     end
-
-    local mercState = mq.TLO.Mercenary.State() or ''
-
-    -- Track whether merc has been active in this session (mac:8573)
-    if mercState == 'Active' then _state.merc.inGroup = true end
 
     -- Auto-revive dead merc via UI button when it was previously in group (mac:8575)
     if _state.merc.inGroup
