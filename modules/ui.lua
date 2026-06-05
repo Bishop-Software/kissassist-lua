@@ -236,9 +236,9 @@ local function drawMelee()
         if v == stickCurrent then stickIdx = i - 1 break end
     end
     ImGui.PushItemWidth(200)
-    local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickLabels, #stickLabels)
-    if changed and newIdx >= 0 and newIdx < #stickValues then
-        local newVal = stickValues[newIdx + 1]
+    local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickLabels)
+    if changed then
+        local newVal = stickValues[newIdx + 1] or stickValues[newIdx] or '0'
         s.movement.dStickHow = newVal
         Config.set('Melee', 'StickHow', newVal)
         Config.save()
