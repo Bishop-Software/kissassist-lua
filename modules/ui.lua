@@ -167,7 +167,7 @@ local function drawPull()
     checkbox('Pull', not s.pull.hold, function(v)
         s.pull.hold = not v
     end)
-    ImGui.SameLine(120)
+    ImGui.SameLine(160)
     checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v)
         s.pull.chainPull = v and 1 or 0
         Config.set('Pull', 'ChainPull', v and '1' or '0')
@@ -179,7 +179,7 @@ local function drawPull()
         Config.set('Pull', 'PullOnReturn', v and '1' or '0')
         Config.save()
     end)
-    ImGui.SameLine(120)
+    ImGui.SameLine(160)
     checkbox('Waypoint Pull', s.pull.pullLocsOn, function(v)
         s.pull.pullLocsOn = v
         Config.set('PullAdvanced', 'PullLocsOn', v and '1' or '0')
