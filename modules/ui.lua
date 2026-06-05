@@ -5,6 +5,13 @@
 
 local mq = require('mq')
 
+local AF_LABELS = { [0]='OFF', [1]='RANGED', [2]='PAUSED' }
+local AF_COLORS = {
+    [0] = {0.6, 0.6, 0.6},
+    [1] = {0.4, 1.0, 0.4},
+    [2] = {1.0, 0.9, 0.1},
+}
+
 local Config = require('modules.config')
 
 local UI = {}
@@ -36,12 +43,18 @@ local function drawStatus()
     ImGui.SameLine()
     ImGui.Text(string.format('MA: %s', s.session.mainAssist or ''))
 
-    -- Row 2: state / burn
+    -- Row 2: state / burn / autofire
     ImGui.Text('State: ')
     ImGui.SameLine()
     ImGui.TextColored(cr, cg, cb, 1.0, combatLabel)
     ImGui.SameLine()
     ImGui.Text(string.format('   Burn: %s', s.combat.burnOn and 'ON' or 'OFF'))
+    ImGui.SameLine()
+    local af = s.combat.autoFireOn or 0
+    local afc = AF_COLORS[af]
+    ImGui.Text('  AutoFire: ')
+    ImGui.SameLine()
+    ImGui.TextColored(afc[1], afc[2], afc[3], 1.0, AF_LABELS[af])
 
     -- Row 3: target / mob count
     local targetName = ''
@@ -105,6 +118,10 @@ local function drawControls()
     ImGui.SameLine(120)
     checkbox('AFK', s.afk.on ~= 0, function(v)
         s.afk.on = v and 1 or 0
+    end)
+    ImGui.SameLine(240)
+    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
+        mq.cmd('/autofireon')
     end)
 
     -- Row 5
