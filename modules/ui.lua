@@ -215,7 +215,17 @@ local function drawMelee()
     intInput('Assist %',    s.combat.assistAt,      1,  100, 'Melee', 'AssistAt',        function(v) s.combat.assistAt      = v end)
     intInput('Melee Dist',  s.combat.meleeDistance,  1,  500, 'Melee', 'MeleeDistance',   function(v) s.combat.meleeDistance = v end)
     intInput('DPS Skip %',  s.combat.dpsSkip,        0,  100, 'DPS',   'DPSSkip',         function(v) s.combat.dpsSkip       = v end)
-    intInput('Face Mob',    s.movement.faceMobOn,    0,    2, 'Melee', 'FaceMobOn',       function(v) s.movement.faceMobOn   = v end)
+    local faceMobLabels = { 'Off', 'Fast (no camera)', 'Smooth (no camera)' }
+    local faceMobIdx = (s.movement.faceMobOn or 0) + 1
+    ImGui.PushItemWidth(200)
+    local newFaceIdx, faceChanged = ImGui.Combo('Face Mob##facemob', faceMobIdx, faceMobLabels)
+    if faceChanged then
+        local newVal = newFaceIdx - 1
+        s.movement.faceMobOn = newVal
+        Config.set('Melee', 'FaceMobOn', tostring(newVal))
+        Config.save()
+    end
+    ImGui.PopItemWidth()
     intInput('Burn Named',  s.combat.burnAllNamed,   0,    2, 'Burn',  'BurnAllNamed',    function(v) s.combat.burnAllNamed  = v end)
 
     -- Stick style
