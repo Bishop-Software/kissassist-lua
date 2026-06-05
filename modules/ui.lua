@@ -186,12 +186,21 @@ local function drawPull()
         Config.save()
     end)
 
+    if s.session.iAmABard then
+        checkbox('Twist On Pull', s.bard.pullTwistOn, function(v)
+            s.bard.pullTwistOn = v
+            Config.set('Pull', 'PullTwistOn', v and '1' or '0')
+            Config.save()
+        end)
+    end
+
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
     intInput('Max Radius',  s.pull.maxRadius,    1, 2000, 'Pull', 'MaxRadius',    function(v) s.pull.maxRadius    = v end)
     intInput('Max Z Range', s.pull.maxZRange,    1, 2000, 'Pull', 'MaxZRange',    function(v) s.pull.maxZRange    = v end)
-    intInput('Arc Width°',  s.pull.pullArcWidth, 0,  360, 'Pull', 'PullArcWidth', function(v) s.pull.pullArcWidth = v end)
+    intInput('Pull Range',  s.pull.range,         1,  500, 'Pull', 'PullRange',    function(v) s.pull.range        = v end)
+    intInput('Arc Width°',  s.pull.pullArcWidth,  0,  360, 'Pull', 'PullArcWidth', function(v) s.pull.pullArcWidth = v end)
 
     -- Read-only status
     ImGui.Spacing()
