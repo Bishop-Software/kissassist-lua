@@ -241,7 +241,7 @@ local function groupEscape()
     if (_state.session.groupEscapeOn or 0) == 0 then return end
     if (mq.TLO.Raid.Members() or 0) > 0 then return end
     local inCombat = mq.TLO.Me.CombatState() == 'COMBAT'
-    local hasAggro = (_state.combat.aggroTargetID or 0) ~= 0
+    local hasAggro = (tonumber(_state.combat.aggroTargetID) or 0) ~= 0
     if not (inCombat or hasAggro) then return end
     local maSpawn = mq.TLO.Spawn('=' .. (_state.session.mainAssist or ''))
     if (maSpawn.ID() or 0) ~= 0 and (maSpawn.Type() or ''):lower() ~= 'corpse' then return end
