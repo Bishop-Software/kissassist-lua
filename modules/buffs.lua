@@ -1029,7 +1029,7 @@ function Buffs.checkPetBuffs()
 
     for i = 1, #_state.buffs.petBuffsArray do
         mq.doevents()
-        if (_state.combat.aggroTargetID or 0) ~= 0 then return end
+        if (tonumber(_state.combat.aggroTargetID) or 0) ~= 0 then return end
 
         local pslot  = _state.buffs.petBuffsArray[i]
         if not pslot then goto petcontinue end

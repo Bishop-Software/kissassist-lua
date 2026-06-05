@@ -267,7 +267,7 @@ function Charm.check(sentFrom)
 
         -- BRD is MA with active aggro — don't charm while we're tanking the kill target
         if isBard and _state.session.iAmMA
-           and (_state.combat.aggroTargetID or 0) ~= 0
+           and (tonumber(_state.combat.aggroTargetID) or 0) ~= 0
            and mobID == _state.combat.myTargetID then
             goto continue_charm
         end

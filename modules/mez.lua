@@ -225,7 +225,7 @@ function Mez.check(sentFrom)
         end
 
         -- Skip first target when MA is a merc with no mytarget (mac:7338-7341)
-        if (_state.combat.aggroTargetID or 0) ~= 0
+        if (tonumber(_state.combat.aggroTargetID) or 0) ~= 0
            and _state.combat.myTargetID == 0 and maAlive
            and (maSpawn.Type() or ''):lower() == 'mercenary' then
             entry[1] = 'NULL'; entry[2] = 'NULL'; entry[3] = 'NULL'
@@ -285,7 +285,7 @@ end
 function Mez.aeCheck()
     if _state.mez.on == 0 then return end
     if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
-    if (_state.combat.aggroTargetID or 0) == 0 then return end
+    if (tonumber(_state.combat.aggroTargetID) or 0) == 0 then return end
 
     local radius = _state.mez.radius
     local count  = mq.TLO.SpawnCount('npc xtarhater targetable los radius ' .. radius)() or 0

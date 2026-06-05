@@ -844,7 +844,7 @@ end
 -- rc_dist: summon threshold distance (default 150).
 -- Returns true if at least one corpse was summoned.
 function Heal.recoverCorpses(rc_flag, rc_dist)
-    if (_state.combat.aggroTargetID or 0) ~= 0 then return false end
+    if (tonumber(_state.combat.aggroTargetID) or 0) ~= 0 then return false end
     if mq.TLO.Me.Invis() then return false end
 
     local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
