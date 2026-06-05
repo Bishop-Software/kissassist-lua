@@ -226,7 +226,17 @@ local function drawMelee()
         Config.save()
     end
     ImGui.PopItemWidth()
-    intInput('Burn Named',  s.combat.burnAllNamed,   0,    2, 'Burn',  'BurnAllNamed',    function(v) s.combat.burnAllNamed  = v end)
+    local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
+    local burnNamedIdx = (s.combat.burnAllNamed or 0) + 1
+    ImGui.PushItemWidth(200)
+    local newBurnIdx, burnChanged = ImGui.Combo('Burn Named##burnnamed', burnNamedIdx, burnNamedLabels)
+    if burnChanged then
+        local newVal = newBurnIdx - 1
+        s.combat.burnAllNamed = newVal
+        Config.set('Burn', 'BurnAllNamed', tostring(newVal))
+        Config.save()
+    end
+    ImGui.PopItemWidth()
 
     -- Stick style
     ImGui.Spacing()
