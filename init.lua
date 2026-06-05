@@ -54,7 +54,7 @@ do
     end
 end
 
--- Seed runtime identity from live TLO; camp is set explicitly via /makecamphere
+-- Seed runtime identity from live TLO
 State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.iAmARogue = mq.TLO.Me.Class.ShortName() == 'ROG'
 local _CHARM_CLASSES = {DRU=true, ENC=true, NEC=true, BRD=true}
@@ -62,6 +62,10 @@ State.session.iAmACharmClass = _CHARM_CLASSES[mq.TLO.Me.Class.ShortName()] ~= ni
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
 State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] ~= nil
+
+-- Seed campZone at startup so pet, pull, AFK, and burn systems aren't blocked
+-- before the user runs /makecamphere (mirrors .mac DeclareOuters behavior).
+State.movement.campZone = mq.TLO.Zone.ID()
 
 -- Load config (resolves INI filename; full migration in step 1.4b)
 Config.load(State)
