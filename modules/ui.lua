@@ -220,11 +220,18 @@ local function drawMelee()
 
     -- Stick style
     ImGui.Spacing()
+    local stickOptions = { '0', 'behind', 'front', '!front', 'moveback', 'pin', 'I' }
+    local stickCurrent = s.movement.dStickHow or '0'
+    local stickIdx = 0
+    for i, v in ipairs(stickOptions) do
+        if v == stickCurrent then stickIdx = i - 1 break end
+    end
     ImGui.PushItemWidth(120)
-    local stickVal, stickChanged = ImGui.InputText('Stick How##stickhow', s.movement.dStickHow or '', 0)
-    if stickChanged and stickVal ~= s.movement.dStickHow then
-        s.movement.dStickHow = stickVal
-        Config.set('Melee', 'StickHow', stickVal)
+    local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickOptions)
+    if changed then
+        local newVal = stickOptions[newIdx + 1] or '0'
+        s.movement.dStickHow = newVal
+        Config.set('Melee', 'StickHow', newVal)
         Config.save()
     end
     ImGui.PopItemWidth()
