@@ -228,7 +228,7 @@ local function drawMelee()
         'Not in front of target',
         'Move back to range',
         'Pin (no rotation)',
-        'Disabled',
+        'Disabled (no stick)',
     }
     local stickCurrent = s.movement.dStickHow or '0'
     local stickIdx = 0
@@ -236,9 +236,9 @@ local function drawMelee()
         if v == stickCurrent then stickIdx = i - 1 break end
     end
     ImGui.PushItemWidth(200)
-    local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickLabels)
-    if changed then
-        local newVal = stickValues[newIdx + 1] or '0'
+    local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickLabels, #stickLabels)
+    if changed and newIdx >= 0 and newIdx < #stickValues then
+        local newVal = stickValues[newIdx + 1]
         s.movement.dStickHow = newVal
         Config.set('Melee', 'StickHow', newVal)
         Config.save()
