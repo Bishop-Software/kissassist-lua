@@ -50,7 +50,7 @@ function Bard.init(state, utils, cast)
     _state.bard.twistOn      = Config.get('General', 'TwistOn',      '0') == '1'
     _state.bard.meleeTwistOn = tonumber(Config.get('General', 'MeleeTwistOn', '0')) or 0
     _state.bard.twistHold    = Config.get('General', 'TwistHold',    '0') == '1'
-    _state.bard.pullTwistOn  = Config.get('General', 'PullTwistOn',  '0') == '1'
+    _state.bard.pullTwistOn  = Config.get('Pull',    'PullTwistOn',  '0') == '1'
 
     -- MQ2Medley set names (Lua port addition; not in original .mac which used MQ2Twist)
     _state.bard.oorMedley    = Config.get('General', 'OORMedley',    'oor')
