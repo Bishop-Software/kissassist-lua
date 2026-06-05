@@ -119,10 +119,6 @@ local function drawControls()
     checkbox('AFK', s.afk.on ~= 0, function(v)
         s.afk.on = v and 1 or 0
     end)
-    ImGui.SameLine(240)
-    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
-        mq.cmd('/autofireon')
-    end)
 
     -- Row 5
     checkbox('Pull', not s.pull.hold, function(v)
@@ -158,12 +154,80 @@ end
 local function drawConfig()
     local s = _state
 
-    intInput('Assist %',    s.combat.assistAt,        1,  100, 'Melee',   'AssistAt',  function(v) s.combat.assistAt        = v end)
     intInput('Camp Radius', s.movement.campRadius,     1, 1000, 'General', 'CampRadius',function(v) s.movement.campRadius    = v end)
     intInput('Pull Range',  s.pull.max,                1, 2000, 'Pull',    'MaxRadius', function(v) s.pull.max               = v end)
-    intInput('Melee Dist',  s.combat.meleeDistance,    1,  500, 'Melee',   'MeleeDistance', function(v) s.combat.meleeDistance = v end)
     intInput('Med Start %', s.heal.medStart,           1,  100, 'General', 'MedStart',  function(v) s.heal.medStart          = v end)
     intInput('Med Stop %',  s.heal.medStop,            1,  100, 'General', 'MedStop',   function(v) s.heal.medStop           = v end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Melee panel
+-- ---------------------------------------------------------------------------
+
+local function drawMelee()
+    local s = _state
+
+    -- Toggles
+    checkbox('Melee', s.combat.meleeOn, function(v)
+        s.combat.meleeOn = v
+        Config.set('Melee', 'MeleeOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('DPS', s.combat.dpsOn, function(v)
+        s.combat.dpsOn = v
+        Config.set('DPS', 'DPSOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    checkbox('Aggro', s.combat.aggroOn, function(v)
+        s.combat.aggroOn = v
+        Config.set('Aggro', 'AggroOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Target Switch', s.combat.targetSwitchingOn, function(v)
+        s.combat.targetSwitchingOn = v
+        Config.set('Melee', 'TargetSwitchingOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
+        mq.cmd('/autofireon')
+    end)
+    ImGui.SameLine(120)
+    checkbox('LOS Check', Config.get('General', 'LOSBeforeCombat', '0') == '1', function(v)
+        Config.set('General', 'LOSBeforeCombat', v and '1' or '0')
+        Config.save()
+    end)
+
+    if s.session.iAmARogue then
+        checkbox('Auto Hide', s.misc.autoHide, function(v)
+            s.misc.autoHide = v
+            Config.set('General', 'AutoHide', v and '1' or '0')
+            Config.save()
+        end)
+    end
+
+    -- Numeric settings
+    ImGui.Spacing()
+    ImGui.Separator()
+    intInput('Assist %',    s.combat.assistAt,      1,  100, 'Melee', 'AssistAt',        function(v) s.combat.assistAt      = v end)
+    intInput('Melee Dist',  s.combat.meleeDistance,  1,  500, 'Melee', 'MeleeDistance',   function(v) s.combat.meleeDistance = v end)
+    intInput('DPS Skip %',  s.combat.dpsSkip,        0,  100, 'DPS',   'DPSSkip',         function(v) s.combat.dpsSkip       = v end)
+    intInput('Face Mob',    s.movement.faceMobOn,    0,    2, 'Melee', 'FaceMobOn',       function(v) s.movement.faceMobOn   = v end)
+    intInput('Burn Named',  s.combat.burnAllNamed,   0,    2, 'Burn',  'BurnAllNamed',    function(v) s.combat.burnAllNamed  = v end)
+
+    -- Stick style
+    ImGui.Spacing()
+    ImGui.PushItemWidth(120)
+    local stickVal, stickChanged = ImGui.InputText('Stick How##stickhow', s.movement.dStickHow or '', 0)
+    if stickChanged and stickVal ~= s.movement.dStickHow then
+        s.movement.dStickHow = stickVal
+        Config.set('Melee', 'StickHow', stickVal)
+        Config.save()
+    end
+    ImGui.PopItemWidth()
 end
 
 -- ---------------------------------------------------------------------------
@@ -385,6 +449,10 @@ local function draw()
         if ImGui.BeginTabBar('KATabs') then
             if ImGui.BeginTabItem('Controls') then
                 drawControls()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Melee') then
+                drawMelee()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Config') then
