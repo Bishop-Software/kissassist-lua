@@ -120,10 +120,7 @@ local function drawControls()
         s.afk.on = v and 1 or 0
     end)
 
-    -- Row 5
-    checkbox('Pull', not s.pull.hold, function(v)
-        s.pull.hold = not v
-    end)
+
 
     -- Camp & Movement
     ImGui.Spacing()
@@ -167,6 +164,10 @@ local function drawPull()
     local s = _state
 
     -- Toggles
+    checkbox('Pull', not s.pull.hold, function(v)
+        s.pull.hold = not v
+    end)
+    ImGui.SameLine(120)
     checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v)
         s.pull.chainPull = v and 1 or 0
         Config.set('Pull', 'ChainPull', v and '1' or '0')
