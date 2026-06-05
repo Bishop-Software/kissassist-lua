@@ -607,12 +607,14 @@ function Buffs.checkBuffs(forceGroup)
         if condNo > 0 and _cond and not _cond.eval(condNo) then goto continue end
 
         -- Target-type resolution: prefer book TT, fall back to direct spell TT (mac:4491, 4640)
-        local spellTT  = mq.TLO.Spell(spellToCast).TargetType() or ''
-        local bookIs0  = (bookSpellTT == '0')
+        -- MQ2 returns capitalized strings ("Self", "Single", "Group v2") so lowercase before comparing.
+        local spellTT     = (mq.TLO.Spell(spellToCast).TargetType() or ''):lower()
+        local bookIs0     = (bookSpellTT == '0')
+        local bookTTLower = bookSpellTT:lower()
         local isGroupV = (bookIs0 and spellTT:find('group v', 1, true) ~= nil)
-                      or (not bookIs0 and bookSpellTT:find('group v', 1, true) ~= nil)
+                      or (not bookIs0 and bookTTLower:find('group v', 1, true) ~= nil)
         local isSelf   = (bookIs0 and spellTT:find('self', 1, true) ~= nil)
-                      or (not bookIs0 and bookSpellTT:find('self', 1, true) ~= nil)
+                      or (not bookIs0 and bookTTLower:find('self', 1, true) ~= nil)
 
         -- Ensure per-slot timer row exists for out-of-range indices
         if not _state.buffs.slotTimers[i] then
@@ -804,7 +806,7 @@ function Buffs.checkBuffs(forceGroup)
 
         -- single-target branch: buff each group member individually (mac:4523-4638)
         local isSingle = (bookIs0 and spellTT:find('single', 1, true) ~= nil)
-                      or (not bookIs0 and bookSpellTT:find('single', 1, true) ~= nil)
+                      or (not bookIs0 and bookTTLower:find('single', 1, true) ~= nil)
 
         if isSingle then
             local groupCount = mq.TLO.Group.Members() or 0
