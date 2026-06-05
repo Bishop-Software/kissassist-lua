@@ -475,9 +475,10 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     end
 
     -- Pet combat config
-    _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt', '100')) or 100
-    _state.pet.combatOn            = Config.get('Pet', 'PetCombatOn',      '1') == '1'
-    _state.combat.petTargetSwitch  = Config.get('General', 'PetTargetSwitch', '0') == '1'
+    _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt',       '100')) or 100
+    _state.pet.attackRange         = tonumber(Config.get('Pet', 'PetAttackDistance', '115')) or 115
+    _state.pet.combatOn            = Config.get('Pet', 'PetCombatOn',                '1') == '1'
+    _state.combat.petTargetSwitch  = Config.get('General', 'PetTargetSwitch',        '0') == '1'
 
     -- Named-mob watch list — zone-scoped MobsToBurn from KissAssist_Info.ini (shared across chars).
     local _infoFile = _state.session.infoFileName or ''
