@@ -866,7 +866,7 @@ local function drawAggro()
     end
 
     if toRemove then
-        table.remove(aggroRaw, toRemove)
+        aggroRaw[toRemove] = 'null'
         Config.set('Aggro', 'Aggro', aggroRaw)
         Config.save()
         syncAggroArray()
@@ -874,7 +874,16 @@ local function drawAggro()
 
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
-        aggroRaw[#aggroRaw + 1] = '|0|<'
+        -- fill the first null slot; only append if none exist
+        local placed = false
+        for i, v in ipairs(aggroRaw) do
+            if v == 'null' or v == '' then
+                aggroRaw[i] = '|0|<'
+                placed = true
+                break
+            end
+        end
+        if not placed then aggroRaw[#aggroRaw + 1] = '|0|<' end
         Config.set('Aggro', 'Aggro', aggroRaw)
         Config.save()
     end
