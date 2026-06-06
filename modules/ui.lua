@@ -89,6 +89,16 @@ local function checkbox(label, value, onChange)
     if newVal ~= value then onChange(newVal) end
 end
 
+local function intInput(label, value, min, max, configSection, configKey, stateSet)
+    local newVal = ImGui.InputInt(label, value)
+    if newVal ~= value then
+        newVal = math.max(min, math.min(max, newVal))
+        stateSet(newVal)
+        Config.set(configSection, configKey, tostring(newVal))
+        Config.save()
+    end
+end
+
 local function drawControls()
     local s = _state
 
@@ -116,25 +126,10 @@ local function drawControls()
     if ImGui.Button('Chase Me',       COL, 0) then mq.cmd('/chaseme')      end
     ImGui.SameLine()
     if ImGui.Button('Stay Here',      COL, 0) then mq.cmd('/stayhere')     end
-end
 
--- ---------------------------------------------------------------------------
--- Live Config Editing panel
--- ---------------------------------------------------------------------------
-
-local function intInput(label, value, min, max, configSection, configKey, stateSet)
-    local newVal = ImGui.InputInt(label, value)
-    if newVal ~= value then
-        newVal = math.max(min, math.min(max, newVal))
-        stateSet(newVal)
-        Config.set(configSection, configKey, tostring(newVal))
-        Config.save()
-    end
-end
-
-local function drawConfig()
-    local s = _state
-
+    -- Numeric settings
+    ImGui.Spacing()
+    ImGui.Separator()
     intInput('Camp Radius', s.movement.campRadius,  1, 1000, 'General', 'CampRadius', function(v) s.movement.campRadius = v end)
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
@@ -1456,7 +1451,7 @@ local function draw()
         drawStatus()
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
-            if ImGui.BeginTabItem('Controls') then
+            if ImGui.BeginTabItem('Config') then
                 drawControls()
                 ImGui.EndTabItem()
             end
@@ -1478,10 +1473,6 @@ local function draw()
             end
             if ImGui.BeginTabItem('Pull') then
                 drawPull()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Config') then
-                drawConfig()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Heals') then
