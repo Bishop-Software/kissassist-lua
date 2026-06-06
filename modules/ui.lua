@@ -767,7 +767,8 @@ local function drawAggro()
     ImGui.Separator()
     ImGui.Spacing()
 
-    local aggroRaw = Config.get('Aggro', 'Aggro', nil) or {}
+    local aggroRaw  = Config.get('Aggro', 'Aggro',     nil) or {}
+    local aggroSize = tonumber(Config.get('Aggro', 'AggroSize', '10')) or 10
 
     local function syncAggroArray()
         s.combat.aggroArray = {}
@@ -784,12 +785,6 @@ local function drawAggro()
         condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
     end
 
-    local visIdx = {}
-    for i, v in ipairs(aggroRaw) do
-        if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
-    end
-
-    local toRemove = nil
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('aggro_tbl', 6, tblFlags) then
         ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
@@ -800,8 +795,10 @@ local function drawAggro()
         ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
 
-        for _, i in ipairs(visIdx) do
-            local spell, pct, glt, target, cond = splitAggro(aggroRaw[i] or '')
+        for i = 1, aggroSize do
+            local raw     = aggroRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, pct, glt, target, cond = splitAggro(isEmpty and '' or raw)
             local newSpell, newPct, newGlt, newTarget, newCond = spell, pct, glt, target, cond
             local sc, pc, gc, tac, cc = false, false, false, false, false
 
@@ -815,9 +812,7 @@ local function drawAggro()
             local pctNum = tonumber(pct) or 0
             local newPctNum
             newPctNum, pc = ImGui.InputInt('##apct' .. i, pctNum)
-            if pc then
-                newPct = tostring(math.max(0, math.min(200, newPctNum)))
-            end
+            if pc then newPct = tostring(math.max(0, math.min(200, newPctNum))) end
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -847,16 +842,28 @@ local function drawAggro()
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
-            if ImGui.Button('[-]##agrem' .. i) then toRemove = i end
+            if ImGui.Button('[-]##agrem' .. i) then
+                if i == aggroSize and aggroSize > 1 then
+                    aggroRaw[i] = nil
+                    aggroSize   = aggroSize - 1
+                    Config.set('Aggro', 'AggroSize', tostring(aggroSize))
+                else
+                    aggroRaw[i] = 'null'
+                end
+                Config.set('Aggro', 'Aggro', aggroRaw)
+                Config.save()
+                syncAggroArray()
+            end
 
             if sc or pc or gc or tac or cc then
-                aggroRaw[i] = joinAggro(
-                    sc  and newSpell  or spell,
+                local spellVal = sc and newSpell or spell
+                aggroRaw[i] = spellVal ~= '' and joinAggro(
+                    spellVal,
                     pc  and newPct    or pct,
                     gc  and newGlt    or glt,
                     tac and newTarget or target,
                     cc  and newCond   or cond
-                )
+                ) or 'null'
                 Config.set('Aggro', 'Aggro', aggroRaw)
                 Config.save()
                 syncAggroArray()
@@ -865,25 +872,11 @@ local function drawAggro()
         ImGui.EndTable()
     end
 
-    if toRemove then
-        aggroRaw[toRemove] = 'null'
-        Config.set('Aggro', 'Aggro', aggroRaw)
-        Config.save()
-        syncAggroArray()
-    end
-
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
-        -- fill the first null slot; only append if none exist
-        local placed = false
-        for i, v in ipairs(aggroRaw) do
-            if v == 'null' or v == '' then
-                aggroRaw[i] = '|0|<'
-                placed = true
-                break
-            end
-        end
-        if not placed then aggroRaw[#aggroRaw + 1] = '|0|<' end
+        aggroSize = aggroSize + 1
+        aggroRaw[aggroSize] = 'null'
+        Config.set('Aggro', 'AggroSize', tostring(aggroSize))
         Config.set('Aggro', 'Aggro', aggroRaw)
         Config.save()
     end
