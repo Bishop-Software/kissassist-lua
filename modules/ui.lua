@@ -643,6 +643,116 @@ local function drawConditions()
 end
 
 -- ---------------------------------------------------------------------------
+-- Cures panel
+-- ---------------------------------------------------------------------------
+
+local function splitCure(raw)
+    -- SpellName[|condNNN]  →  spell, cond
+    local spell, cond = raw, ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond  = raw:sub(condPos + 1)
+        spell = raw:sub(1, condPos - 1)
+    end
+    return spell, cond
+end
+
+local function joinCure(spell, cond)
+    local result = spell
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
+end
+
+local function drawCures()
+    local s = _state
+
+    local curesOnLabels = { 'Off', 'Everyone', 'Self Only', 'Group Only' }
+    local newCuresOnIdx, coc = ImGui.Combo('Cures Mode##curesOn', s.heal.curesOn, curesOnLabels)
+    if coc then
+        s.heal.curesOn = newCuresOnIdx
+        Config.set('Cures', 'CuresOn', tostring(newCuresOnIdx))
+        Config.save()
+    end
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local curesRaw  = Config.get('Cures', 'Cures',     nil) or {}
+    local curesSize = tonumber(Config.get('Cures', 'CuresSize', '5')) or 5
+
+    local function syncCuresArray()
+        s.heal.curesArray = {}
+        for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
+            s.heal.curesArray[#s.heal.curesArray + 1] = slot
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('cures_tbl', 3, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, curesSize do
+            local raw     = curesRaw[i] or ''
+            local isEmpty = raw == '' or raw == 'null' or raw == 'NULL'
+            local spell, cond = splitCure(isEmpty and '' or raw)
+
+            ImGui.TableNextRow()
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newSpell, sc = ImGui.InputText('##cspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo, condLabels)
+            local newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+
+            if sc or cc then
+                local out = joinCure(sc and newSpell or spell, cc and newCond or cond)
+                curesRaw[i] = (out == '') and 'null' or out
+                Config.set('Cures', 'Cures', curesRaw)
+                Config.save()
+                syncCuresArray()
+            end
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##crem' .. i) then
+                if i == curesSize and curesSize > 1 then
+                    curesRaw[curesSize] = nil
+                    curesSize = curesSize - 1
+                    Config.set('Cures', 'CuresSize', tostring(curesSize))
+                else
+                    curesRaw[i] = 'null'
+                end
+                Config.set('Cures', 'Cures', curesRaw)
+                Config.save()
+                syncCuresArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        curesSize = curesSize + 1
+        curesRaw[curesSize] = 'null'
+        Config.set('Cures', 'Cures', curesRaw)
+        Config.set('Cures', 'CuresSize', tostring(curesSize))
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Buffs panel
 -- ---------------------------------------------------------------------------
 
@@ -1327,6 +1437,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Heals') then
                 drawHealThresholds()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Cures') then
+                drawCures()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Spells') then
