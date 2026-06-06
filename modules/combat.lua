@@ -475,6 +475,16 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
         end
     end
 
+    -- AE rotation array
+    _state.combat.aeOn     = Config.get('AE', 'AEOn',     '0') == '1'
+    _state.combat.aeRadius = tonumber(Config.get('AE', 'AERadius', '50')) or 50
+    local rawAE = Config.get('AE', 'AE', nil)
+    if type(rawAE) == 'table' then
+        for i, v in ipairs(rawAE) do
+            if v and v ~= '' then _state.combat.aeArray[i] = v end
+        end
+    end
+
     -- Pet combat config
     _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt',       '100')) or 100
     _state.pet.attackRange         = tonumber(Config.get('Pet', 'PetAttackDistance', '115')) or 115
@@ -1049,6 +1059,102 @@ function Combat.combatTargetCheck(setTarget)
         _state.combat.myTargetName, _state.combat.myTargetID, _state.combat.lastTargetID)
 end
 
+-- AE spell rotation (mac:12473-12560 Sub AECheck).
+-- Called each fight tick when aeOn; casts first eligible AE slot whose mob-count threshold is met.
+local function aeCheck()
+    local s = _state
+    if not s.combat.aeOn then return end
+    if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
+    if s.combat.aggroTargetID == 0 then return end
+    if not _cast or not _cast.castWhat then return end
+
+    local aeRadius = s.combat.aeRadius
+    Combat.mobRadar('los', aeRadius)
+
+    local mobCountTemp = mq.TLO.SpawnCount(
+        'npc xtarhater targetable los radius ' .. aeRadius .. ' zradius 50 noalert 3')() or 0
+    if mobCountTemp <= 0 then return end
+
+    local aeRaw  = Config.get('AE', 'AE', nil) or {}
+    local aeSize = tonumber(Config.get('AE', 'AESize', '10')) or 10
+
+    for i = 1, aeSize do
+        local raw = aeRaw[i] or 'null'
+        if raw == 'null' or raw == '' then goto ae_next end
+
+        -- Strip optional |condNNN suffix
+        local condNo  = 0
+        local condPos = raw:find('|cond%d')
+        if condPos then
+            condNo = tonumber(raw:sub(condPos + 5, condPos + 7)) or 0
+            raw    = raw:sub(1, condPos - 1)
+        end
+
+        local parts = {}
+        for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spell    = parts[1] or ''
+        local mobCount = tonumber(parts[2]) or 1
+        local tgt      = (parts[3] or 'Mob'):upper()
+
+        if spell == '' or spell == 'null' then goto ae_next end
+        if mobCount > mobCountTemp then goto ae_next end
+
+        -- burn: trigger burn rotation when threshold met
+        if spell:lower() == 'burn' then
+            if not s.combat.burnActive then
+                mq.cmdf('/echo AE-> %d Mobs: Activating BURN', mobCountTemp)
+                if _cast and _cast.doBurn then _cast.doBurn() end
+            end
+            return
+        end
+
+        -- Resolve target spawn ID
+        local targetID
+        if tgt == 'ME' then
+            targetID = mq.TLO.Me.ID()
+        elseif tgt == 'MA' then
+            targetID = mq.TLO.Spawn('=' .. s.session.mainAssist).ID()
+        elseif tgt == 'PET' then
+            targetID = mq.TLO.Me.Pet.ID()
+        else  -- Mob / Single
+            targetID = s.combat.myTargetID ~= 0 and s.combat.myTargetID or nil
+        end
+        if not targetID or targetID == 0 then goto ae_next end
+
+        -- Safety check for AE casts: skip if it would pull more mobs than are on XTarget
+        if tgt ~= 'SINGLE' then
+            local tgtSpawn = mq.TLO.Spawn('id ' .. targetID)
+            if tgtSpawn and (tgtSpawn.ID() or 0) ~= 0 then
+                local tgtX    = tgtSpawn.X() or 0
+                local tgtY    = tgtSpawn.Y() or 0
+                local aeRange = mq.TLO.Spell(spell).AERange() or 0
+                if aeRange == 0 then aeRange = aeRadius end
+                local locStr   = string.format('%f,%f radius %d', tgtX, tgtY, aeRange)
+                local xtCount  = mq.TLO.SpawnCount('npc xtarhater loc ' .. locStr)() or 0
+                local allCount = mq.TLO.SpawnCount('npc loc ' .. locStr)() or 0
+                if xtCount < allCount then
+                    mq.cmdf('/echo AE-> Casting %s would aggro more mobs(%d) than on xtarget(%d)',
+                        spell, allCount, xtCount)
+                    goto ae_next
+                end
+            end
+        end
+
+        local result = _cast.castWhat(spell, targetID, 'AoE', condNo)
+        if result == 'CAST_SUCCESS' then
+            if tgt == 'SINGLE' then
+                local name = (mq.TLO.Spawn('id ' .. targetID).CleanName() or '?')
+                mq.cmdf('/echo AE-> %s on Single target >> %s <<', spell, name)
+            else
+                mq.cmdf('/echo AE-> %d Mobs: Casting AE %s', mobCountTemp, spell)
+            end
+        end
+        do return end  -- one cast attempt per tick
+
+        ::ae_next::
+    end
+end
+
 -- Gift of Mana proc handler (mac:11497-11580).
 -- Consumes gomActive, iterates GoM spell list, casts the first eligible free spell.
 -- Per-slot timers suppress a slot until the buffed spell's duration expires.
@@ -1301,6 +1407,9 @@ function Combat.fight(fromWhere)
                 if _cast.doBurn then _cast.doBurn() end
                 _state.combat.burnID = 0
             end
+
+            -- AE rotation: threshold-triggered AE/multi-target spells (mac:12473-12560)
+            aeCheck()
 
             -- GoM: cast free spell on Gift of Mana proc (mac:11497-11580)
             checkGoM()

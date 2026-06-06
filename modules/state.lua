@@ -102,6 +102,9 @@ local State = {
         -- Step 4.8
         aggroArray         = {},
         aggroOn            = false,
+        aeOn               = false,
+        aeRadius           = 50,
+        aeArray            = {},
         slotTimers         = {},   -- per-DPS-slot os.clock() expiry (0=expired); mac ABTimer/DPSTimer
         dpsSkip            = 20,  -- stop DPS rotation when mob HP% is at or below this (mac DPSSkip)
         dpsInterval        = 2,   -- fallback timer (seconds) for zero-duration spells (mac DPSInterval)
