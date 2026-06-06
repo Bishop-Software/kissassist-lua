@@ -6,6 +6,10 @@
 local mq = require('mq')
 
 local AF_LABELS = { [0]='OFF', [1]='RANGED', [2]='PAUSED' }
+local GLT_VALUES  = { '<', '<<', '>' }
+local GLT_LABELS  = { '< gain', '<< sec', '> lose' }
+local ATGT_VALUES = { '', 'me', 'ma', 'pet', 'inc' }
+local ATGT_LABELS = { 'current', 'me', 'ma', 'pet', 'inc' }
 local AF_COLORS = {
     [0] = {0.6, 0.6, 0.6},
     [1] = {0.4, 1.0, 0.4},
@@ -89,10 +93,6 @@ local function drawControls()
     local s = _state
 
     -- Row 1
-    checkbox('Heals', s.heal.healsOn ~= 0, function(v)
-        s.heal.healsOn = v and 1 or 0
-    end)
-    ImGui.SameLine(120)
     checkbox('Cures', s.heal.curesOn ~= 0, function(v)
         s.heal.curesOn = v and 1 or 0
     end)
@@ -224,12 +224,6 @@ local function drawMelee()
         Config.save()
     end)
 
-    checkbox('Aggro', s.combat.aggroOn, function(v)
-        s.combat.aggroOn = v
-        Config.set('Aggro', 'AggroOn', v and '1' or '0')
-        Config.save()
-    end)
-    ImGui.SameLine(120)
     checkbox('Target Switch', s.combat.targetSwitchingOn, function(v)
         s.combat.targetSwitchingOn = v
         Config.set('Melee', 'TargetSwitchingOn', v and '1' or '0')
@@ -314,40 +308,139 @@ end
 -- Heal Thresholds panel
 -- ---------------------------------------------------------------------------
 
-local function saveHealArray()
-    local raw = {}
-    for i, slot in ipairs(_state.heal.healsArray) do
-        local entry = slot.name or ''
-        if slot.condNo and slot.condNo > 0 then
-            entry = entry .. string.format('|cond%03d', slot.condNo)
-        end
-        raw[i] = entry
+local function splitHeal(raw)
+    -- SpellName[|pct[|tag]][|condNNN]  →  spell, pct, tag, cond
+    local spell, pct, tag, cond = '', '0', '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
     end
-    Config.set('Heals', 'Heals', raw)
-    Config.save()
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell = parts[1] or ''
+    pct   = parts[2] or '0'
+    tag   = parts[3] or ''
+    return spell, pct, tag, cond
+end
+
+local function joinHeal(spell, pct, tag, cond)
+    local result = spell .. '|' .. pct
+    if tag  ~= '' then result = result .. '|' .. tag  end
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
 end
 
 local function drawHealThresholds()
-    local arr = _state.heal.healsArray
-    if not arr or #arr == 0 then return end
+    local s = _state
 
-    for i, slot in ipairs(arr) do
-        local name      = slot.name or ''
-        local spellName = name:match('^([^|]+)') or name
-        local pct       = tonumber(name:match('^[^|]+|([^|]+)')) or 0
-        local tag       = name:match('^[^|]+|[^|]+|([^|]*)') or ''
+    checkbox('Heals On', s.heal.healsOn ~= 0, function(v)
+        s.heal.healsOn = v and 1 or 0
+        Config.set('Heals', 'HealsOn', v and '1' or '0')
+        Config.save()
+    end)
 
-        local display = spellName:len() > 20 and spellName:sub(1, 19) .. '~' or spellName
-        if tag ~= '' then display = display .. ' [' .. tag .. ']' end
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
 
-        local newPct = ImGui.InputInt(display .. '##h' .. i, pct)
-        if newPct ~= pct then
-            newPct = math.max(1, math.min(100, newPct))
-            local rebuilt = spellName .. '|' .. tostring(newPct)
-            if tag ~= '' then rebuilt = rebuilt .. '|' .. tag end
-            slot.name = rebuilt
-            saveHealArray()
+    local healsRaw  = Config.get('Heals', 'Heals',     nil) or {}
+    local healsSize = tonumber(Config.get('Heals', 'HealsSize', '15')) or 15
+
+    local function syncHealsArray()
+        s.heal.healsArray = {}
+        for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                s.heal.healsArray[#s.heal.healsArray + 1] = slot
+            end
         end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('heals_tbl', 5, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Pct',   ImGuiTableColumnFlags.WidthFixed,    70)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   100)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, healsSize do
+            local raw     = healsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, pct, tag, cond = splitHeal(isEmpty and '' or raw)
+            local newSpell, newPct, newTag, newCond = spell, pct, tag, cond
+            local sc, pc, tac, cc = false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##hspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local pctNum = tonumber(pct) or 0
+            local newPctNum
+            newPctNum, pc = ImGui.InputInt('##hpct' .. i, pctNum)
+            if pc then newPct = tostring(math.max(1, math.min(100, newPctNum))) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newTag, tac = ImGui.InputText('##htag' .. i, tag, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##hrem' .. i) then
+                if i == healsSize and healsSize > 1 then
+                    healsRaw[i] = nil
+                    healsSize   = healsSize - 1
+                    Config.set('Heals', 'HealsSize', tostring(healsSize))
+                else
+                    healsRaw[i] = 'null'
+                end
+                Config.set('Heals', 'Heals', healsRaw)
+                Config.save()
+                syncHealsArray()
+            end
+
+            if sc or pc or tac or cc then
+                local spellVal = sc and newSpell or spell
+                healsRaw[i] = spellVal ~= '' and joinHeal(
+                    spellVal,
+                    pc  and newPct or pct,
+                    tac and newTag or tag,
+                    cc  and newCond or cond
+                ) or 'null'
+                Config.set('Heals', 'Heals', healsRaw)
+                Config.save()
+                syncHealsArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        healsSize = healsSize + 1
+        healsRaw[healsSize] = 'null'
+        Config.set('Heals', 'HealsSize', tostring(healsSize))
+        Config.set('Heals', 'Heals', healsRaw)
+        Config.save()
     end
 end
 
@@ -623,40 +716,36 @@ local function drawBuffs()
     ImGui.Separator()
     ImGui.Spacing()
 
-    local buffsRaw = Config.get('Buffs', 'Buffs', nil) or {}
+    local buffsRaw  = Config.get('Buffs', 'Buffs',     nil) or {}
+    local buffsSize = tonumber(Config.get('Buffs', 'BuffsSize', '20')) or 20
 
     local function syncBuffsArray()
         s.buffs.buffsArray = {}
         for _, slot in ipairs(Config.parseCondArray(buffsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' then
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
                 s.buffs.buffsArray[#s.buffs.buffsArray + 1] = slot
             end
         end
     end
 
-    local visIdx = {}
-    for i, v in ipairs(buffsRaw) do
-        if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
-    end
-
-    -- Build condition dropdown labels from live state (updates automatically)
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
         local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
         condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
     end
 
-    local toRemove = nil
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
         ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
         ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
-        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
 
-        for _, i in ipairs(visIdx) do
-            local spell, tag, cond = splitBuff(buffsRaw[i] or '')
+        for i = 1, buffsSize do
+            local raw     = buffsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, tag, cond = splitBuff(isEmpty and '' or raw)
             local sc, tc, cc = false, false, false
             local newSpell, newTag, newCond = spell, tag, cond
 
@@ -679,14 +768,26 @@ local function drawBuffs()
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
-            if ImGui.Button('[-]##buffrem' .. i) then toRemove = i end
+            if ImGui.Button('[-]##buffrem' .. i) then
+                if i == buffsSize and buffsSize > 1 then
+                    buffsRaw[i] = nil
+                    buffsSize   = buffsSize - 1
+                    Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
+                else
+                    buffsRaw[i] = 'null'
+                end
+                Config.set('Buffs', 'Buffs', buffsRaw)
+                Config.save()
+                syncBuffsArray()
+            end
 
             if sc or tc or cc then
-                buffsRaw[i] = joinBuff(
-                    sc and newSpell or spell,
-                    tc and newTag   or tag,
-                    cc and newCond  or cond
-                )
+                local spellVal = sc and newSpell or spell
+                buffsRaw[i] = spellVal ~= '' and joinBuff(
+                    spellVal,
+                    tc and newTag  or tag,
+                    cc and newCond or cond
+                ) or 'null'
                 Config.set('Buffs', 'Buffs', buffsRaw)
                 Config.save()
                 syncBuffsArray()
@@ -695,17 +796,186 @@ local function drawBuffs()
         ImGui.EndTable()
     end
 
-    if toRemove then
-        table.remove(buffsRaw, toRemove)
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        buffsSize = buffsSize + 1
+        buffsRaw[buffsSize] = 'null'
+        Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
         Config.set('Buffs', 'Buffs', buffsRaw)
         Config.save()
-        syncBuffsArray()
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Aggro panel
+-- ---------------------------------------------------------------------------
+
+local function splitAggro(raw)
+    -- SpellName[|pct[|glt[|target]]][|condNNN]  →  spell, pct, glt, target, cond
+    local spell, pct, glt, target, cond = '', '0', '<', '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
+    end
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell  = parts[1] or ''
+    pct    = parts[2] or '0'
+    glt    = parts[3] or '<'
+    target = parts[4] or ''
+    return spell, pct, glt, target, cond
+end
+
+local function joinAggro(spell, pct, glt, target, cond)
+    local result = spell .. '|' .. pct .. '|' .. glt
+    if target ~= '' then result = result .. '|' .. target end
+    if cond   ~= '' then result = result .. '|' .. cond   end
+    return result
+end
+
+local function drawAggro()
+    local s = _state
+
+    checkbox('Aggro', s.combat.aggroOn, function(v)
+        s.combat.aggroOn = v
+        Config.set('Aggro', 'AggroOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.SameLine(120)
+    ImGui.Text('Aggro: ')
+    ImGui.SameLine()
+    if (mq.TLO.Me.Level() or 0) < 20 then
+        ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A (< lvl 20)')
+    else
+        local pctAggro = mq.TLO.Me.PctAggro() or 0
+        local ar, ag, ab
+        if pctAggro >= 100 then
+            ar, ag, ab = 0.2, 1.0, 0.2
+        elseif pctAggro >= 75 then
+            ar, ag, ab = 1.0, 0.9, 0.1
+        else
+            ar, ag, ab = 1.0, 0.3, 0.3
+        end
+        ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
+    end
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local aggroRaw  = Config.get('Aggro', 'Aggro',     nil) or {}
+    local aggroSize = tonumber(Config.get('Aggro', 'AggroSize', '10')) or 10
+
+    local function syncAggroArray()
+        s.combat.aggroArray = {}
+        for _, slot in ipairs(Config.parseCondArray(aggroRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                s.combat.aggroArray[#s.combat.aggroArray + 1] = slot
+            end
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('aggro_tbl', 6, tblFlags) then
+        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Pct',    ImGuiTableColumnFlags.WidthFixed,    90)
+        ImGui.TableSetupColumn('GtL',    ImGuiTableColumnFlags.WidthFixed,    75)
+        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
+        ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, aggroSize do
+            local raw     = aggroRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, pct, glt, target, cond = splitAggro(isEmpty and '' or raw)
+            local newSpell, newPct, newGlt, newTarget, newCond = spell, pct, glt, target, cond
+            local sc, pc, gc, tac, cc = false, false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##aspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local pctNum = tonumber(pct) or 0
+            local newPctNum
+            newPctNum, pc = ImGui.InputInt('##apct' .. i, pctNum)
+            if pc then newPct = tostring(math.max(0, math.min(200, newPctNum))) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local gltIdx = 1
+            for k, v in ipairs(GLT_VALUES) do if v == glt then gltIdx = k; break end end
+            local newGltIdx
+            newGltIdx, gc = ImGui.Combo('##aglt' .. i, gltIdx, GLT_LABELS)
+            if gc then newGlt = GLT_VALUES[newGltIdx] end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local targetIdx = 1
+            for k, v in ipairs(ATGT_VALUES) do if v == target then targetIdx = k; break end end
+            local newTargetIdx
+            newTargetIdx, tac = ImGui.Combo('##atgt' .. i, targetIdx, ATGT_LABELS)
+            if tac then newTarget = ATGT_VALUES[newTargetIdx] end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##acond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##agrem' .. i) then
+                if i == aggroSize and aggroSize > 1 then
+                    aggroRaw[i] = nil
+                    aggroSize   = aggroSize - 1
+                    Config.set('Aggro', 'AggroSize', tostring(aggroSize))
+                else
+                    aggroRaw[i] = 'null'
+                end
+                Config.set('Aggro', 'Aggro', aggroRaw)
+                Config.save()
+                syncAggroArray()
+            end
+
+            if sc or pc or gc or tac or cc then
+                local spellVal = sc and newSpell or spell
+                aggroRaw[i] = spellVal ~= '' and joinAggro(
+                    spellVal,
+                    pc  and newPct    or pct,
+                    gc  and newGlt    or glt,
+                    tac and newTarget or target,
+                    cc  and newCond   or cond
+                ) or 'null'
+                Config.set('Aggro', 'Aggro', aggroRaw)
+                Config.save()
+                syncAggroArray()
+            end
+        end
+        ImGui.EndTable()
     end
 
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
-        buffsRaw[#buffsRaw + 1] = ''
-        Config.set('Buffs', 'Buffs', buffsRaw)
+        aggroSize = aggroSize + 1
+        aggroRaw[aggroSize] = 'null'
+        Config.set('Aggro', 'AggroSize', tostring(aggroSize))
+        Config.set('Aggro', 'Aggro', aggroRaw)
         Config.save()
     end
 end
@@ -726,6 +996,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Melee') then
                 drawMelee()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Aggro') then
+                drawAggro()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Pull') then
