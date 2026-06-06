@@ -17,6 +17,7 @@ local AF_COLORS = {
 }
 local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
 local AFK_ACTION_LABELS = { 'Hold until GM leaves', 'End macro', 'Unload MQ2', 'Quit EQ' }
+local MEZ_MODE_LABELS   = { 'Off', 'Single + AE', 'Single only', 'AE only' }
 
 local Config = require('modules.config')
 
@@ -31,6 +32,7 @@ local COL    = 130  -- column width for checkbox SameLine and button widths
 
 local function drawStatus()
     local s = _state
+    local C2, C3 = 160, 240  -- fixed column offsets (px from window left edge)
 
     -- Combat state label + color
     local combatLabel, cr, cg, cb
@@ -45,38 +47,41 @@ local function drawStatus()
     elseif s.heal.medding then
         combatLabel, cr, cg, cb = 'MEDDING',   0.4, 0.8, 1.0
     elseif s.session.chaseAssist then
-        combatLabel, cr, cg, cb = 'CHASING ' .. (s.movement.whoToChase or ''), 0.8, 0.6, 1.0
+        local who = (s.movement.whoToChase or ''):sub(1, 10)
+        combatLabel, cr, cg, cb = 'CHASING ' .. who, 0.8, 0.6, 1.0
     else
         combatLabel, cr, cg, cb = 'IDLE',      0.4, 1.0, 0.4
     end
 
-    -- Row 1: role / MA
-    ImGui.Text(string.format('Role: %-14s', s.session.role or ''))
-    ImGui.SameLine()
-    ImGui.Text(string.format('MA: %s', s.session.mainAssist or ''))
+    -- Row 1: role | MA
+    ImGui.Text('Role: ' .. (s.session.role or ''))
+    ImGui.SameLine(C2)
+    ImGui.Text('MA: ' .. (s.session.mainAssist or ''))
 
-    -- Row 2: state / burn / autofire
-    ImGui.Text('State: ')
+    -- Row 2: state | burn | autofire
+    ImGui.Text('State:')
     ImGui.SameLine()
     ImGui.TextColored(cr, cg, cb, 1.0, combatLabel)
-    ImGui.SameLine()
-    ImGui.Text(string.format('   Burn: %s', s.combat.burnOn and 'ON' or 'OFF'))
-    ImGui.SameLine()
+    ImGui.SameLine(C2)
+    ImGui.Text('Burn: ' .. (s.combat.burnOn and 'ON' or 'OFF'))
+    ImGui.SameLine(C3)
     local af = s.combat.autoFireOn or 0
     local afc = AF_COLORS[af]
-    ImGui.Text('  AutoFire: ')
+    ImGui.Text('AutoFire:')
     ImGui.SameLine()
     ImGui.TextColored(afc[1], afc[2], afc[3], 1.0, AF_LABELS[af])
 
-    -- Row 3: target / mob count / aggro %
+    -- Row 3: target | mobs | aggro
     local targetName = ''
     local aggroID = tonumber(s.combat.aggroTargetID) or 0
     if aggroID > 0 then
-        targetName = mq.TLO.Spawn(aggroID).CleanName() or ''
+        targetName = (mq.TLO.Spawn(aggroID).CleanName() or ''):sub(1, 14)
     end
-    ImGui.Text(string.format('Target: %-20s  Mobs: %d', targetName, s.combat.mobCount or 0))
-    ImGui.SameLine()
-    ImGui.Text('  Aggro: ')
+    ImGui.Text('Target: ' .. targetName)
+    ImGui.SameLine(C2)
+    ImGui.Text('Mobs: ' .. tostring(s.combat.mobCount or 0))
+    ImGui.SameLine(C3)
+    ImGui.Text('Aggro:')
     ImGui.SameLine()
     if (mq.TLO.Me.Level() or 0) < 20 then
         ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A')
@@ -90,22 +95,23 @@ local function drawStatus()
         ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
     end
 
-    -- Row 4: camp location / radius
+    -- Row 4: camp coords | radius
     local mv = s.movement
     local isPuller = ({ puller=true, pullertank=true, pullerpettank=true,
                         hunter=true, hunterpettank=true })[s.session.role or '']
     if isPuller and (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then
         ImGui.TextColored(1.0, 0.2, 0.2, 1.0, 'No Camp Set — run /makecamphere')
     else
-        local rtcSuffix = mv.returnToCamp and '  [RTC]' or ''
-        ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)  Radius: %d%s',
-            mv.campY or 0, mv.campX or 0, mv.campZ or 0, mv.campRadius or 0, rtcSuffix))
+        local rtc = mv.returnToCamp and '  [RTC]' or ''
+        ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)', mv.campY or 0, mv.campX or 0, mv.campZ or 0))
+        ImGui.SameLine(C2)
+        ImGui.Text(string.format('Radius: %d%s', mv.campRadius or 0, rtc))
     end
 
     -- Row 5 (charm classes only): charmed mob
     if s.session.iAmACharmClass and (s.charm.petId or 0) > 0 then
         local charmName = mq.TLO.Spawn(s.charm.petId).CleanName() or '???'
-        ImGui.Text('Charmed: ')
+        ImGui.Text('Charmed:')
         ImGui.SameLine()
         ImGui.TextColored(1.0, 0.6, 0.2, 1.0, charmName)
     end
@@ -143,10 +149,6 @@ end
 
 local function drawControls()
     local s = _state
-
-    checkbox('Mez', s.mez.on ~= 0, function(v)
-        s.mez.on = v and 1 or 0
-    end)
 
     checkbox('Loot', s.loot.on ~= 0, function(v)
         mq.cmd(v and '/kalooton' or '/kalootoff')
@@ -1694,6 +1696,87 @@ local function drawAE()
 end
 
 -- ---------------------------------------------------------------------------
+-- CC panel (Mez + Charm, class-gated)
+-- ---------------------------------------------------------------------------
+
+local function drawCC()
+    local s = _state
+
+    if ImGui.BeginTabBar('KACCTabs') then
+        if s.session.iAmAMezClass and ImGui.BeginTabItem('Mez') then
+            ImGui.Spacing()
+            ImGui.PushItemWidth(200)
+            local newMode, modeChanged = ImGui.Combo('Mode##mezmode', s.mez.on + 1, MEZ_MODE_LABELS)
+            if modeChanged then
+                s.mez.on = newMode - 1
+                Config.set('Mez', 'MezOn', tostring(s.mez.on))
+                Config.save()
+            end
+            ImGui.PopItemWidth()
+
+            ImGui.Spacing()
+            intInput('Mez Radius##mez', s.mez.radius,   1, 500, 'Mez', 'MezRadius',   function(v) s.mez.radius   = v end)
+            intInput('Stop HP%##mez',   s.mez.stopHPs,  1, 100, 'Mez', 'MezStopHPs',  function(v) s.mez.stopHPs  = v end)
+            intInput('Min Level##mez',  s.mez.minLevel, 1, 125, 'Mez', 'MezMinLevel', function(v) s.mez.minLevel = v end)
+            intInput('Max Level##mez',  s.mez.maxLevel, 1, 125, 'Mez', 'MezMaxLevel', function(v) s.mez.maxLevel = v end)
+
+            ImGui.Spacing()
+            ImGui.Separator()
+            ImGui.PushItemWidth(220)
+            local mezSpell, msc = ImGui.InputText('Mez Spell##mezspell', s.mez.spell, 0)
+            if msc and mezSpell ~= s.mez.spell then
+                s.mez.spell = mezSpell
+                Config.set('Mez', 'MezSpell', mezSpell)
+                Config.save()
+            end
+            local aeMezSpell, asc = ImGui.InputText('AE Mez Spell##aeSpell', s.mez.aeSpell, 0)
+            if asc and aeMezSpell ~= s.mez.aeSpell then
+                s.mez.aeSpell = aeMezSpell
+                Config.set('Mez', 'MezAESpell', aeMezSpell)
+                Config.save()
+            end
+            local debuffSpell, dsc = ImGui.InputText('Debuff Spell##mezDebuff', s.mez.mezDebuffSpell, 0)
+            if dsc and debuffSpell ~= s.mez.mezDebuffSpell then
+                s.mez.mezDebuffSpell = debuffSpell
+                Config.set('Mez', 'MezDebuffSpell', debuffSpell)
+                Config.save()
+            end
+            ImGui.PopItemWidth()
+            ImGui.EndTabItem()
+        end
+
+        if s.session.iAmACharmClass then
+            if ImGui.BeginTabItem('Charm') then
+                ImGui.Spacing()
+                checkbox('Charm Keep', s.charm.keep, function(v)
+                    s.charm.keep = v
+                    Config.set('Charm', 'CharmKeep', v and '1' or '0')
+                    Config.save()
+                end)
+
+                ImGui.Spacing()
+                intInput('Charm Radius##charm', s.charm.radius,   1, 500, 'Charm', 'CharmRadius',   function(v) s.charm.radius   = v end)
+                intInput('Min Level##charm',    s.charm.minLevel, 1, 125, 'Charm', 'CharmMinLevel', function(v) s.charm.minLevel = v end)
+                intInput('Max Level##charm',    s.charm.maxLevel, 0, 125, 'Charm', 'CharmMaxLevel', function(v) s.charm.maxLevel = v end)
+
+                ImGui.Spacing()
+                ImGui.Separator()
+                ImGui.PushItemWidth(220)
+                local charmSpell, csc = ImGui.InputText('Charm Spell##charmspell', s.charm.spell, 0)
+                if csc and charmSpell ~= s.charm.spell then
+                    s.charm.spell = charmSpell
+                    Config.set('Charm', 'CharmSpell', charmSpell)
+                    Config.save()
+                end
+                ImGui.PopItemWidth()
+                ImGui.EndTabItem()
+            end
+        end
+        ImGui.EndTabBar()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- AFK Tools panel
 -- ---------------------------------------------------------------------------
 
@@ -1826,6 +1909,12 @@ local function draw()
             if ImGui.BeginTabItem('Pull') then
                 drawPull()
                 ImGui.EndTabItem()
+            end
+            if _state.session.iAmAMezClass or _state.session.iAmACharmClass then
+                if ImGui.BeginTabItem('CC') then
+                    drawCC()
+                    ImGui.EndTabItem()
+                end
             end
             if ImGui.BeginTabItem('Config') then
                 if ImGui.BeginTabBar('KAConfigTabs') then

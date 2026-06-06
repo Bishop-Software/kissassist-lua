@@ -513,27 +513,27 @@ function Config.defaultCfg()
             PetTauntOverride = '0',
         },
         DPS = {
-            DPSOn = '1', DPSSize = '20', DPSSkip = '0', DPSInterval = '0',
-            DebuffAllOn = '0', DPS = emptyArr(20),
+            DPSOn = '1', DPSSize = '5', DPSSkip = '0', DPSInterval = '0',
+            DebuffAllOn = '0', DPS = emptyArr(5),
         },
         Buffs = {
-            BuffsOn = '1', BuffsSize = '20', RebuffOn = '1', CheckBuffsTimer = '60',
-            PowerSource = '', Buffs = emptyArr(20),
+            BuffsOn = '1', BuffsSize = '5', RebuffOn = '1', CheckBuffsTimer = '60',
+            PowerSource = '', Buffs = emptyArr(5),
         },
         Heals = {
-            HealsOn = '0', HealsSize = '15', HealInterval = '0', AutoRezOn = '0',
+            HealsOn = '0', HealsSize = '5', HealInterval = '0', AutoRezOn = '0',
             XTarHeal = '0', XTarHealList = '', HealGroupPetsOn = '0',
-            RezMeLast = '0', Heals = emptyArr(15),
+            RezMeLast = '0', Heals = emptyArr(5),
         },
         Cures = {
             CuresOn = '0', CuresSize = '5', Cures = emptyArr(5),
         },
         Pet = {
             PetOn = '0', PetSpell = '', PetFocus = '', PetShrinkOn = '0',
-            PetShrinkSpell = '', PetBuffsOn = '0', PetBuffsSize = '8',
-            PetBuffs = emptyArr(8), PetCombatOn = '0', PetAssistAt = '100',
-            PetAttackDistance = '60', PetToysSize = '6', PetToysOn = '0',
-            PetToysGave = '0', PetToys = emptyArr(6), PetBreakMezSpell = '',
+            PetShrinkSpell = '', PetBuffsOn = '0', PetBuffsSize = '5',
+            PetBuffs = emptyArr(5), PetCombatOn = '0', PetAssistAt = '100',
+            PetAttackDistance = '60', PetToysSize = '5', PetToysOn = '0',
+            PetToysGave = '0', PetToys = emptyArr(5), PetBreakMezSpell = '',
             PetRampPullWait = '0', PetSuspend = '0', MoveWhenHit = '0',
             PetHoldOn = '0', PetForceHealOnMed = '0',
         },
@@ -547,16 +547,16 @@ function Config.defaultCfg()
             CharmRadius = '50', CharmKeep = '0',
         },
         Burn = {
-            BurnOn = '1', BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
+            BurnOn = '1', BurnAllNamed = '0', UseTribute = '0', BurnSize = '5', Burn = emptyArr(5),
         },
         Aggro = {
-            AggroOn = '0', AggroSize = '10', Aggro = emptyArr(10),
+            AggroOn = '0', AggroSize = '5', Aggro = emptyArr(5),
         },
         GoM = {
             GoMSize = '3', GoMSpell = emptyArr(3),
         },
         AE = {
-            AEOn = '0', AESize = '10', AERadius = '40', AE = emptyArr(10),
+            AEOn = '0', AESize = '5', AERadius = '40', AE = emptyArr(5),
         },
         Pull = {
             PullWith = 'Melee', PullRange = '15', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
