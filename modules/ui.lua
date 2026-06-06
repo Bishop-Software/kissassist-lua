@@ -60,13 +60,27 @@ local function drawStatus()
     ImGui.SameLine()
     ImGui.TextColored(afc[1], afc[2], afc[3], 1.0, AF_LABELS[af])
 
-    -- Row 3: target / mob count
+    -- Row 3: target / mob count / aggro %
     local targetName = ''
     local aggroID = tonumber(s.combat.aggroTargetID) or 0
     if aggroID > 0 then
         targetName = mq.TLO.Spawn(aggroID).CleanName() or ''
     end
     ImGui.Text(string.format('Target: %-20s  Mobs: %d', targetName, s.combat.mobCount or 0))
+    ImGui.SameLine()
+    ImGui.Text('  Aggro: ')
+    ImGui.SameLine()
+    if (mq.TLO.Me.Level() or 0) < 20 then
+        ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A')
+    else
+        local pctAggro = mq.TLO.Me.PctAggro() or 0
+        local ar, ag, ab
+        if     pctAggro >= 100 then ar, ag, ab = 0.2, 1.0, 0.2
+        elseif pctAggro >= 75  then ar, ag, ab = 1.0, 0.9, 0.1
+        else                        ar, ag, ab = 1.0, 0.3, 0.3
+        end
+        ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
+    end
 
     -- Row 4: camp location / radius
     local mv = s.movement
@@ -1001,24 +1015,6 @@ local function drawAggro()
         Config.set('Aggro', 'AggroOn', v and '1' or '0')
         Config.save()
     end)
-
-    ImGui.SameLine(120)
-    ImGui.Text('Aggro: ')
-    ImGui.SameLine()
-    if (mq.TLO.Me.Level() or 0) < 20 then
-        ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A (< lvl 20)')
-    else
-        local pctAggro = mq.TLO.Me.PctAggro() or 0
-        local ar, ag, ab
-        if pctAggro >= 100 then
-            ar, ag, ab = 0.2, 1.0, 0.2
-        elseif pctAggro >= 75 then
-            ar, ag, ab = 1.0, 0.9, 0.1
-        else
-            ar, ag, ab = 1.0, 0.3, 0.3
-        end
-        ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
-    end
 
     ImGui.Spacing()
     ImGui.Separator()
