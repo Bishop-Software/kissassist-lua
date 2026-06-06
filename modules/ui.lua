@@ -1154,6 +1154,8 @@ local function drawBurn()
         Config.set('Burn', 'UseTribute', v and '1' or '0')
         Config.save()
     end)
+    ImGui.SameLine(240)
+    if ImGui.Button('[Burn Now]') then mq.cmd('/burn') end
 
     ImGui.Spacing()
     local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
