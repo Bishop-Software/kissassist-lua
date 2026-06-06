@@ -621,40 +621,36 @@ local function drawBuffs()
     ImGui.Separator()
     ImGui.Spacing()
 
-    local buffsRaw = Config.get('Buffs', 'Buffs', nil) or {}
+    local buffsRaw  = Config.get('Buffs', 'Buffs',     nil) or {}
+    local buffsSize = tonumber(Config.get('Buffs', 'BuffsSize', '20')) or 20
 
     local function syncBuffsArray()
         s.buffs.buffsArray = {}
         for _, slot in ipairs(Config.parseCondArray(buffsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' then
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
                 s.buffs.buffsArray[#s.buffs.buffsArray + 1] = slot
             end
         end
     end
 
-    local visIdx = {}
-    for i, v in ipairs(buffsRaw) do
-        if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
-    end
-
-    -- Build condition dropdown labels from live state (updates automatically)
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
         local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
         condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
     end
 
-    local toRemove = nil
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
         ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
         ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
-        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
 
-        for _, i in ipairs(visIdx) do
-            local spell, tag, cond = splitBuff(buffsRaw[i] or '')
+        for i = 1, buffsSize do
+            local raw     = buffsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, tag, cond = splitBuff(isEmpty and '' or raw)
             local sc, tc, cc = false, false, false
             local newSpell, newTag, newCond = spell, tag, cond
 
@@ -677,14 +673,26 @@ local function drawBuffs()
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
-            if ImGui.Button('[-]##buffrem' .. i) then toRemove = i end
+            if ImGui.Button('[-]##buffrem' .. i) then
+                if i == buffsSize and buffsSize > 1 then
+                    buffsRaw[i] = nil
+                    buffsSize   = buffsSize - 1
+                    Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
+                else
+                    buffsRaw[i] = 'null'
+                end
+                Config.set('Buffs', 'Buffs', buffsRaw)
+                Config.save()
+                syncBuffsArray()
+            end
 
             if sc or tc or cc then
-                buffsRaw[i] = joinBuff(
-                    sc and newSpell or spell,
-                    tc and newTag   or tag,
-                    cc and newCond  or cond
-                )
+                local spellVal = sc and newSpell or spell
+                buffsRaw[i] = spellVal ~= '' and joinBuff(
+                    spellVal,
+                    tc and newTag  or tag,
+                    cc and newCond or cond
+                ) or 'null'
                 Config.set('Buffs', 'Buffs', buffsRaw)
                 Config.save()
                 syncBuffsArray()
@@ -693,16 +701,11 @@ local function drawBuffs()
         ImGui.EndTable()
     end
 
-    if toRemove then
-        table.remove(buffsRaw, toRemove)
-        Config.set('Buffs', 'Buffs', buffsRaw)
-        Config.save()
-        syncBuffsArray()
-    end
-
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
-        buffsRaw[#buffsRaw + 1] = ''
+        buffsSize = buffsSize + 1
+        buffsRaw[buffsSize] = 'null'
+        Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
         Config.set('Buffs', 'Buffs', buffsRaw)
         Config.save()
     end
