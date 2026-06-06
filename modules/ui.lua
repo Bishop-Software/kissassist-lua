@@ -538,24 +538,30 @@ local function drawConditions()
     ImGui.Separator()
     ImGui.Spacing()
 
+    -- Conditions are stored as an indexed array under the 'Cond' key.
+    local condArr = Config.get('KConditions', 'Cond', nil) or {}
+
     ImGui.PushItemWidth(300)
     for i = 1, (s.cond.size or 5) do
-        local key     = string.format('Cond%03d', i)
         local current = s.cond.expressions[i] or ''
         local newVal, changed = ImGui.InputText(string.format('Cond %03d##cond%d', i, i), current, 0)
         if changed and newVal ~= current then
-            s.cond.expressions[i] = newVal
-            Config.set('KConditions', key, newVal)
+            s.cond.expressions[i] = newVal ~= '' and newVal or nil
+            condArr[i] = newVal ~= '' and newVal or 'null'
+            Config.set('KConditions', 'Cond', condArr)
             Config.save()
         end
         ImGui.SameLine()
         if ImGui.Button('[-]##condrem' .. i) then
             s.cond.expressions[i] = nil
-            Config.set('KConditions', key, '')
             if i == s.cond.size and s.cond.size > 1 then
+                condArr[s.cond.size] = nil
                 s.cond.size = s.cond.size - 1
                 Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+            else
+                condArr[i] = 'null'
             end
+            Config.set('KConditions', 'Cond', condArr)
             Config.save()
         end
     end
@@ -564,6 +570,8 @@ local function drawConditions()
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
         s.cond.size = (s.cond.size or 5) + 1
+        condArr[s.cond.size] = 'null'
+        Config.set('KConditions', 'Cond', condArr)
         Config.set('KConditions', 'CondSize', tostring(s.cond.size))
         Config.save()
     end

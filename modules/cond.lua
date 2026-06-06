@@ -10,14 +10,36 @@ function Cond.init(state, utils)
 end
 
 -- Reads [KConditions] INI section into state.cond.
+-- Conditions are stored as an indexed array under the 'Cond' key.
+-- Migrates old CondNNN string keys to array format on first load.
 function Cond.load()
     _state.cond.on   = Config.get('KConditions', 'ConOn',    '0') == '1'
     _state.cond.size = tonumber(Config.get('KConditions', 'CondSize', '5')) or 5
+
+    local condArr = Config.get('KConditions', 'Cond', nil)
+    if not condArr then
+        -- Migrate old CondNNN string keys into array format
+        condArr = {}
+        local migrated = false
+        for i = 1, _state.cond.size do
+            local oldKey = string.format('Cond%03d', i)
+            local val = Config.get('KConditions', oldKey, '')
+            if val ~= '' then
+                condArr[i] = val
+                Config.set('KConditions', oldKey, nil)
+                migrated = true
+            else
+                condArr[i] = 'null'
+            end
+        end
+        Config.set('KConditions', 'Cond', condArr)
+        if migrated then Config.save() end
+    end
+
     _state.cond.expressions = {}
     for i = 1, _state.cond.size do
-        local key = string.format('Cond%03d', i)
-        local val = Config.get('KConditions', key, '')
-        if val ~= '' then
+        local val = condArr[i]
+        if val and val ~= 'null' and val ~= '' then
             _state.cond.expressions[i] = val
         end
     end
