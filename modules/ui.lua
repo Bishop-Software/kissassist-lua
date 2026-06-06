@@ -1521,7 +1521,7 @@ local function draw()
             end
             if ImGui.BeginTabItem('Config') then
                 if ImGui.BeginTabBar('KAConfigTabs') then
-                    if ImGui.BeginTabItem('Config') then
+                    if ImGui.BeginTabItem('Settings') then
                         drawControls()
                         ImGui.EndTabItem()
                     end
