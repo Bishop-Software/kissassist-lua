@@ -33,13 +33,19 @@ local function drawStatus()
     -- Combat state label + color
     local combatLabel, cr, cg, cb
     if s.session.iAmDead then
-        combatLabel, cr, cg, cb = 'DEAD',     1.0, 0.2, 0.2
+        combatLabel, cr, cg, cb = 'DEAD',      1.0, 0.2, 0.2
     elseif s.combat.combatStart then
-        combatLabel, cr, cg, cb = 'FIGHTING', 1.0, 0.4, 0.4
+        combatLabel, cr, cg, cb = 'FIGHTING',  1.0, 0.4, 0.4
     elseif s.pull.pulling then
-        combatLabel, cr, cg, cb = 'PULLING',  1.0, 0.9, 0.1
+        combatLabel, cr, cg, cb = 'PULLING',   1.0, 0.9, 0.1
+    elseif s.movement.returnToCamp then
+        combatLabel, cr, cg, cb = 'RETURNING', 1.0, 0.7, 0.2
+    elseif s.heal.medding then
+        combatLabel, cr, cg, cb = 'MEDDING',   0.4, 0.8, 1.0
+    elseif s.session.chaseAssist then
+        combatLabel, cr, cg, cb = 'CHASING ' .. (s.movement.whoToChase or ''), 0.8, 0.6, 1.0
     else
-        combatLabel, cr, cg, cb = 'IDLE',     0.4, 1.0, 0.4
+        combatLabel, cr, cg, cb = 'IDLE',      0.4, 1.0, 0.4
     end
 
     -- Row 1: role / MA
@@ -89,8 +95,17 @@ local function drawStatus()
     if isPuller and (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then
         ImGui.TextColored(1.0, 0.2, 0.2, 1.0, 'No Camp Set — run /makecamphere')
     else
-        ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)  Radius: %d',
-            mv.campY or 0, mv.campX or 0, mv.campZ or 0, mv.campRadius or 0))
+        local rtcSuffix = mv.returnToCamp and '  [RTC]' or ''
+        ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)  Radius: %d%s',
+            mv.campY or 0, mv.campX or 0, mv.campZ or 0, mv.campRadius or 0, rtcSuffix))
+    end
+
+    -- Row 5 (charm classes only): charmed mob
+    if s.session.iAmACharmClass and (s.charm.petId or 0) > 0 then
+        local charmName = mq.TLO.Spawn(s.charm.petId).CleanName() or '???'
+        ImGui.Text('Charmed: ')
+        ImGui.SameLine()
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, charmName)
     end
 end
 
