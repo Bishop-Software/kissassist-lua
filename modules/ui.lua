@@ -1148,6 +1148,10 @@ end
 local function drawBurn()
     local s = _state
 
+    checkbox('Burn', s.combat.burnOn, function(_)
+        mq.cmd('/burn')
+    end)
+    ImGui.SameLine(120)
     checkbox('Use Tribute', s.combat.useTribute, function(v)
         s.combat.useTribute = v
         Config.set('Burn', 'UseTribute', v and '1' or '0')
