@@ -60,13 +60,27 @@ local function drawStatus()
     ImGui.SameLine()
     ImGui.TextColored(afc[1], afc[2], afc[3], 1.0, AF_LABELS[af])
 
-    -- Row 3: target / mob count
+    -- Row 3: target / mob count / aggro %
     local targetName = ''
     local aggroID = tonumber(s.combat.aggroTargetID) or 0
     if aggroID > 0 then
         targetName = mq.TLO.Spawn(aggroID).CleanName() or ''
     end
     ImGui.Text(string.format('Target: %-20s  Mobs: %d', targetName, s.combat.mobCount or 0))
+    ImGui.SameLine()
+    ImGui.Text('  Aggro: ')
+    ImGui.SameLine()
+    if (mq.TLO.Me.Level() or 0) < 20 then
+        ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A')
+    else
+        local pctAggro = mq.TLO.Me.PctAggro() or 0
+        local ar, ag, ab
+        if     pctAggro >= 100 then ar, ag, ab = 0.2, 1.0, 0.2
+        elseif pctAggro >= 75  then ar, ag, ab = 1.0, 0.9, 0.1
+        else                        ar, ag, ab = 1.0, 0.3, 0.3
+        end
+        ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
+    end
 
     -- Row 4: camp location / radius
     local mv = s.movement
@@ -1002,24 +1016,6 @@ local function drawAggro()
         Config.save()
     end)
 
-    ImGui.SameLine(120)
-    ImGui.Text('Aggro: ')
-    ImGui.SameLine()
-    if (mq.TLO.Me.Level() or 0) < 20 then
-        ImGui.TextColored(0.6, 0.6, 0.6, 1.0, 'N/A (< lvl 20)')
-    else
-        local pctAggro = mq.TLO.Me.PctAggro() or 0
-        local ar, ag, ab
-        if pctAggro >= 100 then
-            ar, ag, ab = 0.2, 1.0, 0.2
-        elseif pctAggro >= 75 then
-            ar, ag, ab = 1.0, 0.9, 0.1
-        else
-            ar, ag, ab = 1.0, 0.3, 0.3
-        end
-        ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
-    end
-
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Spacing()
@@ -1451,56 +1447,86 @@ local function draw()
         drawStatus()
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
-            if ImGui.BeginTabItem('Config') then
-                drawControls()
+            if ImGui.BeginTabItem('Combat') then
+                if ImGui.BeginTabBar('KACombatTabs') then
+                    if ImGui.BeginTabItem('Melee') then
+                        drawMelee()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('DPS') then
+                        drawDPS()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Burn') then
+                        drawBurn()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Aggro') then
+                        drawAggro()
+                        ImGui.EndTabItem()
+                    end
+                    ImGui.EndTabBar()
+                end
                 ImGui.EndTabItem()
             end
-            if ImGui.BeginTabItem('Melee') then
-                drawMelee()
+            if ImGui.BeginTabItem('Healing') then
+                if ImGui.BeginTabBar('KAHealingTabs') then
+                    if ImGui.BeginTabItem('Heals') then
+                        drawHealThresholds()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Cures') then
+                        drawCures()
+                        ImGui.EndTabItem()
+                    end
+                    ImGui.EndTabBar()
+                end
                 ImGui.EndTabItem()
             end
-            if ImGui.BeginTabItem('DPS') then
-                drawDPS()
+            if ImGui.BeginTabItem('Spells') then
+                if ImGui.BeginTabBar('KASpellsTabs') then
+                    if ImGui.BeginTabItem('Spells') then
+                        drawSpellSlots()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Buffs') then
+                        drawBuffs()
+                        ImGui.EndTabItem()
+                    end
+                    ImGui.EndTabBar()
+                end
                 ImGui.EndTabItem()
             end
-            if ImGui.BeginTabItem('Burn') then
-                drawBurn()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Aggro') then
-                drawAggro()
+            if ImGui.BeginTabItem('Support') then
+                if ImGui.BeginTabBar('KASupportTabs') then
+                    if ImGui.BeginTabItem('Pet') then
+                        drawPet()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Merc') then
+                        drawMerc()
+                        ImGui.EndTabItem()
+                    end
+                    ImGui.EndTabBar()
+                end
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Pull') then
                 drawPull()
                 ImGui.EndTabItem()
             end
-            if ImGui.BeginTabItem('Heals') then
-                drawHealThresholds()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Cures') then
-                drawCures()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Spells') then
-                drawSpellSlots()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Buffs') then
-                drawBuffs()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Pet') then
-                drawPet()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Merc') then
-                drawMerc()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Conditions') then
-                drawConditions()
+            if ImGui.BeginTabItem('Config') then
+                if ImGui.BeginTabBar('KAConfigTabs') then
+                    if ImGui.BeginTabItem('Settings') then
+                        drawControls()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Conditions') then
+                        drawConditions()
+                        ImGui.EndTabItem()
+                    end
+                    ImGui.EndTabBar()
+                end
                 ImGui.EndTabItem()
             end
             if _state.session.iAmABard then
