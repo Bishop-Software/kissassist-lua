@@ -745,6 +745,20 @@ local function drawAggro()
         Config.save()
     end)
 
+    local pctAggro = mq.TLO.Me.PctAggro() or 0
+    local ar, ag, ab
+    if pctAggro >= 100 then
+        ar, ag, ab = 0.2, 1.0, 0.2
+    elseif pctAggro >= 75 then
+        ar, ag, ab = 1.0, 0.9, 0.1
+    else
+        ar, ag, ab = 1.0, 0.3, 0.3
+    end
+    ImGui.SameLine(120)
+    ImGui.Text('Aggro: ')
+    ImGui.SameLine()
+    ImGui.TextColored(ar, ag, ab, 1.0, pctAggro .. '%')
+
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Spacing()
