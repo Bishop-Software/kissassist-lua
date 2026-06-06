@@ -744,6 +744,10 @@ local function draw()
                 drawSpellSlots()
                 ImGui.EndTabItem()
             end
+            if ImGui.BeginTabItem('Buffs') then
+                drawBuffs()
+                ImGui.EndTabItem()
+            end
             if ImGui.BeginTabItem('Pet') then
                 drawPet()
                 ImGui.EndTabItem()
@@ -754,10 +758,6 @@ local function draw()
             end
             if ImGui.BeginTabItem('Conditions') then
                 drawConditions()
-                ImGui.EndTabItem()
-            end
-            if ImGui.BeginTabItem('Buffs') then
-                drawBuffs()
                 ImGui.EndTabItem()
             end
             if _state.session.iAmABard then
