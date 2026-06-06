@@ -581,6 +581,29 @@ end
 -- Buffs panel
 -- ---------------------------------------------------------------------------
 
+local function splitBuff(raw)
+    -- SpellName[|TargetTag][|condNNN]  →  spell, tag, cond
+    local spell, tag, cond = raw, '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond  = raw:sub(condPos + 1)
+        spell = raw:sub(1, condPos - 1)
+    end
+    local pipePos = spell:find('|')
+    if pipePos then
+        tag   = spell:sub(pipePos + 1)
+        spell = spell:sub(1, pipePos - 1)
+    end
+    return spell, tag, cond
+end
+
+local function joinBuff(spell, tag, cond)
+    local result = spell
+    if tag  ~= '' then result = result .. '|' .. tag  end
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
+end
+
 local function drawBuffs()
     local s = _state
 
@@ -617,28 +640,54 @@ local function drawBuffs()
 
     local visIdx = {}
     for i, v in ipairs(buffsRaw) do
-        if v and v ~= 'null' then
-            visIdx[#visIdx + 1] = i
-        end
+        if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
     end
 
-    ImGui.PushItemWidth(280)
     local toRemove = nil
-    for _, i in ipairs(visIdx) do
-        local current = buffsRaw[i] or ''
-        local newVal, changed = ImGui.InputText('##buff' .. i, current, 0)
-        if changed and newVal ~= current then
-            buffsRaw[i] = newVal
-            Config.set('Buffs', 'Buffs', buffsRaw)
-            Config.save()
-            syncBuffsArray()
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   70)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for _, i in ipairs(visIdx) do
+            local spell, tag, cond = splitBuff(buffsRaw[i] or '')
+            local sc, tc, cc = false, false, false
+            local newSpell, newTag, newCond = spell, tag, cond
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##bspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newTag, tc = ImGui.InputText('##btag' .. i, tag, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newCond, cc = ImGui.InputText('##bcond' .. i, cond, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##buffrem' .. i) then toRemove = i end
+
+            if sc or tc or cc then
+                buffsRaw[i] = joinBuff(
+                    sc and newSpell or spell,
+                    tc and newTag   or tag,
+                    cc and newCond  or cond
+                )
+                Config.set('Buffs', 'Buffs', buffsRaw)
+                Config.save()
+                syncBuffsArray()
+            end
         end
-        ImGui.SameLine()
-        if ImGui.Button('[-]##buffrem' .. i) then
-            toRemove = i
-        end
+        ImGui.EndTable()
     end
-    ImGui.PopItemWidth()
 
     if toRemove then
         table.remove(buffsRaw, toRemove)
