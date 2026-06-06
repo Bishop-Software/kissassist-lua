@@ -93,10 +93,6 @@ local function drawControls()
     local s = _state
 
     -- Row 1
-    checkbox('Heals', s.heal.healsOn ~= 0, function(v)
-        s.heal.healsOn = v and 1 or 0
-    end)
-    ImGui.SameLine(120)
     checkbox('Cures', s.heal.curesOn ~= 0, function(v)
         s.heal.curesOn = v and 1 or 0
     end)
@@ -337,6 +333,16 @@ end
 
 local function drawHealThresholds()
     local s = _state
+
+    checkbox('Heals On', s.heal.healsOn ~= 0, function(v)
+        s.heal.healsOn = v and 1 or 0
+        Config.set('Heals', 'HealsOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
 
     local healsRaw  = Config.get('Heals', 'Heals',     nil) or {}
     local healsSize = tonumber(Config.get('Heals', 'HealsSize', '15')) or 15
