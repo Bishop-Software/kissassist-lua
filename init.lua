@@ -80,9 +80,9 @@ State.loot.radius   = tonumber(Config.get('General', 'CorpseRadius', '100')) or 
 State.loot.spamInfo = tonumber(Config.get('General', 'SpamLootInfo', '1')) or 1
 
 -- Wire cast gem settings from INI into State
-State.cast.miscGem      = tonumber(Config.get('SpellS', 'MiscGem',      '0')) or 0
-State.cast.miscGemLW    = tonumber(Config.get('SpellS', 'MiscGemLW',    '0')) or 0
-State.cast.miscGemRemem = tonumber(Config.get('SpellS', 'MiscGemRemem', '0')) or 0
+State.cast.miscGem      = tonumber(Config.get('SpellSets', 'MiscGem',      '0')) or 0
+State.cast.miscGemLW    = tonumber(Config.get('SpellSets', 'MiscGemLW',    '0')) or 0
+State.cast.miscGemRemem = tonumber(Config.get('SpellSets', 'MiscGemRemem', '0')) or 0
 State.cast.gemSlots     = 8 + (mq.TLO.Me.AltAbility('Mnemonic Retention').Rank() or 0)
 -- Snapshot the spell currently occupying each misc gem slot (restored by CastReMem)
 if State.cast.miscGem > 0 then
