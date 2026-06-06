@@ -15,6 +15,7 @@ local State = {
         originalRole    = '',
         iAmABard        = false,  -- set at startup from Me.Class
         iAmARogue       = false,  -- set at startup from Me.Class
+        iAmAMezClass    = false,  -- set at startup: BRD/ENC/NEC
         iAmACharmClass  = false,  -- set at startup: DRU/ENC/NEC/BRD
         iAmMA           = false,
         iAmDead         = false,
