@@ -98,10 +98,6 @@ local function drawControls()
     end)
 
     -- Row 2
-    checkbox('Buffs', s.buffs.buffsOn, function(v)
-        s.buffs.buffsOn = v
-    end)
-    ImGui.SameLine(120)
     checkbox('Mez', s.mez.on ~= 0, function(v)
         s.mez.on = v and 1 or 0
     end)
@@ -578,6 +574,143 @@ local function drawConditions()
 end
 
 -- ---------------------------------------------------------------------------
+-- Buffs panel
+-- ---------------------------------------------------------------------------
+
+local function splitBuff(raw)
+    -- SpellName[|TargetTag][|condNNN]  →  spell, tag, cond
+    local spell, tag, cond = raw, '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond  = raw:sub(condPos + 1)
+        spell = raw:sub(1, condPos - 1)
+    end
+    local pipePos = spell:find('|')
+    if pipePos then
+        tag   = spell:sub(pipePos + 1)
+        spell = spell:sub(1, pipePos - 1)
+    end
+    return spell, tag, cond
+end
+
+local function joinBuff(spell, tag, cond)
+    local result = spell
+    if tag  ~= '' then result = result .. '|' .. tag  end
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
+end
+
+local function drawBuffs()
+    local s = _state
+
+    checkbox('Buffs On', s.buffs.buffsOn, function(v)
+        s.buffs.buffsOn = v
+        Config.set('Buffs', 'BuffsOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Rebuff On', s.buffs.rebuffOn, function(v)
+        s.buffs.rebuffOn = v
+        Config.set('Buffs', 'RebuffOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    intInput('Check Timer', s.buffs.checkBuffsTimer, 1, 3600, 'Buffs', 'CheckBuffsTimer',
+        function(v) s.buffs.checkBuffsTimer = v end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local buffsRaw = Config.get('Buffs', 'Buffs', nil) or {}
+
+    local function syncBuffsArray()
+        s.buffs.buffsArray = {}
+        for _, slot in ipairs(Config.parseCondArray(buffsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' then
+                s.buffs.buffsArray[#s.buffs.buffsArray + 1] = slot
+            end
+        end
+    end
+
+    local visIdx = {}
+    for i, v in ipairs(buffsRaw) do
+        if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
+    end
+
+    -- Build condition dropdown labels from live state (updates automatically)
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local toRemove = nil
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for _, i in ipairs(visIdx) do
+            local spell, tag, cond = splitBuff(buffsRaw[i] or '')
+            local sc, tc, cc = false, false, false
+            local newSpell, newTag, newCond = spell, tag, cond
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##bspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newTag, tc = ImGui.InputText('##btag' .. i, tag, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##buffrem' .. i) then toRemove = i end
+
+            if sc or tc or cc then
+                buffsRaw[i] = joinBuff(
+                    sc and newSpell or spell,
+                    tc and newTag   or tag,
+                    cc and newCond  or cond
+                )
+                Config.set('Buffs', 'Buffs', buffsRaw)
+                Config.save()
+                syncBuffsArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    if toRemove then
+        table.remove(buffsRaw, toRemove)
+        Config.set('Buffs', 'Buffs', buffsRaw)
+        Config.save()
+        syncBuffsArray()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        buffsRaw[#buffsRaw + 1] = ''
+        Config.set('Buffs', 'Buffs', buffsRaw)
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -609,6 +742,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Spells') then
                 drawSpellSlots()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Buffs') then
+                drawBuffs()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Pet') then
