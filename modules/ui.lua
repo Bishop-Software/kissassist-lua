@@ -393,8 +393,8 @@ local function drawHealThresholds()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -782,8 +782,8 @@ local function drawCures()
             -- Cond
             ImGui.TableNextColumn()
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
-            local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo, condLabels)
-            local newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo + 1, condLabels)
+            local newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
 
             if sc or tc or (selfEnabled and soc) or cc then
                 local finalDtype    = tc    and newDtype    or dtype
@@ -922,8 +922,8 @@ local function drawBuffs()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1190,8 +1190,8 @@ local function drawAggro()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##acond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##acond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1345,8 +1345,8 @@ local function drawDPS()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##dcond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##dcond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1492,8 +1492,8 @@ local function drawBurn()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1644,8 +1644,8 @@ local function drawAE()
             ImGui.PushItemWidth(-1)
             local condNo = tonumber(cond:match('cond(%d+)')) or 0
             local newCondIdx
-            newCondIdx, cc = ImGui.Combo('##aecond' .. i, condNo, condLabels)
-            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            newCondIdx, cc = ImGui.Combo('##aecond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()

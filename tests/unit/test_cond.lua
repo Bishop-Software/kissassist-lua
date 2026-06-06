@@ -24,24 +24,39 @@ function M.run(TH, MockMQ)
     TH.assert_true(Cond.evalStr(nil), 'evalStr(nil) = true')
     TH.assert_true(Cond.evalStr(''),  'evalStr("") = true')
 
-    -- parse returns '1' → truthy
+    -- parse returns '1' → truthy (TLO that returns numeric 1)
     MockMQ.set('parse:${Me.PctHPs}>50', '1')
     TH.assert_true(Cond.evalStr('${Me.PctHPs}>50'), 'evalStr "1" = true')
 
-    -- parse returns a non-zero, non-FALSE string → truthy
+    -- parse returns a non-zero numeric string → truthy
     MockMQ.set('parse:${Target.ID}', '12345')
     TH.assert_true(Cond.evalStr('${Target.ID}'), 'evalStr numeric string = true')
 
-    -- parse returns '0' → false
+    -- parse returns '0' → false (explicit terminal value)
     MockMQ.set('parse:${Me.PctHPs}<10', '0')
     TH.assert_false(Cond.evalStr('${Me.PctHPs}<10'), 'evalStr "0" = false')
 
-    -- parse returns 'FALSE' → false
+    -- parse returns 'FALSE' → false (explicit terminal value)
     MockMQ.set('parse:${Me.Invis}', 'FALSE')
     TH.assert_false(Cond.evalStr('${Me.Invis}'), 'evalStr "FALSE" = false')
 
     -- no mock set for this expr → default '0' → false
     TH.assert_false(Cond.evalStr('${UnknownExpr}'), 'evalStr unmocked = false')
+
+    -- mq.parse expands TLOs but not comparison operators: '100 < 75' via Lua eval → false
+    MockMQ.set('parse:${Me.PctHPs} < 75', '100 < 75')
+    TH.assert_false(Cond.evalStr('${Me.PctHPs} < 75'), 'evalStr TLO-expanded comparison false')
+
+    -- mq.parse expands TLOs but not comparison operators: '50 < 75' via Lua eval → true
+    MockMQ.set('parse:${Me.PctHPs} < 75', '50 < 75')
+    TH.assert_true(Cond.evalStr('${Me.PctHPs} < 75'), 'evalStr TLO-expanded comparison true')
+
+    -- complex comparison: >= operator
+    MockMQ.set('parse:${Me.PctMana} >= 30', '80 >= 30')
+    TH.assert_true(Cond.evalStr('${Me.PctMana} >= 30'), 'evalStr >= true')
+
+    MockMQ.set('parse:${Me.PctMana} >= 30', '20 >= 30')
+    TH.assert_false(Cond.evalStr('${Me.PctMana} >= 30'), 'evalStr >= false')
 
     -- Cond.eval — cond.on = false: bypass regardless of slot content -----------
     MockMQ.reset()

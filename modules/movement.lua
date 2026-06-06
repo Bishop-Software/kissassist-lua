@@ -42,6 +42,19 @@ function Movement.init(state, utils)
     _state.pull.moveUse        = Config.get('Pull', 'PullMoveUse', 'los') or 'los'
     _state.pull.max            = tonumber(Config.get('Pull', 'MaxRadius', '0')) or 0
     _state.pull.waypointZRange = tonumber(Config.get('Pull', 'MaxZRange', '0')) or 0
+
+    -- One-time MQ2MoveUtils global settings (mac:16390-16398).
+    -- usefleeing on: stick pursues mobs that run away.
+    -- feign on: stick breaks when feign death is detected.
+    mq.cmd('/stick set autosave off')
+    mq.cmd('/stick set verbflags 0')
+    mq.cmd('/stick set breakonkb on')
+    mq.cmd('/stick set breakonmouse off')
+    mq.cmdf('/stick set breakdist %d', _state.movement.campRadiusExceed)
+    mq.cmd('/stick set breakonwarp on')
+    mq.cmd('/stick set usefleeing on')
+    mq.cmd('/stick set delaystrafe on')
+    mq.cmd('/stick set feign on')
 end
 
 -- Port of DoWeMove (kissassist.mac:3342-3663).

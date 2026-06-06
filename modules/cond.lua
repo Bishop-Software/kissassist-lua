@@ -46,10 +46,21 @@ function Cond.load()
 end
 
 -- Evaluate an arbitrary TLO expression string. Returns true if the result is truthy.
+-- mq.parse only expands TLOs — it does not evaluate comparison operators.
+-- '${Me.PctHPs} < 75' with HP=100 yields '100 < 75', not 'FALSE'.
+-- We evaluate the expanded result as a Lua expression to handle this case.
 function Cond.evalStr(expr)
     if not expr or expr == '' then return true end
     local result = mq.parse(expr)
-    return result ~= nil and result ~= 'FALSE' and result ~= '0'
+    if result == nil then return false end
+    if result == 'FALSE' or result == '0' then return false end
+    if result == 'TRUE'  or result == '1' then return true end
+    local fn = load('return ' .. result)
+    if fn then
+        local ok, val = pcall(fn)
+        if ok then return not not val end
+    end
+    return result ~= ''
 end
 
 -- Evaluate condition slot n.
