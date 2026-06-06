@@ -89,20 +89,23 @@ local function checkbox(label, value, onChange)
     if newVal ~= value then onChange(newVal) end
 end
 
+local function intInput(label, value, min, max, configSection, configKey, stateSet)
+    local newVal = ImGui.InputInt(label, value)
+    if newVal ~= value then
+        newVal = math.max(min, math.min(max, newVal))
+        stateSet(newVal)
+        Config.set(configSection, configKey, tostring(newVal))
+        Config.save()
+    end
+end
+
 local function drawControls()
     local s = _state
 
-    -- Row 1
-    checkbox('Cures', s.heal.curesOn ~= 0, function(v)
-        s.heal.curesOn = v and 1 or 0
-    end)
-
-    -- Row 2
     checkbox('Mez', s.mez.on ~= 0, function(v)
         s.mez.on = v and 1 or 0
     end)
 
-    -- Row 3
     checkbox('Loot', s.loot.on ~= 0, function(v)
         mq.cmd(v and '/kalooton' or '/kalootoff')
     end)
@@ -123,25 +126,10 @@ local function drawControls()
     if ImGui.Button('Chase Me',       COL, 0) then mq.cmd('/chaseme')      end
     ImGui.SameLine()
     if ImGui.Button('Stay Here',      COL, 0) then mq.cmd('/stayhere')     end
-end
 
--- ---------------------------------------------------------------------------
--- Live Config Editing panel
--- ---------------------------------------------------------------------------
-
-local function intInput(label, value, min, max, configSection, configKey, stateSet)
-    local newVal = ImGui.InputInt(label, value)
-    if newVal ~= value then
-        newVal = math.max(min, math.min(max, newVal))
-        stateSet(newVal)
-        Config.set(configSection, configKey, tostring(newVal))
-        Config.save()
-    end
-end
-
-local function drawConfig()
-    local s = _state
-
+    -- Numeric settings
+    ImGui.Spacing()
+    ImGui.Separator()
     intInput('Camp Radius', s.movement.campRadius,  1, 1000, 'General', 'CampRadius', function(v) s.movement.campRadius = v end)
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
@@ -638,6 +626,172 @@ local function drawConditions()
         condArr[s.cond.size] = 'null'
         Config.set('KConditions', 'Cond', condArr)
         Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Cures panel
+-- ---------------------------------------------------------------------------
+
+-- Parse: SpellName[|debuffType[|Me]][|condNNN]
+-- debuffType absent or 'me' → no type filter; 'me' alone → self-only scope
+local function splitCure(raw)
+    local spell, dtype, selfOnly, cond = raw, '', false, ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
+    end
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell = parts[1] or ''
+    local arg2 = (parts[2] or ''):lower()
+    local arg3 = (parts[3] or ''):lower()
+    if arg2 == 'me' then
+        selfOnly = true; dtype = ''
+    elseif arg2 ~= '' then
+        dtype    = arg2
+        selfOnly = (arg3 == 'me')
+    end
+    return spell, dtype, selfOnly, cond
+end
+
+local function joinCure(spell, dtype, selfOnly, cond)
+    local result = spell
+    if dtype ~= '' then
+        result = result .. '|' .. dtype
+        if selfOnly then result = result .. '|Me' end
+    elseif selfOnly then
+        result = result .. '|Me'
+    end
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
+end
+
+local _CURE_TYPE_LABELS = { '(any)', 'Self', 'Disease', 'Poison', 'Curse', 'Corruption', 'Mezzed' }
+local _CURE_TYPE_VALUES = { '',      'me',   'disease', 'poison', 'curse', 'corruption', 'mezzed' }
+
+local function cureTypeToIdx(dtype, selfOnly)
+    if dtype == '' and selfOnly then return 2 end  -- Self
+    for i, v in ipairs(_CURE_TYPE_VALUES) do
+        if v == dtype then return i end
+    end
+    return 1  -- (any)
+end
+
+local function drawCures()
+    local s = _state
+
+    local curesOnLabels = { 'Off', 'Everyone', 'Self Only', 'Group Only' }
+    local newCuresOnIdx, coc = ImGui.Combo('Cures Mode##curesOn', s.heal.curesOn, curesOnLabels)
+    if coc then
+        s.heal.curesOn = newCuresOnIdx
+        Config.set('Cures', 'CuresOn', tostring(newCuresOnIdx))
+        Config.save()
+    end
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local curesRaw  = Config.get('Cures', 'Cures',     nil) or {}
+    local curesSize = tonumber(Config.get('Cures', 'CuresSize', '5')) or 5
+
+    local function syncCuresArray()
+        s.heal.curesArray = {}
+        for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
+            s.heal.curesArray[#s.heal.curesArray + 1] = slot
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('cures_tbl', 5, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Type',  ImGuiTableColumnFlags.WidthFixed,   100)
+        ImGui.TableSetupColumn('Self',  ImGuiTableColumnFlags.WidthFixed,    36)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, curesSize do
+            local raw     = curesRaw[i] or ''
+            local isEmpty = raw == '' or raw == 'null' or raw == 'NULL'
+            local spell, dtype, selfOnly, cond = splitCure(isEmpty and '' or raw)
+
+            ImGui.TableNextRow()
+
+            -- Spell
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newSpell, sc = ImGui.InputText('##cspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            -- Type
+            ImGui.TableNextColumn()
+            local typeIdx    = cureTypeToIdx(dtype, selfOnly)
+            local newTypeIdx, tc = ImGui.Combo('##ctype' .. i, typeIdx - 1, _CURE_TYPE_LABELS)
+            newTypeIdx = newTypeIdx + 1  -- back to 1-based
+            local newDtype    = _CURE_TYPE_VALUES[newTypeIdx] or ''
+            -- 'Self' selection collapses selfOnly into the type field; clear selfOnly
+            local newSelfOnly = (newTypeIdx == 2) and false or selfOnly
+
+            -- Self checkbox — only meaningful when a debuff type (not Self) is selected
+            ImGui.TableNextColumn()
+            local selfEnabled = newDtype ~= '' and newDtype ~= 'me'
+            if not selfEnabled then ImGui.BeginDisabled() end
+            local newSelf, soc = ImGui.Checkbox('##cself' .. i, selfOnly)
+            if not selfEnabled then ImGui.EndDisabled() end
+            if selfEnabled and soc then newSelfOnly = newSelf end
+
+            -- Cond
+            ImGui.TableNextColumn()
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo, condLabels)
+            local newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+
+            if sc or tc or (selfEnabled and soc) or cc then
+                local finalDtype    = tc    and newDtype    or dtype
+                local finalSelf     = soc   and newSelfOnly or ((tc and newTypeIdx == 2) and false or selfOnly)
+                local finalCond     = cc    and newCond     or cond
+                local finalSpell    = sc    and newSpell    or spell
+                local out = joinCure(finalSpell, finalDtype, finalSelf, finalCond)
+                curesRaw[i] = (out == '') and 'null' or out
+                Config.set('Cures', 'Cures', curesRaw)
+                Config.save()
+                syncCuresArray()
+            end
+
+            -- Remove
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##crem' .. i) then
+                if i == curesSize and curesSize > 1 then
+                    curesRaw[curesSize] = nil
+                    curesSize = curesSize - 1
+                    Config.set('Cures', 'CuresSize', tostring(curesSize))
+                else
+                    curesRaw[i] = 'null'
+                end
+                Config.set('Cures', 'Cures', curesRaw)
+                Config.save()
+                syncCuresArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        curesSize = curesSize + 1
+        curesRaw[curesSize] = 'null'
+        Config.set('Cures', 'Cures', curesRaw)
+        Config.set('Cures', 'CuresSize', tostring(curesSize))
         Config.save()
     end
 end
@@ -1297,7 +1451,7 @@ local function draw()
         drawStatus()
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
-            if ImGui.BeginTabItem('Controls') then
+            if ImGui.BeginTabItem('Config') then
                 drawControls()
                 ImGui.EndTabItem()
             end
@@ -1321,12 +1475,12 @@ local function draw()
                 drawPull()
                 ImGui.EndTabItem()
             end
-            if ImGui.BeginTabItem('Config') then
-                drawConfig()
-                ImGui.EndTabItem()
-            end
             if ImGui.BeginTabItem('Heals') then
                 drawHealThresholds()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Cures') then
+                drawCures()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Spells') then
