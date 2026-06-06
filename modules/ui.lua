@@ -966,6 +966,71 @@ local function drawBuffs()
 end
 
 -- ---------------------------------------------------------------------------
+-- GoM (Gift of Mana) spell list panel
+-- ---------------------------------------------------------------------------
+
+local function drawGoM()
+    local gomSHelp = Config.get('GoM', 'GoMSHelp', '0') == '1'
+    checkbox('GoM S-Help (use MQ2Medley GoM set)', gomSHelp, function(v)
+        Config.set('GoM', 'GoMSHelp', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local gomRaw  = Config.get('GoM', 'GoMSpell', nil) or {}
+    local gomSize = tonumber(Config.get('GoM', 'GoMSize', '3')) or 3
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('gom_tbl', 2, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, gomSize do
+            local raw   = gomRaw[i] or 'null'
+            local spell = (raw == 'null' or raw == '') and '' or raw
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newSpell, changed = ImGui.InputText('##gomspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##gomrem' .. i) then
+                if i == gomSize and gomSize > 1 then
+                    gomRaw[i] = nil
+                    gomSize   = gomSize - 1
+                    Config.set('GoM', 'GoMSize', tostring(gomSize))
+                else
+                    gomRaw[i] = 'null'
+                end
+                Config.set('GoM', 'GoMSpell', gomRaw)
+                Config.save()
+            end
+
+            if changed then
+                gomRaw[i] = newSpell ~= '' and newSpell or 'null'
+                Config.set('GoM', 'GoMSpell', gomRaw)
+                Config.save()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        gomSize = gomSize + 1
+        gomRaw[gomSize] = 'null'
+        Config.set('GoM', 'GoMSize', tostring(gomSize))
+        Config.set('GoM', 'GoMSpell', gomRaw)
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Aggro panel
 -- ---------------------------------------------------------------------------
 
@@ -1506,6 +1571,10 @@ local function draw()
                     end
                     if ImGui.BeginTabItem('Buffs') then
                         drawBuffs()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('GoM') then
+                        drawGoM()
                         ImGui.EndTabItem()
                     end
                     ImGui.EndTabBar()
