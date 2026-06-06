@@ -1538,6 +1538,155 @@ local function drawBurn()
 end
 
 -- ---------------------------------------------------------------------------
+-- AE rotation panel
+-- ---------------------------------------------------------------------------
+
+local AE_TARGETS = { 'Mob', 'Single', 'Me', 'MA', 'Pet' }
+
+local function splitAE(raw)
+    -- "SpellName|MobCount|Target[|condNNN]" → spell, count, target, cond
+    local spell, count, target, cond = '', '1', 'Mob', ''
+    if not raw or raw == 'null' or raw == '' then return spell, count, target, cond end
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
+    end
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell  = parts[1] or ''
+    count  = parts[2] or '1'
+    target = parts[3] or 'Mob'
+    return spell, count, target, cond
+end
+
+local function joinAE(spell, count, target, cond)
+    local result = spell .. '|' .. count .. '|' .. target
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
+end
+
+local function drawAE()
+    local s = _state
+
+    checkbox('AE On', s.combat.aeOn, function(v)
+        s.combat.aeOn = v
+        Config.set('AE', 'AEOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    intInput('AE Radius', s.combat.aeRadius, 10, 500, 'AE', 'AERadius',
+        function(v) s.combat.aeRadius = v end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local aeRaw  = Config.get('AE', 'AE',     nil) or {}
+    local aeSize = tonumber(Config.get('AE', 'AESize', '10')) or 10
+
+    local function syncAEArray()
+        s.combat.aeArray = {}
+        for i = 1, aeSize do
+            local v = aeRaw[i] or 'null'
+            if v ~= 'null' and v ~= '' then s.combat.aeArray[i] = v end
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('ae_tbl', 5, tblFlags) then
+        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Count',  ImGuiTableColumnFlags.WidthFixed,   80)
+        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,   75)
+        ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,  160)
+        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, aeSize do
+            local raw     = aeRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, count, target, cond = splitAE(isEmpty and '' or raw)
+            local newSpell, newCount, newTarget, newCond = spell, count, target, cond
+            local sc, nc, tac, cc = false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##aespell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local countVal    = tonumber(count) or 1
+            local newCountVal
+            newCountVal, nc = ImGui.InputInt('##aecount' .. i, countVal, 1, 5)
+            if nc then newCount = tostring(math.max(1, newCountVal)) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local tgtIdx = 0
+            for j, v in ipairs(AE_TARGETS) do
+                if v:upper() == target:upper() then tgtIdx = j - 1 break end
+            end
+            local newTgtIdx
+            newTgtIdx, tac = ImGui.Combo('##aetgt' .. i, tgtIdx, AE_TARGETS)
+            newTarget = AE_TARGETS[newTgtIdx + 1] or 'Mob'
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##aecond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##aerem' .. i) then
+                if i == aeSize and aeSize > 1 then
+                    aeRaw[i] = nil
+                    aeSize   = aeSize - 1
+                    Config.set('AE', 'AESize', tostring(aeSize))
+                else
+                    aeRaw[i] = 'null'
+                end
+                Config.set('AE', 'AE', aeRaw)
+                Config.save()
+                syncAEArray()
+            end
+
+            if sc or nc or tac or cc then
+                local sp = sc  and newSpell  or spell
+                local ct = nc  and newCount  or count
+                local tg = tac and newTarget or target
+                local cn = cc  and newCond   or cond
+                aeRaw[i] = sp ~= '' and joinAE(sp, ct, tg, cn) or 'null'
+                Config.set('AE', 'AE', aeRaw)
+                Config.save()
+                syncAEArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        aeSize = aeSize + 1
+        aeRaw[aeSize] = 'null'
+        Config.set('AE', 'AESize', tostring(aeSize))
+        Config.set('AE', 'AE', aeRaw)
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -1563,6 +1712,10 @@ local function draw()
                     end
                     if ImGui.BeginTabItem('Aggro') then
                         drawAggro()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('AE') then
+                        drawAE()
                         ImGui.EndTabItem()
                     end
                     ImGui.EndTabBar()
