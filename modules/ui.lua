@@ -578,6 +578,84 @@ local function drawConditions()
 end
 
 -- ---------------------------------------------------------------------------
+-- Buffs panel
+-- ---------------------------------------------------------------------------
+
+local function drawBuffs()
+    local s = _state
+
+    checkbox('Buffs On', s.buffs.buffsOn, function(v)
+        s.buffs.buffsOn = v
+        Config.set('Buffs', 'BuffsOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Rebuff On', s.buffs.rebuffOn, function(v)
+        s.buffs.rebuffOn = v
+        Config.set('Buffs', 'RebuffOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    intInput('Check Timer', s.buffs.checkBuffsTimer, 1, 3600, 'Buffs', 'CheckBuffsTimer',
+        function(v) s.buffs.checkBuffsTimer = v end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local buffsRaw = Config.get('Buffs', 'Buffs', nil) or {}
+
+    local function syncBuffsArray()
+        s.buffs.buffsArray = {}
+        for _, slot in ipairs(Config.parseCondArray(buffsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' then
+                s.buffs.buffsArray[#s.buffs.buffsArray + 1] = slot
+            end
+        end
+    end
+
+    local visIdx = {}
+    for i, v in ipairs(buffsRaw) do
+        if v and v ~= 'null' then
+            visIdx[#visIdx + 1] = i
+        end
+    end
+
+    ImGui.PushItemWidth(280)
+    local toRemove = nil
+    for _, i in ipairs(visIdx) do
+        local current = buffsRaw[i] or ''
+        local newVal, changed = ImGui.InputText('##buff' .. i, current, 0)
+        if changed and newVal ~= current then
+            buffsRaw[i] = newVal
+            Config.set('Buffs', 'Buffs', buffsRaw)
+            Config.save()
+            syncBuffsArray()
+        end
+        ImGui.SameLine()
+        if ImGui.Button('[-]##buffrem' .. i) then
+            toRemove = i
+        end
+    end
+    ImGui.PopItemWidth()
+
+    if toRemove then
+        table.remove(buffsRaw, toRemove)
+        Config.set('Buffs', 'Buffs', buffsRaw)
+        Config.save()
+        syncBuffsArray()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        buffsRaw[#buffsRaw + 1] = ''
+        Config.set('Buffs', 'Buffs', buffsRaw)
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -621,6 +699,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Conditions') then
                 drawConditions()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Buffs') then
+                drawBuffs()
                 ImGui.EndTabItem()
             end
             if _state.session.iAmABard then
