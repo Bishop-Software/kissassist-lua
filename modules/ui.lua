@@ -643,12 +643,19 @@ local function drawBuffs()
         if v and v ~= 'null' then visIdx[#visIdx + 1] = i end
     end
 
+    -- Build condition dropdown labels from live state (updates automatically)
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
     local toRemove = nil
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
         ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
-        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   70)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
         ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
@@ -669,7 +676,10 @@ local function drawBuffs()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            newCond, cc = ImGui.InputText('##bcond' .. i, cond, 0)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
