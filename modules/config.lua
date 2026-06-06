@@ -572,7 +572,7 @@ function Config.defaultCfg()
             MercOn = '0', MercAssistAt = '95',
         },
         AFKTools = {
-            AFKToolsOn = '0', AFKGMAction = '0', AFKPCRadius = '30',
+            AFKToolsOn = '0', AFKGMAction = '1', AFKPCRadius = '30',
             CampOnDeath = '0', ClickBacktoCamp = '0',
         },
         KConditions = {
