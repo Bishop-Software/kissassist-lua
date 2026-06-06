@@ -346,7 +346,6 @@ local function onGoMOn()
     end
     if not state.combat.combatStart or state.timers.gomTimer > os.clock() then return end
     state.bard.gomActive = true
-    -- Full GoM cast loop in M8 (bard.lua)
 end
 
 local function onGoMOff()

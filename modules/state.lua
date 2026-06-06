@@ -419,6 +419,7 @@ local State = {
         engageWait     = 0,
         eventTimer     = 0,
         gomTimer       = 0,
+        gomSpellTimers = {},   -- [i] = os.clock() expiry per GoM slot; persists across fights
         iniNext        = 0,
         joinedParty    = 0,
         justZoned      = 0,
