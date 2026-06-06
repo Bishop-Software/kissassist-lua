@@ -522,6 +522,62 @@ local function drawBard()
 end
 
 -- ---------------------------------------------------------------------------
+-- Conditions panel
+-- ---------------------------------------------------------------------------
+
+local function drawConditions()
+    local s = _state
+
+    checkbox('Conditions On', s.cond.on, function(v)
+        s.cond.on = v
+        Config.set('KConditions', 'ConOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    -- Conditions are stored as an indexed array under the 'Cond' key.
+    local condArr = Config.get('KConditions', 'Cond', nil) or {}
+
+    ImGui.PushItemWidth(300)
+    for i = 1, (s.cond.size or 5) do
+        local current = s.cond.expressions[i] or ''
+        local newVal, changed = ImGui.InputText(string.format('Cond %03d##cond%d', i, i), current, 0)
+        if changed and newVal ~= current then
+            s.cond.expressions[i] = newVal ~= '' and newVal or nil
+            condArr[i] = newVal ~= '' and newVal or 'null'
+            Config.set('KConditions', 'Cond', condArr)
+            Config.save()
+        end
+        ImGui.SameLine()
+        if ImGui.Button('[-]##condrem' .. i) then
+            s.cond.expressions[i] = nil
+            if i == s.cond.size and s.cond.size > 1 then
+                condArr[s.cond.size] = nil
+                s.cond.size = s.cond.size - 1
+                Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+            else
+                condArr[i] = 'null'
+            end
+            Config.set('KConditions', 'Cond', condArr)
+            Config.save()
+        end
+    end
+    ImGui.PopItemWidth()
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        s.cond.size = (s.cond.size or 5) + 1
+        condArr[s.cond.size] = 'null'
+        Config.set('KConditions', 'Cond', condArr)
+        Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -561,6 +617,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Merc') then
                 drawMerc()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Conditions') then
+                drawConditions()
                 ImGui.EndTabItem()
             end
             if _state.session.iAmABard then
