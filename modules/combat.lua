@@ -190,8 +190,8 @@ local function namedWatch(ignoreTarget)
             end
         end
         if named then
-            mq.cmd('\\popup *** Mob:(' .. sp.CleanName() .. ') is a NAMED!')
-            mq.cmd('\\echo *** Mob:('  .. sp.CleanName() .. ') is a NAMED!')
+            mq.cmd('/popup *** Mob:(' .. sp.CleanName() .. ') is a NAMED!')
+            mq.cmd('/echo *** Mob:('  .. sp.CleanName() .. ') is a NAMED!')
             if _cast.doBurn then _cast.doBurn() end
             _state.combat.namedCheck = true
         end
@@ -227,8 +227,8 @@ local function namedWatch(ignoreTarget)
         local tName = ns and ns.CleanName() or ''
         _state.combat.myTargetID   = foundID
         _state.combat.myTargetName = tName
-        mq.cmd('\\popup *** Mob:(' .. tName .. ') is a NAMED!')
-        mq.cmd('\\echo *** Mob:('  .. tName .. ') is a NAMED!')
+        mq.cmd('/popup *** Mob:(' .. tName .. ') is a NAMED!')
+        mq.cmd('/echo *** Mob:('  .. tName .. ') is a NAMED!')
         if _cast.doBurn then _cast.doBurn() end
         _state.combat.namedCheck = true
         _state.combat.myTargetID = 0   -- reset after burn (mac:12945)
