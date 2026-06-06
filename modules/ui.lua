@@ -312,40 +312,129 @@ end
 -- Heal Thresholds panel
 -- ---------------------------------------------------------------------------
 
-local function saveHealArray()
-    local raw = {}
-    for i, slot in ipairs(_state.heal.healsArray) do
-        local entry = slot.name or ''
-        if slot.condNo and slot.condNo > 0 then
-            entry = entry .. string.format('|cond%03d', slot.condNo)
-        end
-        raw[i] = entry
+local function splitHeal(raw)
+    -- SpellName[|pct[|tag]][|condNNN]  →  spell, pct, tag, cond
+    local spell, pct, tag, cond = '', '0', '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
     end
-    Config.set('Heals', 'Heals', raw)
-    Config.save()
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell = parts[1] or ''
+    pct   = parts[2] or '0'
+    tag   = parts[3] or ''
+    return spell, pct, tag, cond
+end
+
+local function joinHeal(spell, pct, tag, cond)
+    local result = spell .. '|' .. pct
+    if tag  ~= '' then result = result .. '|' .. tag  end
+    if cond ~= '' then result = result .. '|' .. cond end
+    return result
 end
 
 local function drawHealThresholds()
-    local arr = _state.heal.healsArray
-    if not arr or #arr == 0 then return end
+    local s = _state
 
-    for i, slot in ipairs(arr) do
-        local name      = slot.name or ''
-        local spellName = name:match('^([^|]+)') or name
-        local pct       = tonumber(name:match('^[^|]+|([^|]+)')) or 0
-        local tag       = name:match('^[^|]+|[^|]+|([^|]*)') or ''
+    local healsRaw  = Config.get('Heals', 'Heals',     nil) or {}
+    local healsSize = tonumber(Config.get('Heals', 'HealsSize', '15')) or 15
 
-        local display = spellName:len() > 20 and spellName:sub(1, 19) .. '~' or spellName
-        if tag ~= '' then display = display .. ' [' .. tag .. ']' end
-
-        local newPct = ImGui.InputInt(display .. '##h' .. i, pct)
-        if newPct ~= pct then
-            newPct = math.max(1, math.min(100, newPct))
-            local rebuilt = spellName .. '|' .. tostring(newPct)
-            if tag ~= '' then rebuilt = rebuilt .. '|' .. tag end
-            slot.name = rebuilt
-            saveHealArray()
+    local function syncHealsArray()
+        s.heal.healsArray = {}
+        for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                s.heal.healsArray[#s.heal.healsArray + 1] = slot
+            end
         end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('heals_tbl', 5, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Pct',   ImGuiTableColumnFlags.WidthFixed,    70)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   100)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, healsSize do
+            local raw     = healsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, pct, tag, cond = splitHeal(isEmpty and '' or raw)
+            local newSpell, newPct, newTag, newCond = spell, pct, tag, cond
+            local sc, pc, tac, cc = false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##hspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local pctNum = tonumber(pct) or 0
+            local newPctNum
+            newPctNum, pc = ImGui.InputInt('##hpct' .. i, pctNum)
+            if pc then newPct = tostring(math.max(1, math.min(100, newPctNum))) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newTag, tac = ImGui.InputText('##htag' .. i, tag, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##hrem' .. i) then
+                if i == healsSize and healsSize > 1 then
+                    healsRaw[i] = nil
+                    healsSize   = healsSize - 1
+                    Config.set('Heals', 'HealsSize', tostring(healsSize))
+                else
+                    healsRaw[i] = 'null'
+                end
+                Config.set('Heals', 'Heals', healsRaw)
+                Config.save()
+                syncHealsArray()
+            end
+
+            if sc or pc or tac or cc then
+                local spellVal = sc and newSpell or spell
+                healsRaw[i] = spellVal ~= '' and joinHeal(
+                    spellVal,
+                    pc  and newPct or pct,
+                    tac and newTag or tag,
+                    cc  and newCond or cond
+                ) or 'null'
+                Config.set('Heals', 'Heals', healsRaw)
+                Config.save()
+                syncHealsArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        healsSize = healsSize + 1
+        healsRaw[healsSize] = 'null'
+        Config.set('Heals', 'HealsSize', tostring(healsSize))
+        Config.set('Heals', 'Heals', healsRaw)
+        Config.save()
     end
 end
 
