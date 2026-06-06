@@ -775,7 +775,7 @@ local function drawAggro()
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('aggro_tbl', 6, tblFlags) then
         ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('Pct',    ImGuiTableColumnFlags.WidthFixed,    50)
+        ImGui.TableSetupColumn('Pct',    ImGuiTableColumnFlags.WidthFixed,    90)
         ImGui.TableSetupColumn('GtL',    ImGuiTableColumnFlags.WidthFixed,    75)
         ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
         ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
@@ -794,11 +794,11 @@ local function drawAggro()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local newPctStr
-            newPctStr, pc = ImGui.InputText('##apct' .. i, pct, 0)
+            local pctNum = tonumber(pct) or 0
+            local newPctNum
+            newPctNum, pc = ImGui.InputInt('##apct' .. i, pctNum)
             if pc then
-                local n = math.max(0, math.min(200, tonumber(newPctStr) or 0))
-                newPct = tostring(n)
+                newPct = tostring(math.max(0, math.min(200, newPctNum)))
             end
             ImGui.PopItemWidth()
 
