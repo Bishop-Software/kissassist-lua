@@ -157,6 +157,27 @@ local function migrateBardMedley(readFn, cfg)
     if cfg.Melee then cfg.Melee.MeleeTwistWhat = nil end
 end
 
+-- Purge any section or key not present in the defaultCfg schema.
+-- Keeps pickles clean after migration without needing a manual orphan list.
+-- Exception: Spells.GemN keys are written by Config.writeSpells() and are not
+-- in the schema but must be preserved.
+local function purgeOrphanedFields(cfg)
+    local schema = Config.defaultCfg()
+    for section in pairs(cfg) do
+        if not schema[section] then
+            cfg[section] = nil
+        else
+            for key in pairs(cfg[section] or {}) do
+                if section == 'Spells' and key:match('^Gem%d+$') then
+                    -- keep — written by Config.writeSpells()
+                elseif schema[section][key] == nil then
+                    cfg[section][key] = nil
+                end
+            end
+        end
+    end
+end
+
 -- Step 1.4b: Migrate an existing .ini to mq.pickle() on first run.
 -- KissAssist_Buffs.ini and KissAssist_Info.ini stay as .ini — they are shared
 -- cross-character files; pickle conversion is unsafe while chars still run .mac.
@@ -292,7 +313,6 @@ function Config.migrateIni(state)
         AutoHide          = r('Melee','AutoHide'),
         MeleeTwistOn      = r('Melee','MeleeTwistOn'),
         MeleeTwistWhat    = r('Melee','MeleeTwistWhat'),
-        PetTauntOverride  = r('Melee','PetTauntOverride'),
     }
 
     -- [GoM] — Gift of Mana / proc spells (numbered array)
@@ -377,6 +397,7 @@ function Config.migrateIni(state)
         MoveWhenHit        = r('Pet','MoveWhenHit'),
         PetHoldOn          = r('Pet','PetHoldOn'),
         PetForceHealOnMed  = r('Pet','PetForceHealOnMed'),
+        PetTauntOverride   = r('Melee','PetTauntOverride'),  -- .mac stored under [Melee]; Lua port uses [Pet]
     }
 
     -- [Merc] — mercenary assist settings
@@ -462,6 +483,9 @@ function Config.migrateIni(state)
     -- 3. Bard: convert MQ2Twist slot lists → MQ2Medley sections (one-time migration).
     migrateBardMedley(r, cfg)
 
+    -- 3b. Purge any fields not in the schema (covers all .mac orphans generically).
+    purgeOrphanedFields(cfg)
+
     -- 4. Ensure output directory exists and write pickle.
     local dir = pickleDir:gsub('/', '\\')
     os.execute(string.format('if not exist "%s" mkdir "%s"', dir, dir))
@@ -510,7 +534,6 @@ function Config.defaultCfg()
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
             TargetSwitchingOn = '0', AutoHide = '0', MeleeTwistOn = '0',
-            PetTauntOverride = '0',
         },
         DPS = {
             DPSOn = '1', DPSSize = '5', DPSSkip = '0', DPSInterval = '0',
@@ -535,7 +558,7 @@ function Config.defaultCfg()
             PetAttackDistance = '60', PetToysSize = '5', PetToysOn = '0',
             PetToysGave = '0', PetToys = emptyArr(5), PetBreakMezSpell = '',
             PetRampPullWait = '0', PetSuspend = '0', MoveWhenHit = '0',
-            PetHoldOn = '0', PetForceHealOnMed = '0',
+            PetHoldOn = '0', PetForceHealOnMed = '0', PetTauntOverride = '0',
         },
         Mez = {
             MezOn = '0', MezRadius = '40', MezMinLevel = '1', MezMaxLevel = '115',
