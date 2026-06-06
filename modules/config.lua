@@ -87,7 +87,7 @@ local function migrateBardMedley(readFn, cfg)
     local meleeWhat = cfg.Melee and cfg.Melee.MeleeTwistWhat
     if not twistWhat and not meleeWhat then return end
 
-    -- Read memorised gem names from [SpellS] Gem1..Gem13.
+    -- Read memorised gem names from [SpellSets] Gem1..Gem13.
     local gemNames = {}
     for i = 1, 13 do
         local name = readFn('SpellS', 'Gem' .. i)
@@ -174,6 +174,12 @@ function Config.migrateIni(state)
         local ok, cfg = pcall(dofile, picklePath)
         if ok and type(cfg) == 'table' then
             _picklePath = picklePath
+            -- One-time rename: SpellS → SpellSets
+            if cfg.SpellS and not cfg.SpellSets then
+                cfg.SpellSets = cfg.SpellS
+                cfg.SpellS    = nil
+                mq.pickle(picklePath, cfg)
+            end
             printf('\agKissAssist: \awLoaded config from \at%s', pickleName)
             return cfg
         end
@@ -249,8 +255,8 @@ function Config.migrateIni(state)
         MountOn          = r('General','MountOn'),
     }
 
-    -- [SpellS] / [Spells] — gem assignments and casting options
-    cfg.SpellS = {
+    -- [SpellSets] — spell set settings (INI source section was [SpellS])
+    cfg.SpellSets = {
         MiscGem          = r('SpellS','MiscGem'),
         MiscGemLW        = r('SpellS','MiscGemLW'),
         MiscGemRemem     = r('SpellS','MiscGemRemem'),
@@ -494,7 +500,7 @@ function Config.defaultCfg()
             OORMedley = 'oor', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
         },
-        SpellS = {
+        SpellSets = {
             MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
             LoadSpellSet = '0', SpellSetName = '',
         },
