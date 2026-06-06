@@ -969,33 +969,51 @@ end
 -- GoM (Gift of Mana) spell list panel
 -- ---------------------------------------------------------------------------
 
+local GOM_TARGETS = { 'MA', 'Me', 'Mob' }
+
+local function splitGom(raw)
+    -- "SpellName|Target" → spell, target
+    if not raw or raw == 'null' or raw == '' then return '', 'MA' end
+    local spell, tgt = raw:match('^([^|]+)|(.+)$')
+    if spell then return spell, tgt end
+    return raw, 'MA'
+end
+
+local function joinGom(spell, tgt)
+    return spell .. '|' .. tgt
+end
+
 local function drawGoM()
-    local gomSHelp = Config.get('GoM', 'GoMSHelp', '0') == '1'
-    checkbox('GoM S-Help (use MQ2Medley GoM set)', gomSHelp, function(v)
-        Config.set('GoM', 'GoMSHelp', v and '1' or '0')
-        Config.save()
-    end)
-
-    ImGui.Spacing()
-    ImGui.Separator()
-    ImGui.Spacing()
-
     local gomRaw  = Config.get('GoM', 'GoMSpell', nil) or {}
     local gomSize = tonumber(Config.get('GoM', 'GoMSize', '3')) or 3
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
-    if ImGui.BeginTable('gom_tbl', 2, tblFlags) then
-        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+    if ImGui.BeginTable('gom_tbl', 3, tblFlags) then
+        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,   70)
+        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
         for i = 1, gomSize do
-            local raw   = gomRaw[i] or 'null'
-            local spell = (raw == 'null' or raw == '') and '' or raw
+            local raw          = gomRaw[i] or 'null'
+            local spell, tgt   = splitGom(raw)
+            local sc, tc       = false, false
+            local newSpell, newTgt = spell, tgt
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local newSpell, changed = ImGui.InputText('##gomspell' .. i, spell, 0)
+            newSpell, sc = ImGui.InputText('##gomspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local tgtIdx = 0
+            for j, v in ipairs(GOM_TARGETS) do
+                if v == tgt then tgtIdx = j - 1 break end
+            end
+            local newTgtIdx
+            newTgtIdx, tc = ImGui.Combo('##gomtgt' .. i, tgtIdx, GOM_TARGETS)
+            newTgt = GOM_TARGETS[newTgtIdx + 1] or 'MA'
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1011,8 +1029,10 @@ local function drawGoM()
                 Config.save()
             end
 
-            if changed then
-                gomRaw[i] = newSpell ~= '' and newSpell or 'null'
+            if sc or tc then
+                local s = sc and newSpell or spell
+                local t = tc and newTgt   or tgt
+                gomRaw[i] = s ~= '' and joinGom(s, t) or 'null'
                 Config.set('GoM', 'GoMSpell', gomRaw)
                 Config.save()
             end
