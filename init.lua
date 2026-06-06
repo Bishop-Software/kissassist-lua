@@ -5,6 +5,13 @@ if args[1] == 'test' then
     return
 end
 
+-- Clear cached modules so file changes take effect on /lua stop + /lua run
+for k in pairs(package.loaded) do
+    if k:find('^modules%.') or k:find('^tests%.') then
+        package.loaded[k] = nil
+    end
+end
+
 local mq     = require('mq')
 local State  = require('modules.state')
 local Utils  = require('modules.utils')
