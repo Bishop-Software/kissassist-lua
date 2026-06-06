@@ -98,10 +98,6 @@ local function drawControls()
     end)
 
     -- Row 2
-    checkbox('Buffs', s.buffs.buffsOn, function(v)
-        s.buffs.buffsOn = v
-    end)
-    ImGui.SameLine(120)
     checkbox('Mez', s.mez.on ~= 0, function(v)
         s.mez.on = v and 1 or 0
     end)
