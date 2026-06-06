@@ -1603,7 +1603,7 @@ local function drawAE()
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('ae_tbl', 5, tblFlags) then
         ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('Count',  ImGuiTableColumnFlags.WidthFixed,   55)
+        ImGui.TableSetupColumn('Count',  ImGuiTableColumnFlags.WidthFixed,   80)
         ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,   75)
         ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,  160)
         ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,   32)
