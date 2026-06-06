@@ -257,18 +257,6 @@ local function drawMelee()
         Config.save()
     end
     ImGui.PopItemWidth()
-    local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
-    local burnNamedIdx = (s.combat.burnAllNamed or 0) + 1
-    ImGui.PushItemWidth(200)
-    local newBurnIdx, burnChanged = ImGui.Combo('Burn Named##burnnamed', burnNamedIdx, burnNamedLabels)
-    if burnChanged then
-        local newVal = newBurnIdx - 1
-        s.combat.burnAllNamed = newVal
-        Config.set('Burn', 'BurnAllNamed', tostring(newVal))
-        Config.save()
-    end
-    ImGui.PopItemWidth()
-
     -- Stick style
     ImGui.Spacing()
     local stickValues = { '0', 'behind', 'front', '!front', 'moveback', 'pin', 'I' }
@@ -1157,6 +1145,143 @@ local function drawDPS()
     end
 end
 
+local function drawBurn()
+    local s = _state
+
+    checkbox('Use Tribute', s.combat.useTribute, function(v)
+        s.combat.useTribute = v
+        Config.set('Burn', 'UseTribute', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
+    local burnNamedIdx = (s.combat.burnAllNamed or 0) + 1
+    ImGui.PushItemWidth(200)
+    local newBurnIdx, burnChanged = ImGui.Combo('Burn Named##burnnamed', burnNamedIdx, burnNamedLabels)
+    if burnChanged then
+        local newVal = newBurnIdx - 1
+        s.combat.burnAllNamed = newVal
+        Config.set('Burn', 'BurnAllNamed', tostring(newVal))
+        Config.save()
+    end
+    ImGui.PopItemWidth()
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local burnRaw  = Config.get('Burn', 'Burn',     nil) or {}
+    local burnSize = tonumber(Config.get('Burn', 'BurnSize', '15')) or 15
+
+    local function syncBurnArray()
+        s.combat.burnArray = {}
+        for _, slot in ipairs(Config.parseCondArray(burnRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                s.combat.burnArray[#s.combat.burnArray + 1] = slot
+            end
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('burn_tbl', 6, tblFlags) then
+        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('HP%',    ImGuiTableColumnFlags.WidthFixed,    90)
+        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
+        ImGui.TableSetupColumn('DAMod',  ImGuiTableColumnFlags.WidthFixed,    90)
+        ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, burnSize do
+            local raw     = burnRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, thresh, target, damod, cond = splitDPS(isEmpty and '' or raw)
+            local newSpell, newThresh, newTarget, newDamod, newCond = spell, thresh, target, damod, cond
+            local sc, tc, tac, dc, cc = false, false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##bspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local threshNum = tonumber(thresh) or 0
+            local newThreshNum
+            newThreshNum, tc = ImGui.InputInt('##bthresh' .. i, threshNum)
+            if tc then newThresh = tostring(math.max(0, math.min(200, newThreshNum))) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local targetIdx = 1
+            for k, v in ipairs(ATGT_VALUES) do if v == target then targetIdx = k; break end end
+            local newTargetIdx
+            newTargetIdx, tac = ImGui.Combo('##btgt' .. i, targetIdx, ATGT_LABELS)
+            if tac then newTarget = ATGT_VALUES[newTargetIdx] end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newDamod, dc = ImGui.InputText('##bdamod' .. i, damod, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##brem' .. i) then
+                if i == burnSize and burnSize > 1 then
+                    burnRaw[i] = nil
+                    burnSize   = burnSize - 1
+                    Config.set('Burn', 'BurnSize', tostring(burnSize))
+                else
+                    burnRaw[i] = 'null'
+                end
+                Config.set('Burn', 'Burn', burnRaw)
+                Config.save()
+                syncBurnArray()
+            end
+
+            if sc or tc or tac or dc or cc then
+                local spellVal = sc and newSpell or spell
+                burnRaw[i] = spellVal ~= '' and joinDPS(
+                    spellVal,
+                    tc  and newThresh  or thresh,
+                    tac and newTarget  or target,
+                    dc  and newDamod   or damod,
+                    cc  and newCond    or cond
+                ) or 'null'
+                Config.set('Burn', 'Burn', burnRaw)
+                Config.save()
+                syncBurnArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        burnSize = burnSize + 1
+        burnRaw[burnSize] = 'null'
+        Config.set('Burn', 'BurnSize', tostring(burnSize))
+        Config.set('Burn', 'Burn', burnRaw)
+        Config.save()
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
@@ -1177,6 +1302,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('DPS') then
                 drawDPS()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('Burn') then
+                drawBurn()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Aggro') then
