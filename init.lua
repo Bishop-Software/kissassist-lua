@@ -138,6 +138,7 @@ end
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
+    Cast.checkTribute()
     -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
     if State.afk.on > 0 then Afk.check() end
     -- Phase 2: combat (first pass — mac:MainLoop1)

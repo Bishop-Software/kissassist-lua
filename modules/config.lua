@@ -548,7 +548,7 @@ function Config.defaultCfg()
             CharmRadius = '50', CharmKeep = '0',
         },
         Burn = {
-            BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
+            BurnOn = '1', BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
         },
         Aggro = {
             AggroOn = '0', AggroSize = '10', Aggro = emptyArr(10),

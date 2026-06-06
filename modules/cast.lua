@@ -1277,7 +1277,7 @@ function Cast.doBurn()
     if state.combat.useTribute and not mq.TLO.Me.TributeActive() then
         mq.cmd('/squelch /tribute personal on')
         mq.cmd('/squelch /trophy personal on')
-        state.timers.tribute = os.clock() + 570
+        state.timers.tribute = os.clock() + 590
     end
 
     -- Iterate burn array (mac:11788-11825)
@@ -1330,6 +1330,16 @@ function Cast.doBurn()
     end
 
     state.combat.burnActive = true
+end
+
+function Cast.checkTribute()
+    local t = state.timers.tribute or 0
+    if t == 0 then return end
+    if os.clock() >= t and mq.TLO.Me.TributeActive() then
+        mq.cmd('/squelch /tribute personal off')
+        mq.cmd('/squelch /trophy personal off')
+        state.timers.tribute = 0
+    end
 end
 
 return Cast
