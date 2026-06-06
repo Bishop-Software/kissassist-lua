@@ -57,8 +57,11 @@ end
 -- Seed runtime identity from live TLO
 State.session.iAmABard  = mq.TLO.Me.Class.ShortName() == 'BRD'
 State.session.iAmARogue = mq.TLO.Me.Class.ShortName() == 'ROG'
+local _cls = mq.TLO.Me.Class.ShortName()
+local _MEZ_CLASSES   = {BRD=true, ENC=true, NEC=true}
 local _CHARM_CLASSES = {DRU=true, ENC=true, NEC=true, BRD=true}
-State.session.iAmACharmClass = _CHARM_CLASSES[mq.TLO.Me.Class.ShortName()] ~= nil
+State.session.iAmAMezClass   = _MEZ_CLASSES[_cls]   ~= nil
+State.session.iAmACharmClass = _CHARM_CLASSES[_cls] ~= nil
 State.session.zoneName  = mq.TLO.Zone.ShortName()
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
 State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] ~= nil

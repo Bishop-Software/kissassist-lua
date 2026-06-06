@@ -4,10 +4,15 @@ local Config = require('modules.config')
 local Mez = {}
 local _state, _utils, _cast
 
+local MEZ_CLASSES = { BRD = true, ENC = true, NEC = true }
+
 function Mez.init(state, utils, cast)
     _state = state
     _utils = utils
     _cast  = cast
+
+    local class = (mq.TLO.Me.Class.ShortName() or ''):upper()
+    _state.session.iAmAMezClass = MEZ_CLASSES[class] == true
 
     -- [Mez] INI section — mirrors LoadIni Mez block (kissassist.mac:14861-14874)
     _state.mez.on               = tonumber(Config.get('Mez', 'MezOn',             '0')) or 0

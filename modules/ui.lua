@@ -1703,7 +1703,7 @@ local function drawCC()
     local s = _state
 
     if ImGui.BeginTabBar('KACCTabs') then
-        if ImGui.BeginTabItem('Mez') then
+        if s.session.iAmAMezClass and ImGui.BeginTabItem('Mez') then
             ImGui.Spacing()
             ImGui.PushItemWidth(200)
             local newMode, modeChanged = ImGui.Combo('Mode##mezmode', s.mez.on + 1, MEZ_MODE_LABELS)
@@ -1910,7 +1910,7 @@ local function draw()
                 drawPull()
                 ImGui.EndTabItem()
             end
-            if _state.mez.on > 0 or _state.session.iAmACharmClass then
+            if _state.session.iAmAMezClass or _state.session.iAmACharmClass then
                 if ImGui.BeginTabItem('CC') then
                     drawCC()
                     ImGui.EndTabItem()
