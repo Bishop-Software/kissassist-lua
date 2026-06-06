@@ -222,7 +222,9 @@ local function onTooFar()
     utils.debug('move', 'TooFar')
     state.pull.tooFar         = true
     state.movement.dontMoveMe = false
-    if movement then movement.doWeMove(1, 'tooFar') end
+    if movement and not state.combat.combatStart then
+        movement.doWeMove(1, 'tooFar')
+    end
 end
 
 local function onMezBroke(_, mob, _breaker)
