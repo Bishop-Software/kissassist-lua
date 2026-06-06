@@ -1116,16 +1116,6 @@ function Combat.fight(fromWhere)
     local inRange  = mobDist < combatRadius
                   or (campToMA <= cr and maToTgt <= cr)
 
-    -- Face mob every tick when enabled (mac:1094)
-    local faceMob = _state.movement.faceMobOn or 0
-    if faceMob > 0 and (mq.TLO.Target.ID() or 0) ~= 0 then
-        local meState = mq.TLO.Me.State() or ''
-        if meState ~= 'FEIGN' and meState ~= 'DEAD' and meState ~= 'SIT' then
-            local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
-            mq.cmdf('/squelch /face %s', faceMode)
-        end
-    end
-
     -- ─── Main engage block: not corpse, HP ≤ assistAt (MA always engages), in range ──
     if spType:lower() ~= 'corpse'
        and (_state.session.iAmMA or mobPct <= _state.combat.assistAt)
@@ -1227,6 +1217,21 @@ function Combat.fight(fromWhere)
                     or mq.TLO.Window('CastingWindow').Open() then
                 mq.delay(50)
                 goto continue_fight
+            end
+
+            -- Face mob every tick when enabled (mac:1094)
+            do
+                local faceMob = _state.movement.faceMobOn or 0
+                if faceMob > 0 and myID ~= 0 then
+                    local meState = mq.TLO.Me.State() or ''
+                    if meState == 'STAND' or (mq.TLO.Me.Mount.ID() or 0) ~= 0 then
+                        local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
+                        local fsp = mq.TLO.Spawn('id ' .. myID)
+                        local mobY = fsp and fsp.Y() or 0
+                        local mobX = fsp and fsp.X() or 0
+                        mq.cmdf('/squelch /face loc %f,%f %s', mobY, mobX, faceMode)
+                    end
+                end
             end
 
             -- Burn if flagged (mac:1139-1141)

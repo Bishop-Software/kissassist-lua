@@ -217,12 +217,6 @@ local function drawMelee()
         Config.set('Melee', 'MeleeOn', v and '1' or '0')
         Config.save()
     end)
-    ImGui.SameLine(120)
-    checkbox('DPS', s.combat.dpsOn, function(v)
-        s.combat.dpsOn = v
-        Config.set('DPS', 'DPSOn', v and '1' or '0')
-        Config.save()
-    end)
 
     checkbox('Target Switch', s.combat.targetSwitchingOn, function(v)
         s.combat.targetSwitchingOn = v
@@ -252,7 +246,6 @@ local function drawMelee()
     ImGui.Separator()
     intInput('Assist %',    s.combat.assistAt,      1,  100, 'Melee', 'AssistAt',        function(v) s.combat.assistAt      = v end)
     intInput('Melee Dist',  s.combat.meleeDistance,  1,  500, 'Melee', 'MeleeDistance',   function(v) s.combat.meleeDistance = v end)
-    intInput('DPS Skip %',  s.combat.dpsSkip,        0,  100, 'DPS',   'DPSSkip',         function(v) s.combat.dpsSkip       = v end)
     local faceMobLabels = { 'Off', 'Fast (no camera)', 'Smooth (no camera)' }
     local faceMobIdx = (s.movement.faceMobOn or 0) + 1
     ImGui.PushItemWidth(200)
@@ -834,6 +827,35 @@ local function joinAggro(spell, pct, glt, target, cond)
     return result
 end
 
+-- ---------------------------------------------------------------------------
+-- DPS panel helpers
+-- ---------------------------------------------------------------------------
+
+local function splitDPS(raw)
+    -- SpellName[|thresh[|target[|damod]]][|condNNN]  →  spell, thresh, target, damod, cond
+    local spell, thresh, target, damod, cond = '', '0', '', '', ''
+    local condPos = raw:find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
+    end
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    spell  = parts[1] or ''
+    thresh = parts[2] or '0'
+    target = parts[3] or ''
+    damod  = parts[4] or ''
+    return spell, thresh, target, damod, cond
+end
+
+local function joinDPS(spell, thresh, target, damod, cond)
+    local result = spell .. '|' .. thresh
+    if target ~= '' or damod ~= '' then result = result .. '|' .. target end
+    if damod  ~= ''               then result = result .. '|' .. damod  end
+    if cond   ~= ''               then result = result .. '|' .. cond   end
+    return result
+end
+
 local function drawAggro()
     local s = _state
 
@@ -981,6 +1003,161 @@ local function drawAggro()
 end
 
 -- ---------------------------------------------------------------------------
+-- DPS rotation panel
+-- ---------------------------------------------------------------------------
+
+local function drawDPS()
+    local s = _state
+
+    checkbox('DPS', s.combat.dpsOn, function(v)
+        s.combat.dpsOn = v
+        Config.set('DPS', 'DPSOn', v and '1' or '0')
+        Config.save()
+    end)
+    ImGui.SameLine(120)
+    checkbox('Debuff All', s.debuff.on ~= 0, function(v)
+        s.debuff.on = v and 1 or 0
+        Config.set('DPS', 'DebuffAllOn', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
+    intInput('DPS Skip %',   s.combat.dpsSkip,     0,  100, 'DPS', 'DPSSkip',     function(v) s.combat.dpsSkip     = v end)
+    intInput('DPS Interval', s.combat.dpsInterval, 0, 3600, 'DPS', 'DPSInterval', function(v) s.combat.dpsInterval = v end)
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+    ImGui.TextColored(0.7, 0.7, 0.7, 1.0, 'HP% 0 = use AssistAt.  HP% >= 101 = debuff slot.')
+    ImGui.Spacing()
+
+    local dpsRaw  = Config.get('DPS', 'DPS',     nil) or {}
+    local dpsSize = tonumber(Config.get('DPS', 'DPSSize', '20')) or 20
+
+    local function syncDpsArray()
+        s.combat.dpsArray = {}
+        s.debuff.slots    = {}
+        s.debuff.count    = 0
+        for _, slot in ipairs(Config.parseCondArray(dpsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                local parts = {}
+                for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
+                local thresh = tonumber(parts[2]) or 0
+                if thresh >= 101 then
+                    s.debuff.slots[#s.debuff.slots + 1] = {
+                        spell  = parts[1] or '',
+                        tag1   = parts[3] or '',
+                        tag2   = parts[4] or '',
+                        condNo = slot.condNo,
+                    }
+                    s.debuff.count = s.debuff.count + 1
+                else
+                    s.combat.dpsArray[#s.combat.dpsArray + 1] = slot
+                end
+            end
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
+        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('dps_tbl', 6, tblFlags) then
+        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('HP%',    ImGuiTableColumnFlags.WidthFixed,    90)
+        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
+        ImGui.TableSetupColumn('DAMod',  ImGuiTableColumnFlags.WidthFixed,    90)
+        ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
+        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, dpsSize do
+            local raw     = dpsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, thresh, target, damod, cond = splitDPS(isEmpty and '' or raw)
+            local newSpell, newThresh, newTarget, newDamod, newCond = spell, thresh, target, damod, cond
+            local sc, tc, tac, dc, cc = false, false, false, false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##dspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local threshNum = tonumber(thresh) or 0
+            local newThreshNum
+            newThreshNum, tc = ImGui.InputInt('##dthresh' .. i, threshNum)
+            if tc then newThresh = tostring(math.max(0, math.min(200, newThreshNum))) end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local targetIdx = 1
+            for k, v in ipairs(ATGT_VALUES) do if v == target then targetIdx = k; break end end
+            local newTargetIdx
+            newTargetIdx, tac = ImGui.Combo('##dtgt' .. i, targetIdx, ATGT_LABELS)
+            if tac then newTarget = ATGT_VALUES[newTargetIdx] end
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newDamod, dc = ImGui.InputText('##ddamod' .. i, damod, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##dcond' .. i, condNo, condLabels)
+            newCond = newCondIdx == 0 and '' or string.format('cond%03d', newCondIdx)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##drem' .. i) then
+                if i == dpsSize and dpsSize > 1 then
+                    dpsRaw[i] = nil
+                    dpsSize   = dpsSize - 1
+                    Config.set('DPS', 'DPSSize', tostring(dpsSize))
+                else
+                    dpsRaw[i] = 'null'
+                end
+                Config.set('DPS', 'DPS', dpsRaw)
+                Config.save()
+                syncDpsArray()
+            end
+
+            if sc or tc or tac or dc or cc then
+                local spellVal = sc and newSpell or spell
+                dpsRaw[i] = spellVal ~= '' and joinDPS(
+                    spellVal,
+                    tc  and newThresh  or thresh,
+                    tac and newTarget  or target,
+                    dc  and newDamod   or damod,
+                    cc  and newCond    or cond
+                ) or 'null'
+                Config.set('DPS', 'DPS', dpsRaw)
+                Config.save()
+                syncDpsArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]') then
+        dpsSize = dpsSize + 1
+        dpsRaw[dpsSize] = 'null'
+        Config.set('DPS', 'DPSSize', tostring(dpsSize))
+        Config.set('DPS', 'DPS', dpsRaw)
+        Config.save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -996,6 +1173,10 @@ local function draw()
             end
             if ImGui.BeginTabItem('Melee') then
                 drawMelee()
+                ImGui.EndTabItem()
+            end
+            if ImGui.BeginTabItem('DPS') then
+                drawDPS()
                 ImGui.EndTabItem()
             end
             if ImGui.BeginTabItem('Aggro') then
