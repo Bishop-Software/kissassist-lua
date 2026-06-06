@@ -103,11 +103,6 @@ local function drawControls()
     end)
 
     -- Row 3
-    checkbox('Burn', s.combat.burnOn, function(_)
-        mq.cmd('/burn')
-    end)
-
-    -- Row 4
     checkbox('Loot', s.loot.on ~= 0, function(v)
         mq.cmd(v and '/kalooton' or '/kalootoff')
     end)
