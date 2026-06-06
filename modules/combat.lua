@@ -425,6 +425,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     end
 
     -- Burn flags
+    _state.combat.burnOn        = (Config.get('Burn', 'BurnOn', '1') ~= '0')
     _state.combat.burnAllNamed  = tonumber(Config.get('Burn',    'BurnAllNamed',  '0')) or 0
     _state.combat.autoBurnTimer = tonumber(Config.get('General', 'AutoBurnTimer', '0')) or 0
 
