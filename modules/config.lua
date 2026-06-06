@@ -298,7 +298,6 @@ function Config.migrateIni(state)
     -- [GoM] — Gift of Mana / proc spells (numbered array)
     local gomSize = tonumber(r('GoM','GoMSize')) or 3
     cfg.GoM = {
-        GoMSHelp = r('GoM','GoMSHelp'),
         GoMSize  = gomSize,
         GoMSpell = ra('GoM','GoMSpell', gomSize),
     }
@@ -554,7 +553,7 @@ function Config.defaultCfg()
             AggroOn = '0', AggroSize = '10', Aggro = emptyArr(10),
         },
         GoM = {
-            GoMSHelp = '0', GoMSize = '3', GoMSpell = emptyArr(3),
+            GoMSize = '3', GoMSpell = emptyArr(3),
         },
         AE = {
             AEOn = '0', AESize = '10', AERadius = '40', AE = emptyArr(10),
