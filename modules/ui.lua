@@ -92,17 +92,10 @@ end
 local function drawControls()
     local s = _state
 
-    -- Row 1
-    checkbox('Cures', s.heal.curesOn ~= 0, function(v)
-        s.heal.curesOn = v and 1 or 0
-    end)
-
-    -- Row 2
     checkbox('Mez', s.mez.on ~= 0, function(v)
         s.mez.on = v and 1 or 0
     end)
 
-    -- Row 3
     checkbox('Loot', s.loot.on ~= 0, function(v)
         mq.cmd(v and '/kalooton' or '/kalootoff')
     end)
