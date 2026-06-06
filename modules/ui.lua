@@ -15,6 +15,8 @@ local AF_COLORS = {
     [1] = {0.4, 1.0, 0.4},
     [2] = {1.0, 0.9, 0.1},
 }
+local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
+local AFK_ACTION_LABELS = { 'Hold until GM leaves', 'End macro', 'Unload MQ2', 'Quit EQ' }
 
 local Config = require('modules.config')
 
@@ -114,8 +116,19 @@ end
 -- ---------------------------------------------------------------------------
 
 local function checkbox(label, value, onChange)
-    local newVal = ImGui.Checkbox(label, value)
-    if newVal ~= value then onChange(newVal) end
+    local W, H = 40, 20
+    local cx, cy = ImGui.GetCursorScreenPos()
+    local dl = ImGui.GetWindowDrawList()
+    ImGui.InvisibleButton('##tog_' .. label, W, H)
+    if ImGui.IsItemClicked() then onChange(not value) end
+    local col = value
+        and ImGui.GetColorU32(0.2, 0.78, 0.35, 1.0)
+        or  ImGui.GetColorU32(0.45, 0.45, 0.45, 1.0)
+    dl:AddRectFilled(ImVec2(cx, cy), ImVec2(cx + W, cy + H), col, H * 0.5)
+    local knobX = value and (cx + W - H * 0.5) or (cx + H * 0.5)
+    dl:AddCircleFilled(ImVec2(knobX, cy + H * 0.5), H * 0.5 - 2, 0xFFFFFFFF)
+    ImGui.SameLine()
+    ImGui.Text(label)
 end
 
 local function intInput(label, value, min, max, configSection, configKey, stateSet)
@@ -138,12 +151,6 @@ local function drawControls()
     checkbox('Loot', s.loot.on ~= 0, function(v)
         mq.cmd(v and '/kalooton' or '/kalootoff')
     end)
-    ImGui.SameLine(120)
-    checkbox('AFK', s.afk.on ~= 0, function(v)
-        s.afk.on = v and 1 or 0
-    end)
-
-
 
     -- Camp & Movement
     ImGui.Spacing()
@@ -239,7 +246,7 @@ local function drawMelee()
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
         mq.cmd('/autofireon')
     end)
-    ImGui.SameLine(120)
+
     checkbox('LOS Check', Config.get('General', 'LOSBeforeCombat', '0') == '1', function(v)
         Config.set('General', 'LOSBeforeCombat', v and '1' or '0')
         Config.save()
@@ -1398,13 +1405,13 @@ local function drawBurn()
         Config.set('Burn', 'BurnOn', v and '1' or '0')
         Config.save()
     end)
-    ImGui.SameLine(120)
+
     checkbox('Use Tribute', s.combat.useTribute, function(v)
         s.combat.useTribute = v
         Config.set('Burn', 'UseTribute', v and '1' or '0')
         Config.save()
     end)
-    ImGui.SameLine(240)
+
     if not s.combat.combatStart then ImGui.BeginDisabled() end
     if ImGui.Button('Burn Now') then mq.cmd('/burn') end
     if not s.combat.combatStart then ImGui.EndDisabled() end
@@ -1687,6 +1694,54 @@ local function drawAE()
 end
 
 -- ---------------------------------------------------------------------------
+-- AFK Tools panel
+-- ---------------------------------------------------------------------------
+
+local function drawAfkTools()
+    local s = _state
+
+    ImGui.PushItemWidth(200)
+    local newMode, modeChanged = ImGui.Combo('Mode##afkmode', s.afk.on + 1, AFK_MODE_LABELS)
+    if modeChanged then
+        s.afk.on = newMode - 1
+        Config.set('AFKTools', 'AFKToolsOn', tostring(s.afk.on))
+        Config.save()
+        if (s.afk.on == 1 or s.afk.on == 2) and mq.TLO.Plugin('MQ2Posse').IsLoaded() then
+            mq.cmdf('/posse radius %d', s.afk.pcRadius)
+        end
+    end
+    ImGui.PopItemWidth()
+
+    -- GM Action: only when mode includes GM detection
+    if s.afk.on == 1 or s.afk.on == 3 then
+        ImGui.Spacing()
+        ImGui.PushItemWidth(200)
+        local newAction, actionChanged = ImGui.Combo('GM Action##afkgmaction', math.max(1, s.afk.gmAction), AFK_ACTION_LABELS)
+        if actionChanged then
+            s.afk.gmAction = newAction
+            Config.set('AFKTools', 'AFKGMAction', tostring(newAction))
+            Config.save()
+        end
+        ImGui.PopItemWidth()
+    end
+
+    -- PC Radius: only when mode includes stranger detection
+    if s.afk.on == 1 or s.afk.on == 2 then
+        ImGui.Spacing()
+        local newRadius = ImGui.InputInt('PC Radius##afkpcradius', s.afk.pcRadius)
+        if newRadius ~= s.afk.pcRadius then
+            newRadius = math.max(1, math.min(5000, newRadius))
+            s.afk.pcRadius = newRadius
+            Config.set('AFKTools', 'AFKPCRadius', tostring(newRadius))
+            Config.save()
+            if mq.TLO.Plugin('MQ2Posse').IsLoaded() then
+                mq.cmdf('/posse radius %d', newRadius)
+            end
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -1780,6 +1835,10 @@ local function draw()
                     end
                     if ImGui.BeginTabItem('Conditions') then
                         drawConditions()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('AFK Tools') then
+                        drawAfkTools()
                         ImGui.EndTabItem()
                     end
                     ImGui.EndTabBar()
