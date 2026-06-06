@@ -1155,7 +1155,9 @@ local function drawBurn()
         Config.save()
     end)
     ImGui.SameLine(240)
-    if ImGui.Button('[Burn Now]') then mq.cmd('/burn') end
+    if not s.combat.combatStart then ImGui.BeginDisabled() end
+    if ImGui.Button('Burn Now') then mq.cmd('/burn') end
+    if not s.combat.combatStart then ImGui.EndDisabled() end
 
     ImGui.Spacing()
     local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
