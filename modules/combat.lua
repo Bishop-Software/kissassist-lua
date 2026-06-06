@@ -1049,6 +1049,67 @@ function Combat.combatTargetCheck(setTarget)
         _state.combat.myTargetName, _state.combat.myTargetID, _state.combat.lastTargetID)
 end
 
+-- Gift of Mana proc handler (mac:11497-11580).
+-- Consumes gomActive, iterates GoM spell list, casts the first eligible free spell.
+-- Per-slot timers suppress a slot until the buffed spell's duration expires.
+local function checkGoM()
+    local s = _state
+    if not s.bard.gomActive then return end
+    s.bard.gomActive  = false
+    s.timers.gomTimer = os.clock() + 3
+
+    if not _cast or not _cast.castWhat then return end
+
+    local gomRaw  = Config.get('GoM', 'GoMSpell', nil) or {}
+    local gomSize = tonumber(Config.get('GoM', 'GoMSize', '3')) or 3
+
+    for i = 1, gomSize do
+        local raw = gomRaw[i] or 'null'
+        if raw == 'null' or raw == '' then goto gom_next end
+
+        local spell, tgt = raw:match('^([^|]+)|(.+)$')
+        if not spell then spell, tgt = raw, 'MA' end
+        tgt = (tgt or 'MA'):upper()
+
+        -- Suppress slot while buff is still active on target
+        if (s.timers.gomSpellTimers[i] or 0) > os.clock() then goto gom_next end
+
+        -- Spell must be in book and ready
+        if not mq.TLO.Me.SpellReady(spell)() then goto gom_next end
+
+        -- Resolve target to a spawn ID
+        local targetID
+        if tgt == 'ME' then
+            targetID = mq.TLO.Me.ID()
+        elseif tgt == 'MA' then
+            targetID = mq.TLO.Spawn('=' .. s.session.mainAssist).ID()
+        else  -- Mob
+            targetID = s.combat.myTargetID ~= 0 and s.combat.myTargetID or nil
+            if targetID then
+                local sp = mq.TLO.Spawn('id ' .. targetID)
+                if not sp or (sp.Type() or ''):lower() == 'corpse' then
+                    goto gom_next
+                end
+            end
+        end
+        if not targetID or targetID == 0 then goto gom_next end
+
+        mq.cmdf('/echo Gift of Mana detected! Trying to cast %s', spell)
+        local result = _cast.castWhat(spell, targetID, 'GoM', 0)
+        if result == 'CAST_SUCCESS' then
+            local dur = mq.TLO.Spell(spell).MyDuration.TotalSeconds() or 0
+            s.timers.gomSpellTimers[i] = os.clock() + dur
+            mq.cmdf('/echo Gift of Mana Casting >> %s <<', spell)
+            return
+        elseif result == 'CAST_CANCELLED' then
+            return
+        end
+        -- fizzle/resist/interrupt: fall through to next slot
+
+        ::gom_next::
+    end
+end
+
 -- Mirrors Sub Combat (kissassist.mac:1036).
 -- Executes the melee/spell combat loop for the current myTargetID until the mob dies.
 -- Called from checkForCombat once a target has been acquired.
@@ -1240,6 +1301,9 @@ function Combat.fight(fromWhere)
                 if _cast.doBurn then _cast.doBurn() end
                 _state.combat.burnID = 0
             end
+
+            -- GoM: cast free spell on Gift of Mana proc (mac:11497-11580)
+            checkGoM()
 
             -- Offtank auto-promote: MA is gone, assume MA role (mac:1143)
             if _state.session.role == 'offtank'
