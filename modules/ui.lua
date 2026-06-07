@@ -32,7 +32,7 @@ local COL    = 130  -- column width for checkbox SameLine and button widths
 
 local function drawStatus()
     local s = _state
-    local C2, C3 = 160, 240  -- fixed column offsets (px from window left edge)
+    local C2, C3 = 160, 320  -- fixed column offsets (px from window left edge)
 
     -- Combat state label + color
     local combatLabel, cr, cg, cb
@@ -106,6 +106,8 @@ local function drawStatus()
         ImGui.Text(string.format('Camp: (%.0f, %.0f, %.0f)', mv.campY or 0, mv.campX or 0, mv.campZ or 0))
         ImGui.SameLine(C2)
         ImGui.Text(string.format('Radius: %d%s', mv.campRadius or 0, rtc))
+        ImGui.SameLine(C3)
+        ImGui.Text('Zone: ' .. (s.session.zoneName or ''))
     end
 
     -- Row 5 (charm classes only): charmed mob

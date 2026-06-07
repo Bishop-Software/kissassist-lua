@@ -478,11 +478,13 @@ function Movement.checkStick(flag, useAttack)
     local maDist = comb.meleeDistance
     local cr     = mv.campRadius
 
-    if maDist > cr then
+    -- Gap-close and stick when: no camp set (free-roam) OR MeleeDistance > CampRadius
+    if not mv.returnToCamp or maDist > cr then
         local mobY = mob.Y() or 0
         local mobX = mob.X() or 0
 
-        if dist2D(refY, refX, mobY, mobX) > maDist then
+        -- "Mob too far from camp" guard only applies in camp mode
+        if mv.returnToCamp and dist2D(refY, refX, mobY, mobX) > maDist then
             local ma    = mq.TLO.Spawn('=' .. sess.mainAssist)
             local maY   = ma.Y() or 0
             local maX   = ma.X() or 0
@@ -521,8 +523,8 @@ function Movement.checkStick(flag, useAttack)
         end
     end
 
-    -- Stick to target (only when combat radius extends beyond camp radius)
-    if maDist <= cr then return end
+    -- Stick to target; in camp mode only when MeleeDistance > CampRadius
+    if mv.returnToCamp and maDist <= cr then return end
     local stickHow = mv.dStickHow
     if stickHow == 'I' then return end
 
