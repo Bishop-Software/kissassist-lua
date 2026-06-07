@@ -1419,7 +1419,14 @@ function Combat.fight(fromWhere)
                and (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) == 0 then
                 mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
             end
-            -- Deferred: stick/distance maintenance (M7)
+            -- Re-stick if mob moved beyond MaxRangeTo and stick dropped (mac:1150)
+            if _movement and _state.combat.meleeOn then
+                local _mob = mq.TLO.Spawn('id ' .. myID)
+                if _mob and (_mob.Distance() or 0) > (_mob.MaxRangeTo() or 999)
+                   and not mq.TLO.Stick.Active() then
+                    _movement.checkStick(0, 1)
+                end
+            end
             if _mez then _mez.check('Combat') end
             if _mez then _mez.aeCheck() end
             if _bard then _bard.doBardStuff() end
