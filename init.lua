@@ -86,7 +86,7 @@ State.loot.spamInfo = tonumber(Config.get('General', 'SpamLootInfo', '1')) or 1
 State.cast.miscGem      = tonumber(Config.get('SpellSets', 'MiscGem',      '0')) or 0
 State.cast.miscGemLW    = tonumber(Config.get('SpellSets', 'MiscGemLW',    '0')) or 0
 State.cast.miscGemRemem = tonumber(Config.get('SpellSets', 'MiscGemRemem', '0')) or 0
-State.cast.gemSlots     = 8 + (mq.TLO.Me.AltAbility('Mnemonic Retention').Rank() or 0)
+State.cast.gemSlots     = mq.TLO.Me.NumGems() or (8 + (mq.TLO.Me.AltAbility('Mnemonic Retention').Rank() or 0))
 -- Snapshot the spell currently occupying each misc gem slot (restored by CastReMem)
 if State.cast.miscGem > 0 then
     State.cast.reMemMiscSpell = mq.TLO.Me.Gem(State.cast.miscGem).Name() or ''

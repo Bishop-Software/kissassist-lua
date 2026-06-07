@@ -14,8 +14,6 @@ function Cast.init(s, u)
     state = s
     utils = u
     state.cast.checkStuckGem = Config.get('Spells', 'CheckStuckGem', '1') == '1'
-    state.cast.gemSlots = mq.TLO.Me.NumGems() or 8
-    utils.debug('cast', 'Cast.init: gemSlots=%d', state.cast.gemSlots)
 end
 
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
