@@ -1,6 +1,7 @@
 local Utils = {}
 
-local VERSION = '1.0.0'
+local Config  = require('modules.config')
+local VERSION = Config.VERSION
 
 -- Internal debug flags. Wired to State.debug in Step 1.5 via Utils.init().
 local _flags = {

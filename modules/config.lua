@@ -2,6 +2,8 @@ local mq = require('mq')
 
 local Config = {}
 
+Config.VERSION = '1.0.0'
+
 -- Loaded config table (populated by Config.load, consumed by modules at startup).
 local _cfg = nil
 -- Path to the pickle file on disk; set by migrateIni so save() knows where to write.
@@ -239,7 +241,7 @@ function Config.migrateIni(state)
 
     -- [General] — role, camp, movement, comms, misc toggles
     cfg.General = {
-        KissAssistVer    = ver,
+        KissAssistVer    = Config.VERSION,
         Role             = r('General','Role'),
         CampRadius       = r('General','CampRadius'),
         CampRadiusExceed = r('General','CampRadiusExceed'),
@@ -510,7 +512,7 @@ function Config.defaultCfg()
     local function emptyArr(n) local t = {} for i = 1, n do t[i] = 'null' end return t end
     return {
         General = {
-            KissAssistVer    = '1.0.0',
+            KissAssistVer    = Config.VERSION,
             Role             = '', CampRadius = '40', CampRadiusExceed = '0',
             ReturnToCamp     = '0', ChaseAssist = '0', ChaseDistance = '40',
             MedOn            = '1', MedStart = '40', MedStop = '90', MedCombat = '0',
