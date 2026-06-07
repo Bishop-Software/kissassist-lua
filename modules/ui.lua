@@ -467,12 +467,14 @@ end
 
 local function drawSpellSlots()
     local gemSlots = _state.cast.gemSlots or 8
+    local gems = Config.get('Spells', 'Gems', {})
     ImGui.PushItemWidth(220)
     for i = 1, gemSlots do
-        local current = Config.get('Spells', 'Gem' .. i, '')
+        local current = gems[i] or ''
         local newVal, changed = ImGui.InputText('Gem ' .. i .. '##gem' .. i, current, 0)
         if changed and newVal ~= current then
-            Config.set('Spells', 'Gem' .. i, newVal)
+            gems[i] = newVal
+            Config.set('Spells', 'Gems', gems)
             Config.save()
         end
     end
