@@ -161,8 +161,6 @@ end
 
 -- Purge any section or key not present in the defaultCfg schema.
 -- Keeps pickles clean after migration without needing a manual orphan list.
--- Exception: Spells.GemN keys are written by Config.writeSpells() and are not
--- in the schema but must be preserved.
 local function purgeOrphanedFields(cfg)
     local schema = Config.defaultCfg()
     for section in pairs(cfg) do
@@ -170,9 +168,7 @@ local function purgeOrphanedFields(cfg)
             cfg[section] = nil
         else
             for key in pairs(cfg[section] or {}) do
-                if section == 'Spells' and key:match('^Gem%d+$') then
-                    -- keep — written by Config.writeSpells()
-                elseif schema[section][key] == nil then
+                if schema[section][key] == nil then
                     cfg[section][key] = nil
                 end
             end
@@ -197,12 +193,24 @@ function Config.migrateIni(state)
         local ok, cfg = pcall(dofile, picklePath)
         if ok and type(cfg) == 'table' then
             _picklePath = picklePath
+            local dirty = false
             -- One-time rename: SpellS → SpellSets
             if cfg.SpellS and not cfg.SpellSets then
                 cfg.SpellSets = cfg.SpellS
                 cfg.SpellS    = nil
-                mq.pickle(picklePath, cfg)
+                dirty = true
             end
+            -- One-time: migrate Spells.GemN individual keys → Spells.Gems array
+            if cfg.Spells and not cfg.Spells.Gems then
+                local gems = {}
+                for i = 1, 13 do
+                    local v = cfg.Spells['Gem' .. i]
+                    if v then gems[i] = v; cfg.Spells['Gem' .. i] = nil end
+                end
+                cfg.Spells.Gems = gems
+                dirty = true
+            end
+            if dirty then mq.pickle(picklePath, cfg) end
             printf('\agKissAssist: \awLoaded config from \at%s', pickleName)
             return cfg
         end
@@ -286,9 +294,15 @@ function Config.migrateIni(state)
         LoadSpellSet     = r('SpellS','LoadSpellSet'),
         SpellSetName     = r('SpellS','SpellSetName'),
     }
+    local gemsArr = {}
+    for i = 1, 13 do
+        local v = r('Spells', 'Gem' .. i)
+        if v then gemsArr[i] = v end
+    end
     cfg.Spells = {
         CastingInterruptOn = r('Spells','CastingInterruptOn'),
         CheckStuckGem      = r('Spells','CheckStuckGem'),
+        Gems               = gemsArr,
     }
 
     -- [Buffs] — self/group buff list (numbered array: Buffs1..BuffsN)
@@ -531,6 +545,7 @@ function Config.defaultCfg()
         },
         Spells = {
             CastingInterruptOn = '0', CheckStuckGem = '0',
+            Gems = {},
         },
         Melee = {
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
@@ -661,12 +676,11 @@ end
 -- Mirrors Bind_WriteMySpells from kissassist.mac.
 function Config.writeSpells(state)
     local gemSlots = state.cast.gemSlots or 8
+    local gems = {}
     for i = 1, gemSlots do
-        local spellName = mq.TLO.Me.Gem(i).Name() or ''
-        if spellName ~= '' then
-            Config.set('Spells', 'Gem' .. i, spellName)
-        end
+        gems[i] = mq.TLO.Me.Gem(i).Name() or 'null'
     end
+    Config.set('Spells', 'Gems', gems)
     Config.save()
 end
 
