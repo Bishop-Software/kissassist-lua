@@ -29,9 +29,6 @@ end
 
 -- Main AFK safety monitor — mirrors Sub AFKTools (mac:11665).
 function Afk.check()
-    -- Wrong zone: defer to movement (mac:11668-11671)
-    if mq.TLO.Zone.ID() ~= (_state.movement.campZone or 0) then return end
-
     -- Skip while in active combat with heals running (mac:11672)
     if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= 0 then return end
 

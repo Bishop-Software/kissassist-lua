@@ -256,15 +256,17 @@ local function onMakeCampHere()
     state.movement.campY        = mq.TLO.Me.Y()
     state.movement.campZ        = mq.TLO.Me.FloorZ()
     state.movement.campZone     = mq.TLO.Zone.ID()
+    state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
     if _comms then
         _comms.broadcast('CAMP', {
-            x    = state.movement.campX,
-            y    = state.movement.campY,
-            z    = state.movement.campZ,
-            zone = state.movement.campZone,
+            x        = state.movement.campX,
+            y        = state.movement.campY,
+            z        = state.movement.campZ,
+            zone     = state.movement.campZone,
+            zoneName = state.movement.campZoneName,
         })
     end
 end
@@ -274,6 +276,7 @@ local function onStayHere()
     state.movement.campY        = mq.TLO.Me.Y()
     state.movement.campZ        = mq.TLO.Me.FloorZ()
     state.movement.campZone     = mq.TLO.Zone.ID()
+    state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> StayHere — camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
@@ -285,6 +288,7 @@ local function onCampOff()
     state.movement.campX        = 0
     state.movement.campY        = 0
     state.movement.campZ        = 0
+    state.movement.campZoneName = ''
     printf('\ay>> Camp mode off.')
 end
 

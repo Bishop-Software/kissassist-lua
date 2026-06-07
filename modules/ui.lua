@@ -107,7 +107,13 @@ local function drawStatus()
         ImGui.SameLine(C2)
         ImGui.Text(string.format('Radius: %d%s', mv.campRadius or 0, rtc))
         ImGui.SameLine(C3)
-        ImGui.Text('Zone: ' .. (s.session.zoneName or ''))
+        local campZoneName = mv.campZoneName or ''
+        local curZone      = s.session.zoneName or ''
+        if campZoneName ~= '' and campZoneName ~= curZone then
+            ImGui.Text('Zone: ' .. curZone .. ' (camp: ' .. campZoneName .. ')')
+        else
+            ImGui.Text('Zone: ' .. curZone)
+        end
     end
 
     -- Row 5 (charm classes only): charmed mob
