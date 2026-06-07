@@ -869,10 +869,14 @@ local function drawBuffs()
         Config.set('Buffs', 'BuffsOn', v and '1' or '0')
         Config.save()
     end)
-    ImGui.SameLine(120)
     checkbox('Rebuff On', s.buffs.rebuffOn, function(v)
         s.buffs.rebuffOn = v
         Config.set('Buffs', 'RebuffOn', v and '1' or '0')
+        Config.save()
+    end)
+    checkbox('Mount On', s.misc.mountOn, function(v)
+        s.misc.mountOn = v
+        Config.set('General', 'MountOn', v and '1' or '0')
         Config.save()
     end)
 

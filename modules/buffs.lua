@@ -388,7 +388,7 @@ function Buffs.castMount()
         if entry:find('|0', 1, true) then goto mcontinue end
         local parts = {}
         for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
-        if (parts[2] or '') ~= 'Mount' then goto mcontinue end
+        if (parts[2] or '') ~= 'mount' then goto mcontinue end
         local spellName = parts[1] or ''
         if spellName == '' then goto mcontinue end
         if mq.TLO.Me.FeetWet() then goto mcontinue end
@@ -670,8 +670,8 @@ function Buffs.checkBuffs(forceGroup)
                 mq.cmd(string.format('/removebuff "%s"', spellToCast))
             end
             goto continue
-        elseif p2 == 'Mount' then
-            -- |Mount: handled by the pre-loop castMount() block; skip here (mac:13880)
+        elseif p2 == 'mount' then
+            -- |mount: handled by the pre-loop castMount() block; skip here (mac:13880)
             goto continue
         elseif p2 ~= 'begfor'
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > 0
