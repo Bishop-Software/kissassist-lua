@@ -65,6 +65,23 @@ local function onMessage(message)
             printf('\awMain Assist changed to \at%s\aw via group broadcast (IAmMA=%s)', newMA, tostring(_state.session.iAmMA))
         end
 
+    elseif msgType == 'DEBUFFS' then
+        local spawnID = tostring(data.spawnID or 0)
+        if spawnID ~= '0' then
+            if (data.total or 0) > 0 then
+                _state.heal.groupDebuffs[spawnID] = {
+                    poison  = data.poison  or 0,
+                    disease = data.disease or 0,
+                    curse   = data.curse   or 0,
+                    corrupt = data.corrupt or 0,
+                    mezzed  = data.mezzed  or 0,
+                }
+            else
+                _state.heal.groupDebuffs[spawnID] = nil
+            end
+            _utils.debug('comms', 'DEBUFFS from %s: id=%s total=%d', data.from, spawnID, data.total or 0)
+        end
+
     elseif msgType == 'PULL' then
         local mob  = data.mob  or '?'
         local dist = data.dist or 0
