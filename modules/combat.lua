@@ -2020,8 +2020,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
 
     if skipCombat == 0 then
         -- Clear iAmDead once resurrection sickness fades and corpse despawns (mac:489)
-        if _state.session.iAmDead
-           and (_state.movement.campZone == (mq.TLO.Zone.ID() or 0)) then
+        if _state.session.iAmDead then
             local sickBuff  = mq.TLO.Me.Buff('Resurrection Sickness')
             local hasSick   = sickBuff and (sickBuff.ID() or 0) ~= 0
             local myName    = mq.TLO.Me.CleanName() or ''

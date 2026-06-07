@@ -78,7 +78,7 @@ function Pet.doPetStuff()
 
     -- Entry guards (mac:5211-5212)
     if not s.pet.on then return end
-    if s.movement.campZone ~= mq.TLO.Zone.ID() then return end
+    if s.movement.returnToCamp and s.movement.campZone ~= mq.TLO.Zone.ID() then return end
     if (tonumber(s.combat.aggroTargetID) or 0) ~= 0 then return end
     if mq.TLO.Me.Invis() then return end
     if mq.TLO.Me.Hovering() then return end

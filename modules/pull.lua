@@ -966,6 +966,7 @@ function Pull.pullCheck()
     if s.dps.paused  then return end
     if (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 then return end
     if (mq.TLO.Me.Buff('Revival Sickness').ID()       or 0) > 0 then return end
+    if (s.movement.campX == 0 and s.movement.campY == 0) then return end
     if s.movement.campZone ~= mq.TLO.Zone.ID() then return end
     if mq.TLO.Me.Invis() then return end
 
