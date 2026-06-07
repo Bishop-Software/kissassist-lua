@@ -265,6 +265,7 @@ local State = {
         medCombat       = false,
         groupWatchOn    = false,
         corpsRecoveryOn = 0,
+        groupDebuffs    = {},  -- [spawnID string] = {poison,disease,curse,corrupt,mezzed}; set by DEBUFFS actor broadcast
     },
 
     buffs = {

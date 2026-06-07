@@ -455,12 +455,26 @@ function Heal.writeDebuffs()
                 debuffTotal, poison, disease, curseTotal, corrupt, mezzed)
             mq.cmdf('/ini "%s" "%s" Debuffs "%s"', buffFile, tostring(meID), debuffList)
             _utils.debug('heals', 'writeDebuffs: writing ' .. debuffList)
+            if _comms then
+                _comms.broadcast('DEBUFFS', {
+                    spawnID = meID,
+                    total   = debuffTotal,
+                    poison  = poison,
+                    disease = disease,
+                    curse   = curseTotal,
+                    corrupt = corrupt,
+                    mezzed  = mezzed,
+                })
+            end
         end
     else
         if _state.heal.needCuring then
             _state.heal.needCuring = false
             mq.cmdf('/ini "%s" "%s" Debuffs ""', buffFile, tostring(meID))
             _utils.debug('heals', 'writeDebuffs: cleared')
+            if _comms then
+                _comms.broadcast('DEBUFFS', { spawnID = meID, total = 0 })
+            end
         end
     end
 end
@@ -570,15 +584,26 @@ function Heal.checkCures()
                 mezzed  = mq.TLO.Me.Mezzed.ID()   or 0
                 if (poison + disease + curse + corrupt + mezzed) == 0 then break end
             else
-                local raw = mq.TLO.Ini(buffFile, tostring(targetID), 'Debuffs')() or '0'
-                local rp  = {}
-                for p in (raw .. '|'):gmatch('([^|]*)|') do rp[#rp + 1] = p end
-                if (tonumber(rp[1]) or 0) == 0 then break end  -- no debuffs recorded for this target
-                poison  = tonumber(rp[2]) or 0
-                disease = tonumber(rp[3]) or 0
-                curse   = tonumber(rp[4]) or 0
-                corrupt = tonumber(rp[5]) or 0
-                mezzed  = tonumber(rp[6]) or 0
+                -- Prefer real-time actor broadcast; fall back to INI for .mac chars.
+                local gd = _state.heal.groupDebuffs[tostring(targetID)]
+                if gd then
+                    poison  = gd.poison  or 0
+                    disease = gd.disease or 0
+                    curse   = gd.curse   or 0
+                    corrupt = gd.corrupt or 0
+                    mezzed  = gd.mezzed  or 0
+                    if (poison + disease + curse + corrupt + mezzed) == 0 then break end
+                else
+                    local raw = mq.TLO.Ini(buffFile, tostring(targetID), 'Debuffs')() or '0'
+                    local rp  = {}
+                    for p in (raw .. '|'):gmatch('([^|]*)|') do rp[#rp + 1] = p end
+                    if (tonumber(rp[1]) or 0) == 0 then break end  -- no debuffs recorded for this target
+                    poison  = tonumber(rp[2]) or 0
+                    disease = tonumber(rp[3]) or 0
+                    curse   = tonumber(rp[4]) or 0
+                    corrupt = tonumber(rp[5]) or 0
+                    mezzed  = tonumber(rp[6]) or 0
+                end
             end
 
             -- Debuff type match (mac:12729-12744)
