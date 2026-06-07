@@ -173,6 +173,13 @@ local function drawControls()
     ImGui.SameLine()
     if ImGui.Button('Stay Here',      COL, 0) then mq.cmd('/stayhere')     end
 
+    local campSet = s.movement.campX ~= 0 or s.movement.campY ~= 0
+    if not campSet then ImGui.BeginDisabled() end
+    checkbox('Return to Camp', s.movement.returnToCamp, function(v)
+        s.movement.returnToCamp = v
+    end)
+    if not campSet then ImGui.EndDisabled() end
+
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
