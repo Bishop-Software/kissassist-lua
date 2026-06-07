@@ -788,12 +788,16 @@ end
 local function onLootOn()
     state.loot.on = 1
     mq.cmd('/autoloot turn on')
+    _config.set('General', 'LootOn', '1')
+    _config.save()
     printf('\agLooting enabled.')
 end
 
 local function onLootOff()
     state.loot.on = 0
     mq.cmd('/autoloot turn off')
+    _config.set('General', 'LootOn', '0')
+    _config.save()
     printf('\ayLooting disabled.')
 end
 
