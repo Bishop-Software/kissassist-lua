@@ -29,7 +29,7 @@ local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 local UI       = require('modules.ui')
 
-local VERSION = '1.0.0'
+local VERSION = Config.VERSION
 
 -- Wire Utils debug flags to State.debug before any other output
 Utils.init(State)
