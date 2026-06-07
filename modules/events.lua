@@ -281,8 +281,13 @@ local function onZoned(_, message)
     end
     if state.movement.campZone ~= zoneID then
         if state.movement.returnToCamp then
+            -- Active camp in another zone — pause RTC and remember to restore
             state.movement.returnToCamp = false
             state.movement.rememberCamp = true
+        else
+            -- No active camp — track the character to the new zone
+            state.movement.campZone     = zoneID
+            state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
         end
     else
         if state.movement.rememberCamp then

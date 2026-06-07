@@ -1261,7 +1261,7 @@ end
 function Cast.doBurn()
     -- Guards (mac:11771-11773)
     if mq.TLO.Me.Hovering() then return end
-    if (state.movement.campZone or 0) ~= 0
+    if state.movement.returnToCamp
        and (mq.TLO.Zone.ID() or 0) ~= state.movement.campZone then return end
     if not state.combat.burnOn then
         printf('Leaving Burn. Burn is turned Off.')

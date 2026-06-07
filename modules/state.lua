@@ -202,6 +202,7 @@ local State = {
         campY           = 0,
         campZ           = 0,
         campZone        = 0,
+        campZoneName    = '',
         cantHit         = false,
         cantSee         = false,
         chaseOnValue    = 1,

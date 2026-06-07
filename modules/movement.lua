@@ -64,6 +64,7 @@ function Movement.doWeMove(forceFlag, sentFrom)
     local role = _state.session.role
 
     if not mv.returnToCamp and (forceFlag or 0) == 0 then return end
+    if mv.campX == 0 and mv.campY == 0 then return end
 
     mq.doevents()
 
