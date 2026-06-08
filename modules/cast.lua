@@ -14,6 +14,10 @@ function Cast.init(s, u)
     state = s
     utils = u
     state.cast.checkStuckGem = Config.get('Spells', 'CheckStuckGem', '1') == '1'
+    local lss = tonumber(Config.get('Spells', 'LoadSpellSet', '0')) or 0
+    state.cast.loadSpellSet = lss
+    state.cast.spellSetName = Config.get('Spells', 'SpellSetName', '') or ''
+    if lss > 0 then Cast.loadSpellSet() end
 end
 
 -- Wire Bard module after Bard.init; called from init.lua (Step 8.7).
@@ -1340,6 +1344,63 @@ function Cast.checkTribute()
         mq.cmd('/squelch /trophy personal off')
         state.timers.tribute = 0
     end
+end
+
+-- ─── LoadSpellSet ─────────────────────────────────────────────────────────────
+
+-- Mirrors LoadSpellSet (kissassist.mac:15219) and Bind_MemMySpells (kissassist.mac:14131).
+-- Mode 1: /memspellset <name>, wait gemSlots*500ms, refresh misc gem state.
+-- Mode 2: iterate Gem1..GemN from config, resolve rank, mem each slot, refresh misc gem state.
+function Cast.loadSpellSet()
+    local mode = state.cast.loadSpellSet or 0
+    if mode == 0 then return end
+    local gemSlots = state.cast.gemSlots or 8
+
+    if mode == 1 then
+        local setName = state.cast.spellSetName or ''
+        if setName == '' then
+            printf('\aw LoadSpellSet: no SpellSetName configured.')
+            return
+        end
+        printf('\aw Memming spellset (%s).', setName)
+        mq.cmdf('/memspellset %s', setName)
+        mq.delay(gemSlots * 500)
+    else
+        local gems = Config.get('Spells', 'Gems', {})
+        local hasSpell = false
+        for i = 1, gemSlots do
+            local s = gems[i]
+            if s and s ~= '' and s ~= 'null' then hasSpell = true; break end
+        end
+        if not hasSpell then
+            printf('\aw LoadSpellSet: no spells in [Spells] config. Use Write Current Gems first.')
+            return
+        end
+        for i = 1, gemSlots do
+            local spellName = gems[i]
+            if spellName and spellName ~= '' and spellName ~= 'null' then
+                local baseName = spellName:match('^(.-)%s+Rk%.') or spellName
+                local rankName = mq.TLO.Spell(baseName).RankName() or baseName
+                local currentGem = mq.TLO.Me.Gem(rankName)() or 0
+                if currentGem ~= i then
+                    if currentGem > 0 then
+                        mq.cmdf('/notify CastSpellWnd CSPW_Spell%d rightmouseup', currentGem - 1)
+                        local t = os.clock() + 2.0
+                        while os.clock() < t and (mq.TLO.Me.Gem(rankName)() or 0) ~= 0 do
+                            mq.delay(100)
+                        end
+                    end
+                    castMemSpell(rankName, i, 0)
+                end
+            end
+        end
+    end
+
+    local miscGem   = state.cast.miscGem   or 0
+    local miscGemLW = state.cast.miscGemLW or 0
+    if miscGem   > 0 then state.cast.reMemMiscSpell   = mq.TLO.Me.Gem(miscGem).Name()   or '' end
+    if miscGemLW > 0 then state.cast.reMemMiscSpellLW = mq.TLO.Me.Gem(miscGemLW).Name() or '' end
+    utils.debug('cast', 'LoadSpellSet mode=%d done', mode)
 end
 
 return Cast
