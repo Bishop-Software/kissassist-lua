@@ -466,6 +466,13 @@ end
 -- ---------------------------------------------------------------------------
 
 local function drawSpellSlots()
+    checkbox('Check Stuck Gem', _state.cast.checkStuckGem, function(v)
+        _state.cast.checkStuckGem = v
+        Config.set('Spells', 'CheckStuckGem', v and '1' or '0')
+        Config.save()
+    end)
+
+    ImGui.Spacing()
     local gemSlots = _state.cast.gemSlots or 8
     local gems = Config.get('Spells', 'Gems', {})
     ImGui.PushItemWidth(220)
