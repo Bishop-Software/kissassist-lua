@@ -83,9 +83,9 @@ State.loot.radius   = tonumber(Config.get('General', 'CorpseRadius', '100')) or 
 State.loot.spamInfo = tonumber(Config.get('General', 'SpamLootInfo', '1')) or 1
 
 -- Wire cast gem settings from INI into State
-State.cast.miscGem      = tonumber(Config.get('SpellSets', 'MiscGem',      '0')) or 0
-State.cast.miscGemLW    = tonumber(Config.get('SpellSets', 'MiscGemLW',    '0')) or 0
-State.cast.miscGemRemem = tonumber(Config.get('SpellSets', 'MiscGemRemem', '0')) or 0
+State.cast.miscGem      = tonumber(Config.get('Spells', 'MiscGem',      '0')) or 0
+State.cast.miscGemLW    = tonumber(Config.get('Spells', 'MiscGemLW',    '0')) or 0
+State.cast.miscGemRemem = tonumber(Config.get('Spells', 'MiscGemRemem', '0')) or 0
 State.cast.gemSlots     = mq.TLO.Me.NumGems() or (8 + (mq.TLO.Me.AltAbility('Mnemonic Retention').Rank() or 0))
 -- Snapshot the spell currently occupying each misc gem slot (restored by CastReMem)
 if State.cast.miscGem > 0 then
@@ -142,6 +142,10 @@ while not State.terminate do
     -- Phase 1: events
     mq.doevents()
     Cast.checkTribute()
+    if State.cast.pendingLoadSpellSet then
+        State.cast.pendingLoadSpellSet = false
+        Cast.loadSpellSet()
+    end
     -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
     if State.afk.on > 0 then Afk.check() end
     -- Phase 2: combat (first pass — mac:MainLoop1)
