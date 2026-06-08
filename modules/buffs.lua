@@ -498,6 +498,8 @@ function Buffs.checkBuffs(forceGroup)
     -- Mount cast (mac:4200)
     Buffs.castMount()
 
+    local savedTargetID = mq.TLO.Target.ID() or 0
+
     -- Per-entry loop (mac:4207)
     for i, slot in ipairs(_state.buffs.buffsArray) do
         if not slot then goto continue end
@@ -922,6 +924,10 @@ function Buffs.checkBuffs(forceGroup)
                     end
                 end
             end
+        end
+
+        if savedTargetID ~= 0 then
+            mq.cmdf('/squelch /target id %d', savedTargetID)
         end
 
         ::continue::
