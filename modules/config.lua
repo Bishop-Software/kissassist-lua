@@ -194,10 +194,19 @@ function Config.migrateIni(state)
         if ok and type(cfg) == 'table' then
             _picklePath = picklePath
             local dirty = false
-            -- One-time rename: SpellS → SpellSets
+            -- One-time rename: SpellS → SpellSets (legacy)
             if cfg.SpellS and not cfg.SpellSets then
                 cfg.SpellSets = cfg.SpellS
                 cfg.SpellS    = nil
+                dirty = true
+            end
+            -- One-time merge: SpellSets → Spells
+            if cfg.SpellSets then
+                cfg.Spells = cfg.Spells or {}
+                for k, v in pairs(cfg.SpellSets) do
+                    if cfg.Spells[k] == nil then cfg.Spells[k] = v end
+                end
+                cfg.SpellSets = nil
                 dirty = true
             end
             -- One-time: migrate Spells.GemN individual keys → Spells.Gems array
@@ -286,23 +295,21 @@ function Config.migrateIni(state)
         MountOn          = r('General','MountOn'),
     }
 
-    -- [SpellSets] — spell set settings (INI source section was [SpellS])
-    cfg.SpellSets = {
-        MiscGem          = r('SpellS','MiscGem'),
-        MiscGemLW        = r('SpellS','MiscGemLW'),
-        MiscGemRemem     = r('SpellS','MiscGemRemem'),
-        LoadSpellSet     = r('SpellS','LoadSpellSet'),
-        SpellSetName     = r('SpellS','SpellSetName'),
-    }
     local gemsArr = {}
     for i = 1, 13 do
         local v = r('Spells', 'Gem' .. i)
         if v then gemsArr[i] = v end
     end
+    -- [Spells] — gem layout, cast settings, spell set config (INI [Spells] + [SpellS])
     cfg.Spells = {
         CastingInterruptOn = r('Spells','CastingInterruptOn'),
         CheckStuckGem      = r('Spells','CheckStuckGem'),
         Gems               = gemsArr,
+        MiscGem            = r('SpellS','MiscGem'),
+        MiscGemLW          = r('SpellS','MiscGemLW'),
+        MiscGemRemem       = r('SpellS','MiscGemRemem'),
+        LoadSpellSet       = r('SpellS','LoadSpellSet'),
+        SpellSetName       = r('SpellS','SpellSetName'),
     }
 
     -- [Buffs] — self/group buff list (numbered array: Buffs1..BuffsN)
@@ -539,13 +546,11 @@ function Config.defaultCfg()
             OORMedley = 'oor', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
         },
-        SpellSets = {
-            MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
-            LoadSpellSet = '0', SpellSetName = '',
-        },
         Spells = {
             CastingInterruptOn = '0', CheckStuckGem = '0',
             Gems = {},
+            MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
+            LoadSpellSet = '0', SpellSetName = '',
         },
         Melee = {
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',

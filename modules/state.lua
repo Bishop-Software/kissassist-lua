@@ -136,6 +136,9 @@ local State = {
         reMemMiscSpellLW = '',  -- set post-ini: Me.Gem[miscGemLW].Name
         spellReadyL      = false,
         checkStuckGem    = false,  -- [Spells] CheckStuckGem: verify gem slot before cast
+        loadSpellSet         = 0,    -- 0=off 1=named set 2=from INI
+        spellSetName         = '',
+        pendingLoadSpellSet  = false,
     },
 
     pull = {

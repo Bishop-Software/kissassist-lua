@@ -465,12 +465,41 @@ end
 -- Spell Slots panel
 -- ---------------------------------------------------------------------------
 
+local LSS_LABELS = { 'Off', 'Named Set', 'From INI' }
+
 local function drawSpellSlots()
     checkbox('Check Stuck Gem', _state.cast.checkStuckGem, function(v)
         _state.cast.checkStuckGem = v
         Config.set('Spells', 'CheckStuckGem', v and '1' or '0')
         Config.save()
     end)
+
+    ImGui.Spacing()
+
+    -- Load Spell Set mode combo
+    local lssMode = _state.cast.loadSpellSet or 0
+    ImGui.PushItemWidth(120)
+    local newModeIdx, modeChanged = ImGui.Combo('Load Spell Set##lss', lssMode + 1, LSS_LABELS)
+    ImGui.PopItemWidth()
+    if modeChanged then
+        lssMode = newModeIdx - 1
+        _state.cast.loadSpellSet = lssMode
+        Config.set('Spells', 'LoadSpellSet', tostring(lssMode))
+        Config.save()
+    end
+
+    -- SpellSetName input (only visible in mode 1)
+    if lssMode == 1 then
+        local setName = _state.cast.spellSetName or ''
+        ImGui.PushItemWidth(180)
+        local newName, nameChanged = ImGui.InputText('Set Name##lssname', setName, 0)
+        ImGui.PopItemWidth()
+        if nameChanged and newName ~= setName then
+            _state.cast.spellSetName = newName
+            Config.set('Spells', 'SpellSetName', newName)
+            Config.save()
+        end
+    end
 
     ImGui.Spacing()
     local gemSlots = _state.cast.gemSlots or 8
@@ -491,6 +520,12 @@ local function drawSpellSlots()
     if ImGui.Button('Write Current Gems') then
         Config.writeSpells(_state)
     end
+    ImGui.SameLine()
+    if lssMode == 0 then ImGui.BeginDisabled() end
+    if ImGui.Button('Mem Spells') then
+        _state.cast.pendingLoadSpellSet = true
+    end
+    if lssMode == 0 then ImGui.EndDisabled() end
 end
 
 -- ---------------------------------------------------------------------------
