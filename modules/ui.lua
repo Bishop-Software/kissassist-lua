@@ -382,7 +382,7 @@ local function drawHealThresholds()
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('heals_tbl', 5, tblFlags) then
         ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('Pct',   ImGuiTableColumnFlags.WidthFixed,    70)
+        ImGui.TableSetupColumn('Pct',   ImGuiTableColumnFlags.WidthFixed,    95)
         ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   100)
         ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
         ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
