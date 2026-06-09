@@ -598,6 +598,140 @@ local function drawPet()
         end
     end
     ImGui.PopItemWidth()
+
+    -- Pet Buffs array editor
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('Pet Buffs')
+    ImGui.Spacing()
+
+    local petBuffsRaw  = Config.get('Pet', 'PetBuffs',     nil) or {}
+    local petBuffsSize = tonumber(Config.get('Pet', 'PetBuffsSize', '5')) or 5
+
+    local function syncPetBuffsArray()
+        s.buffs.petBuffsArray = {}
+        for _, slot in ipairs(Config.parseCondArray(petBuffsRaw)) do
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                s.buffs.petBuffsArray[#s.buffs.petBuffsArray + 1] = slot
+            end
+        end
+    end
+
+    local pbTblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('petbuffs_tbl', 2, pbTblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, petBuffsSize do
+            local raw     = petBuffsRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell   = isEmpty and '' or raw
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newSpell, sc = ImGui.InputText('##pbspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##pbrem' .. i) then
+                if i == petBuffsSize and petBuffsSize > 1 then
+                    petBuffsRaw[i] = nil
+                    petBuffsSize   = petBuffsSize - 1
+                    Config.set('Pet', 'PetBuffsSize', tostring(petBuffsSize))
+                else
+                    petBuffsRaw[i] = 'null'
+                end
+                Config.set('Pet', 'PetBuffs', petBuffsRaw)
+                Config.save()
+                syncPetBuffsArray()
+            end
+
+            if sc then
+                petBuffsRaw[i] = newSpell ~= '' and newSpell or 'null'
+                Config.set('Pet', 'PetBuffs', petBuffsRaw)
+                Config.save()
+                syncPetBuffsArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]##pbuffsadd') then
+        petBuffsSize = petBuffsSize + 1
+        petBuffsRaw[petBuffsSize] = 'null'
+        Config.set('Pet', 'PetBuffsSize', tostring(petBuffsSize))
+        Config.set('Pet', 'PetBuffs', petBuffsRaw)
+        Config.save()
+    end
+
+    -- Pet Toys array editor
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('Pet Toys')
+    ImGui.Spacing()
+
+    local petToysRaw  = Config.get('Pet', 'PetToys',     nil) or {}
+    local petToysSize = tonumber(Config.get('Pet', 'PetToysSize', '5')) or 5
+
+    local function syncPetToysArray()
+        s.pet.toysArray = {}
+        for _, v in ipairs(petToysRaw) do
+            if v and v ~= '' and v ~= 'null' then
+                s.pet.toysArray[#s.pet.toysArray + 1] = v
+            end
+        end
+    end
+
+    local ptTblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('pettoys_tbl', 2, ptTblFlags) then
+        ImGui.TableSetupColumn('Item', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('',     ImGuiTableColumnFlags.WidthFixed,    32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, petToysSize do
+            local raw     = petToysRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local item    = isEmpty and '' or raw
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newItem, ic = ImGui.InputText('##ptitem' .. i, item, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##ptrem' .. i) then
+                if i == petToysSize and petToysSize > 1 then
+                    petToysRaw[i] = nil
+                    petToysSize   = petToysSize - 1
+                    Config.set('Pet', 'PetToysSize', tostring(petToysSize))
+                else
+                    petToysRaw[i] = 'null'
+                end
+                Config.set('Pet', 'PetToys', petToysRaw)
+                Config.save()
+                syncPetToysArray()
+            end
+
+            if ic then
+                petToysRaw[i] = newItem ~= '' and newItem or 'null'
+                Config.set('Pet', 'PetToys', petToysRaw)
+                Config.save()
+                syncPetToysArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]##ptoysadd') then
+        petToysSize = petToysSize + 1
+        petToysRaw[petToysSize] = 'null'
+        Config.set('Pet', 'PetToysSize', tostring(petToysSize))
+        Config.set('Pet', 'PetToys', petToysRaw)
+        Config.save()
+    end
 end
 
 -- ---------------------------------------------------------------------------
