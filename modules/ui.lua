@@ -2071,7 +2071,10 @@ end
 
 local function draw()
     if not _open then return end
-    if ImGui.Begin('KissAssist') then
+    local shouldDraw
+    _open, shouldDraw = ImGui.Begin('KissAssist', _open)
+    if not _open then _state.terminate = true end
+    if shouldDraw then
         drawStatus()
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
