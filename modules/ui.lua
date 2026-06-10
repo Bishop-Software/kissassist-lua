@@ -1093,6 +1093,34 @@ local function drawBuffs()
     intInput('Check Timer', s.buffs.checkBuffsTimer, 1, 3600, 'Buffs', 'CheckBuffsTimer',
         function(v) s.buffs.checkBuffsTimer = v end)
 
+    -- Misc Gem Re-Mem (mac:4701-4705)
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('Misc Gem Re-Mem')
+    ImGui.Spacing()
+    local REMEM_LABELS = { 'Off', 'Both', 'Short only', 'LW only' }
+    ImGui.PushItemWidth(130)
+    local newRemem, rrc = ImGui.Combo('Re-Mem Mode##miscremem', _state.cast.miscGemRemem, REMEM_LABELS)
+    ImGui.PopItemWidth()
+    if rrc then
+        _state.cast.miscGemRemem = newRemem
+        Config.set('Spells', 'MiscGemRemem', tostring(newRemem))
+        Config.save()
+    end
+    if (_state.cast.miscGemRemem or 0) ~= 0 then
+        local maxGem = _state.cast.gemSlots or 8
+        intInput('Misc Gem##miscgem', _state.cast.miscGem, 0, maxGem, 'Spells', 'MiscGem',
+            function(v)
+                _state.cast.miscGem = v
+                _state.cast.reMemMiscSpell = v > 0 and (mq.TLO.Me.Gem(v).Name() or '') or ''
+            end)
+        intInput('Misc Gem LW##miscgemlw', _state.cast.miscGemLW, 0, maxGem, 'Spells', 'MiscGemLW',
+            function(v)
+                _state.cast.miscGemLW = v
+                _state.cast.reMemMiscSpellLW = v > 0 and (mq.TLO.Me.Gem(v).Name() or '') or ''
+            end)
+    end
+
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Spacing()

@@ -154,6 +154,13 @@ while not State.terminate do
     end
     -- Phase 2.5: corpse recovery (mac:369)
     if State.heal.corpsRecoveryOn == 1 then Heal.recoverCorpses() end
+    -- Phase 2.6: restore misc gem if displaced during last buff/heal pass (mac:370-374)
+    if (State.cast.miscGemRemem or 0) ~= 0
+            and (State.cast.reMemCast or State.cast.reMemCastLW) then
+        State.movement.dontMoveMe = true
+        Cast.castReMem(State.cast.reMemMiscSpell or '', true, 'mainloop')
+        State.movement.dontMoveMe = false
+    end
     -- Phase 3: heal / cure / rez
     Heal.writeDebuffs()
     Heal.checkCures()
@@ -178,7 +185,7 @@ while not State.terminate do
         Buffs.writeBuffsPet()
         Buffs.writeBuffsMerc()
     end
-    if State.buffs.buffsOn then
+    if State.buffs.buffsOn and not State.combat.combatStart then
         Buffs.castMana()  -- mana restore before full buff cycle (mac:394 MainLoop)
         Buffs.checkBuffs(State.buffs.forceBuffs)
         State.buffs.forceBuffs = false
