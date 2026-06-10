@@ -13,7 +13,8 @@ local state, utils, _bard, _cond
 function Cast.init(s, u)
     state = s
     utils = u
-    state.cast.checkStuckGem = Config.get('Spells', 'CheckStuckGem', '1') == '1'
+    state.cast.checkStuckGem       = Config.get('Spells', 'CheckStuckGem', '1') == '1'
+    state.cast.castingInterruptOn  = tonumber(Config.get('Spells', 'CastingInterruptOn', '0')) or 0
     local lss = tonumber(Config.get('Spells', 'LoadSpellSet', '0')) or 0
     state.cast.loadSpellSet = lss
     state.cast.spellSetName = Config.get('Spells', 'SpellSetName', '') or ''
@@ -83,6 +84,48 @@ end
 -- Forward declaration — castMemSpell is defined later in this file.
 local castMemSpell
 
+-- ─── CastingInterruptOn ───────────────────────────────────────────────────────
+
+-- Mirrors mac:2895 CastingInterruptOn bitmask check.
+-- Returns true when the currently-casting sentFrom context should be aborted
+-- because a higher-priority action is waiting. Only checks cheap State fields
+-- that are already maintained by the main loop — no SpawnCount scans.
+-- Bitmask values: 2=buffs 4=heals 8=dps 16=mez 32=cure (62 = all)
+local function shouldInterrupt(sentFrom)
+    local cio = state.cast.castingInterruptOn or 0
+    if cio == 0 then return false end
+    -- Highest-priority contexts are never interrupted
+    if sentFrom == 'SingleHeal' or sentFrom == 'GroupHeal'
+            or sentFrom == 'Cure' or sentFrom == 'MezMobs' then
+        return false
+    end
+    -- Heal needed (bit value 4)
+    if bit32.band(cio, 4) ~= 0 and (state.heal.healsOn or 0) > 0 then
+        local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
+        if cls ~= 'nec' and cls ~= 'mag' then
+            local maName   = state.session.mainAssist or ''
+            local healFloor = math.min(state.heal.singleHealPointMA or 70, 70)
+            if maName ~= '' and (mq.TLO.Spawn(maName).PctHPs() or 100) < healFloor then
+                return true
+            end
+            local watchPct = state.heal.groupWatchPct or 20
+            for i = 0, (mq.TLO.Group.Members() or 0) do
+                local m = mq.TLO.Group.Member(i)
+                if m and (m.PctHPs() or 100) < watchPct then return true end
+            end
+        end
+    end
+    -- Cure needed (bit value 32)
+    if bit32.band(cio, 32) ~= 0 and state.heal.needCuring then
+        return true
+    end
+    -- Mez broke (bit value 16)
+    if bit32.band(cio, 16) ~= 0 and state.mez.broke then
+        return true
+    end
+    return false
+end
+
 -- ─── CastSpell ────────────────────────────────────────────────────────────────
 
 -- Mirrors CastSpell (kissassist.mac:2833-2915).
@@ -116,12 +159,12 @@ local function castSpell(spellName, sentFrom)
     if state.cast.checkStuckGem and not (sentFrom == 'bard') then
         local gemNum = mq.TLO.Me.Gem(spellName)()
         ---@diagnostic disable-next-line: undefined-field
-        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
             printf('\ayKissAssist: stuck gem — slot %d has wrong spell; re-memming %s', gemNum, spellName)
             castMemSpell(spellName, gemNum, 0)
             mq.delay(500)
             ---@diagnostic disable-next-line: undefined-field
-            if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+            if (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
                 printf('\arKissAssist: stuck gem could not be fixed for %s', spellName)
                 return 'CAST_STUCK_GEM'
             end
@@ -184,6 +227,11 @@ local function castSpell(spellName, sentFrom)
                         return 'CAST_CANCELLED'
                     end
                 end
+            end
+            -- CastingInterruptOn: interrupt for higher-priority cast (mac:2895)
+            if shouldInterrupt(sentFrom) then
+                mq.cmd('/stopcast')
+                return 'CAST_CANCELLED'
             end
         end
 
@@ -271,6 +319,11 @@ local function castAA(whatAA, sentFrom)
         mq.delay(100)
         if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
             return 'CAST_SUCCESS'
+        end
+        -- CastingInterruptOn: interrupt for higher-priority cast (mac:2895)
+        if shouldInterrupt(sentFrom) then
+            mq.cmd('/stopcast')
+            return 'CAST_CANCELLED'
         end
         local casting = (mq.TLO.Me.Casting.ID() or 0) ~= 0
         local aaReady = mq.TLO.Me.AltAbilityReady(whatAA)()

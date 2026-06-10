@@ -888,6 +888,13 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/mountoff',       onMountOff)
     if mq.TLO.Alias('/autofireon')() then mq.cmd('/alias /autofireon delete') end
     bind('/autofireon',     onAutoFireOn)
+    bind('/kainterrupton',  function()
+        local v = (state.cast.castingInterruptOn or 0) == 0 and 62 or 0
+        state.cast.castingInterruptOn = v
+        _config.set('Spells', 'CastingInterruptOn', tostring(v))
+        _config.save()
+        printf('\awCastingInterruptOn: %s', v ~= 0 and '\agON (62)' or '\arOFF')
+    end)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)

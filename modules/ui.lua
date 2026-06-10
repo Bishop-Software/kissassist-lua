@@ -473,6 +473,12 @@ local function drawSpellSlots()
         Config.set('Spells', 'CheckStuckGem', v and '1' or '0')
         Config.save()
     end)
+    checkbox('Casting Interrupt', (_state.cast.castingInterruptOn or 0) ~= 0, function(v)
+        local val = v and 62 or 0
+        _state.cast.castingInterruptOn = val
+        Config.set('Spells', 'CastingInterruptOn', tostring(val))
+        Config.save()
+    end)
 
     ImGui.Spacing()
 
