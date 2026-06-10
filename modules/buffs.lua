@@ -849,6 +849,15 @@ function Buffs.checkBuffs(forceGroup)
                         if memberID == maID then goto jcontinue end
                     end
 
+                    -- Self pre-cast buff check: for me/Dualme, buffToCheck may differ from
+                    -- spellToCast (e.g. AA grants a different buff name), so check directly
+                    -- rather than relying on castBuffsSpellCheck inside castWhat (mac:4535)
+                    if j == 0 and buffToCheck ~= '' then
+                        local bID = mq.TLO.Me.Buff(buffToCheck).ID() or 0
+                        local sID = mq.TLO.Me.Song(buffToCheck).ID() or 0
+                        if bID ~= 0 or sID ~= 0 then goto jcontinue end
+                    end
+
                     -- Aggro bail mid-loop (mac:4544)
                     do
                         local agID = _state.combat.aggroTargetID
