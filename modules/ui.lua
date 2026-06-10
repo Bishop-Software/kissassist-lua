@@ -2073,6 +2073,7 @@ local function draw()
     if not _open then return end
     local shouldDraw
     _open, shouldDraw = ImGui.Begin('KissAssist', _open)
+    if not _open then _state.terminate = true end
     if shouldDraw then
         drawStatus()
         ImGui.Separator()
