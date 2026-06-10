@@ -159,12 +159,12 @@ local function castSpell(spellName, sentFrom)
     if state.cast.checkStuckGem and not (sentFrom == 'bard') then
         local gemNum = mq.TLO.Me.Gem(spellName)()
         ---@diagnostic disable-next-line: undefined-field
-        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
             printf('\ayKissAssist: stuck gem — slot %d has wrong spell; re-memming %s', gemNum, spellName)
             castMemSpell(spellName, gemNum, 0)
             mq.delay(500)
             ---@diagnostic disable-next-line: undefined-field
-            if (mq.TLO.Me.Gem(gemNum).Name() or '') ~= spellName then
+            if (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
                 printf('\arKissAssist: stuck gem could not be fixed for %s', spellName)
                 return 'CAST_STUCK_GEM'
             end
