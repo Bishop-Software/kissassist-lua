@@ -139,6 +139,7 @@ local State = {
         loadSpellSet         = 0,    -- 0=off 1=named set 2=from INI
         spellSetName         = '',
         pendingLoadSpellSet  = false,
+        castingInterruptOn   = 0,    -- bitmask: 0=off 2=buffs 4=heals 8=dps 16=mez 32=cure; 62=all
     },
 
     pull = {
