@@ -796,12 +796,16 @@ function Buffs.checkBuffs(forceGroup)
             local buffID   = mq.TLO.Me.Buff(buffToCheck).ID() or 0
             local songID   = mq.TLO.Me.Song(buffToCheck).ID() or 0
             local willLand = mq.TLO.Spell(buffToCheck).WillLand()
-            if buffID ~= 0 or songID ~= 0 or willLand == false then goto continue end
+            if buffID ~= 0 or songID ~= 0 or willLand ~= true then goto continue end
+
+            if timers_i[0] > os.clock() then goto continue end
 
             local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
             if result == 'CAST_COMPONENTS' then
                 mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
                 _state.buffs.buffsArray[i].name = 'NULL'
+            elseif result == 'CAST_TAKEHOLD' then
+                timers_i[0] = os.clock() + 60
             end
             goto continue
         end
