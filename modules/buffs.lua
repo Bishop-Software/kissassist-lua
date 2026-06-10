@@ -932,6 +932,21 @@ function Buffs.checkBuffs(forceGroup)
 
         ::continue::
     end
+
+    -- Restore misc gem after buff pass (mac:4701-4705)
+    if (_state.cast.miscGemRemem or 0) ~= 0 then
+        local miscGem   = _state.cast.miscGem or 0
+        local reMemSpell = _state.cast.reMemMiscSpell or ''
+        if miscGem > 0 and reMemSpell ~= '' then
+            local currentName = (mq.TLO.Me.Gem(miscGem).Name() or ''):lower()
+            if currentName ~= reMemSpell:lower() or _state.cast.reMemCastLW then
+                _state.cast.reMemCast       = true
+                _state.movement.dontMoveMe  = true
+                _cast.castReMem(reMemSpell, true, 'buffs')
+                _state.movement.dontMoveMe  = false
+            end
+        end
+    end
 end
 
 -- Mirrors Sub RemoveFromBegList (mac:13249): remove entry from kaBegForList string;
