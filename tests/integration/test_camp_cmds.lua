@@ -5,7 +5,7 @@
 -- Run in-game while kissassist is running: /katest camp_cmds
 local M = {}
 
-local D = 10  -- ms delay after each mq.cmd() to let the deferred bind execute
+local D = 250  -- ms delay after each mq.cmd() to let the deferred bind execute
 
 function M.run(mq, State, TH)
     TH.setSuite('test_camp_cmds')
@@ -39,7 +39,7 @@ function M.run(mq, State, TH)
     -- /campoff --------------------------------------------------------------
     mq.cmd('/campoff') ; mq.delay(D)
     TH.assert_false(State.movement.returnToCamp, '/campoff → returnToCamp=false')
-    TH.assert_near(State.movement.campX, preX, 1.0, '/campoff → campX still set')
+    TH.assert_eq(State.movement.campX, 0, '/campoff → campX cleared')
 
     -- /stayhere ------------------------------------------------------------
     State.movement.returnToCamp = false

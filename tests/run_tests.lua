@@ -61,6 +61,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.charm', 'modules.config' },
     },
+    {
+        name         = 'test_buffs',
+        path         = 'tests.unit.test_buffs',
+        useMock      = false,
+        clearModules = {},
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
