@@ -153,13 +153,13 @@ local function onSwitchMA(newMA, newRole, doWhat)
     printf('\awMain Assist changed to \at%s\aw (IAmMA=%s)', newMA, tostring(state.session.iAmMA))
 end
 
-local function onSwitchTarget()
-    local newID = mq.TLO.Target.ID() or 0
+local function onSwitchTarget(idArg)
+    local newID = tonumber(idArg) or mq.TLO.Target.ID() or 0
     state.combat.myTargetID = 0
     if newID ~= 0 then
         state.combat.aggroTargetID = tostring(newID)
-        printf('\awSwitching combat target to \at%s\aw (ID: %d)',
-               mq.TLO.Target.CleanName() or '?', newID)
+        local name = (mq.TLO.Spawn('id ' .. newID).CleanName() or '?')
+        printf('\awSwitching combat target to \at%s\aw (ID: %d)', name, newID)
     else
         state.combat.aggroTargetID = ''
         printf('\awCleared combat target — will pick up next hater on tick')

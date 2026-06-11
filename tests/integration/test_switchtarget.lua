@@ -44,6 +44,19 @@ function M.run(mq, State, TH)
             '/kaswitchtarget (with target) → aggroTargetID=targetID')
     end
 
+    -- /kaswitchtarget <id>: explicit ID arg overrides current target -----------------
+    local myID = mq.TLO.Me.ID() or 0
+    if myID ~= 0 then
+        State.combat.myTargetID    = 777
+        State.combat.aggroTargetID = '0'
+        mq.cmd('/kaswitchtarget ' .. myID) ; mq.delay(D)
+
+        TH.assert_eq(State.combat.myTargetID, 0,
+            '/kaswitchtarget <id> → myTargetID=0')
+        TH.assert_eq(State.combat.aggroTargetID, tostring(myID),
+            '/kaswitchtarget <id> → aggroTargetID=supplied id')
+    end
+
     -- Restore original state
     State.combat.myTargetID    = origMyTargetID
     State.combat.aggroTargetID = origAggroTargetID
