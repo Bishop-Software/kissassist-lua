@@ -294,6 +294,8 @@ local State = {
         blockedBuffsCount  = 30,   -- 30 emu / 40 live
         slotTimers         = {},   -- [i][j]: per-slot per-member os.clock() expiry; replaces mac Buff${i}GM${j}
         remote             = {},   -- [charName] = BUFFS payload table; populated by Comms actors broadcast
+        memberBuffs        = {},   -- [spawnID][spellName] = os.clock() expiry; populated by BUFFSTATE actors broadcast
+        memberBuffsExpiry  = {},   -- [spawnID] = os.clock() staleness deadline (90s window)
     },
 
     pet = {
