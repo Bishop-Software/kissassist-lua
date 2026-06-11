@@ -515,6 +515,10 @@ local State = {
         pullPathY    = {},
         pullPathZ    = {},
     },
+
+    ui = {
+        miniMode = false,
+    },
 }
 
 -- Initialize variable-length arrays to their .mac defaults.
