@@ -263,6 +263,10 @@ local function drawMelee()
         Config.save()
     end)
 
+    checkbox('Manual Target', s.combat.manualTargetMode, function(_)
+        mq.cmd('/katargetmode')
+    end)
+
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
         mq.cmd('/autofireon')
     end)

@@ -92,6 +92,7 @@ local State = {
         namedWatchList     = {},
         petTargetSwitch    = false,    -- set from INI [General] PetTargetSwitch
         targetSwitchingOn  = false,
+        manualTargetMode   = false,
         useTribute         = false,
         raidAssistEntry    = 1,
         raidTargetID       = '0',

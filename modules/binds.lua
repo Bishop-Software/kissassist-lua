@@ -153,6 +153,27 @@ local function onSwitchMA(newMA, newRole, doWhat)
     printf('\awMain Assist changed to \at%s\aw (IAmMA=%s)', newMA, tostring(state.session.iAmMA))
 end
 
+local function onSwitchTarget(idArg)
+    local newID = tonumber(idArg) or mq.TLO.Target.ID() or 0
+    state.combat.myTargetID = 0
+    if newID ~= 0 then
+        state.combat.aggroTargetID = tostring(newID)
+        local name = (mq.TLO.Spawn('id ' .. newID).CleanName() or '?')
+        printf('\awSwitching combat target to \at%s\aw (ID: %d)', name, newID)
+    else
+        state.combat.aggroTargetID = ''
+        printf('\awCleared combat target — will pick up next hater on tick')
+    end
+end
+
+local function onTargetMode()
+    state.combat.manualTargetMode = not state.combat.manualTargetMode
+    _config.set('Melee', 'ManualTargetMode', state.combat.manualTargetMode and '1' or '0')
+    _config.save()
+    printf('\aw/katargetmode: Manual Target Mode is \at%s',
+           state.combat.manualTargetMode and 'ON' or 'OFF')
+end
+
 local function onKissCast(castWhat, whatID, forceInterrupt)
     if not castWhat or castWhat == '' then
         printf('\ay/kisscast <spellname>')
@@ -820,7 +841,7 @@ end
 
 -- ─── Integration test runner ──────────────────────────────────────────────────
 
-local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds' }
+local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds', 'switchtarget' }
 
 local function onKaTest(testName)
     if not testName or testName == '' then
@@ -874,11 +895,13 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/changevarint',   onChangeVarInt)
 
     -- Combat
-    bind('/burn',           onBurn)
-    bind('/backoff',        onBackOff)
-    bind('/switchnow',      onSwitch)
+    bind('/burn',              onBurn)
+    bind('/backoff',           onBackOff)
+    bind('/switchnow',         onSwitch)
+    bind('/kaswitchtarget',    onSwitchTarget)
+    bind('/katargetmode',      onTargetMode)
     if mq.TLO.Alias('/switchma')() then mq.cmd('/alias /switchma delete') end
-    bind('/switchma',       onSwitchMA)
+    bind('/switchma',          onSwitchMA)
     bind('/kisscast',       onKissCast)
     if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
     if mq.TLO.Alias('/petoff')() then mq.cmd('/alias /petoff delete') end
