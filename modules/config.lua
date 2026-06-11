@@ -332,7 +332,8 @@ function Config.migrateIni(state)
         StickHow          = r('Melee','StickHow'),
         AutoFireOn        = r('Melee','AutoFireOn'),
         UseMQ2Melee       = r('Melee','UseMQ2Melee'),
-        TargetSwitchingOn = r('Melee','TargetSwitchingOn'),
+        TargetSwitchingOn  = r('Melee','TargetSwitchingOn'),
+        ManualTargetMode   = r('Melee','ManualTargetMode'),
         AutoHide          = r('Melee','AutoHide'),
         MeleeTwistOn      = r('Melee','MeleeTwistOn'),
         MeleeTwistWhat    = r('Melee','MeleeTwistWhat'),
@@ -555,7 +556,7 @@ function Config.defaultCfg()
         Melee = {
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
-            TargetSwitchingOn = '0', AutoHide = '0', MeleeTwistOn = '0',
+            TargetSwitchingOn = '0', ManualTargetMode = '0', AutoHide = '0', MeleeTwistOn = '0',
         },
         DPS = {
             DPSOn = '1', DPSSize = '5', DPSSkip = '0', DPSInterval = '0',
