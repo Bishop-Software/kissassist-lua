@@ -629,6 +629,10 @@ function Combat.assist(_fromWhere)
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
+    if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
+        local msp = mq.TLO.Spawn('id ' .. _state.combat.myTargetID)
+        if msp and (msp.ID() or 0) ~= 0 and (msp.Type() or ''):lower() ~= 'corpse' then return end
+    end
 
     mq.doevents()
     Combat.mobRadar('los', _state.combat.meleeDistance)
@@ -727,6 +731,10 @@ function Combat.getCombatTarget()
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
+    if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
+        local msp = mq.TLO.Spawn('id ' .. _state.combat.myTargetID)
+        if msp and (msp.ID() or 0) ~= 0 and (msp.Type() or ''):lower() ~= 'corpse' then return end
+    end
 
     mq.doevents()
 
