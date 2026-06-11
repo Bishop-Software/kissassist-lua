@@ -793,7 +793,9 @@ function Buffs.checkBuffs(forceGroup)
             goto continue
 
         -- self branch: check active buff/song then cast on self (mac:4640-4647)
-        elseif isSelf then
+        -- Dual-tagged entries bypass this: WillLand() is unreliable for AA-granted buffs;
+        -- they fall through to isSingle where j==0 handles buffToCheck correctly.
+        elseif isSelf and not DUAL_TAGS[p2] then
             local buffID   = mq.TLO.Me.Buff(buffToCheck).ID() or 0
             local songID   = mq.TLO.Me.Song(buffToCheck).ID() or 0
             local willLand = mq.TLO.Spell(buffToCheck).WillLand()
@@ -812,8 +814,10 @@ function Buffs.checkBuffs(forceGroup)
         end
 
         -- single-target branch: buff each group member individually (mac:4523-4638)
+        -- DUAL_TAGS entries always use this loop; j==0 handles buffToCheck correctly.
         local isSingle = (bookIs0 and spellTT:find('single', 1, true) ~= nil)
                       or (not bookIs0 and bookTTLower:find('single', 1, true) ~= nil)
+                      or DUAL_TAGS[p2] ~= nil
 
         if isSingle then
             local groupCount = mq.TLO.Group.Members() or 0
