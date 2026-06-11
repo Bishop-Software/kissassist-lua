@@ -477,6 +477,21 @@ local function refuelPowerSource()
     end
 end
 
+-- Returns the timer duration (seconds) to set after casting buffName.
+-- Spell().MyDuration returns 0 for AA-granted buffs; fall back to the live
+-- buff/song duration so the slot timer reflects the actual buff window.
+local function spellOrBuffDur(buffName)
+    local dur = tonumber(mq.TLO.Spell(buffName).MyDuration.TotalSeconds()) or 0
+    if dur == 0 then
+        dur = tonumber(mq.TLO.Me.Buff(buffName).Duration.TotalSeconds()) or 0
+    end
+    if dur == 0 then
+        dur = tonumber(mq.TLO.Me.Song(buffName).Duration.TotalSeconds()) or 0
+    end
+    if dur == 0 then dur = 60 end
+    return dur
+end
+
 -- Mirrors Sub CheckBuffs (mac:4170-4660).
 -- Guards → PowerSource refuel → mount cast → per-entry loop.
 -- Step 6.3: entry parsing + group-v + self target-type dispatch.
@@ -911,23 +926,20 @@ function Buffs.checkBuffs(forceGroup)
                     if result == 'CAST_SUCCESS' then
                         printf('\awBuffing \at%s\aw on \at%s', spellToCast,
                             mq.TLO.Group.Member(j).CleanName() or '')
-                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
-                        timers_i[j] = os.clock() + dur
+                        timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
                         mq.doevents()
                         if j == 0 then
                             _state.timers.writeBuffs = 0
                             Buffs.writeBuffs()
                         end
                     elseif result == 'CAST_HASBUFF' then
-                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
-                        timers_i[j] = os.clock() + dur
+                        timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
                     elseif result == 'CAST_COMPONENTS' then
                         mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
                         _state.buffs.buffsArray[i].name = 'NULL'
                         goto jcontinue
                     elseif result == 'CAST_TAKEHOLD' then
-                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
-                        timers_i[j] = os.clock() + dur
+                        timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
                     end
 
                     -- Pet buff via DanNet: deferred to M9
@@ -937,18 +949,23 @@ function Buffs.checkBuffs(forceGroup)
 
             else
                 -- No group: cast on self unless a class-filter tag is present (mac:4614-4638)
+                -- Pre-cast buff check mirrors the j==0 group-loop guard; needed here because
+                -- Spell().MyDuration returns 0 for AA-granted buffs and timers_i[0] may be 0.
+                if buffToCheck ~= '' then
+                    local bID = mq.TLO.Me.Buff(buffToCheck).ID() or 0
+                    local sID = mq.TLO.Me.Song(buffToCheck).ID() or 0
+                    if bID ~= 0 or sID ~= 0 then goto continue end
+                end
                 if not CLASS_FILTER_TAGS[p2] then
                     mq.doevents()
                     local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
                     if result == 'CAST_SUCCESS' then
-                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
-                        timers_i[0] = os.clock() + dur
+                        timers_i[0] = os.clock() + spellOrBuffDur(buffToCheck)
                         mq.doevents()
                         _state.timers.writeBuffs = 0
                         Buffs.writeBuffs()
                     elseif result == 'CAST_HASBUFF' then
-                        local dur = tonumber(mq.TLO.Spell(buffToCheck).MyDuration.TotalSeconds()) or 0
-                        timers_i[0] = os.clock() + dur
+                        timers_i[0] = os.clock() + spellOrBuffDur(buffToCheck)
                     elseif result == 'CAST_COMPONENTS' then
                         mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
                         _state.buffs.buffsArray[i].name = 'NULL'

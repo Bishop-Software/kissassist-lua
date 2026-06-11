@@ -1011,7 +1011,7 @@ function Combat.combatTargetCheck(setTarget)
                         end
                     end
                 else
-                    if _state.combat.myTargetID ~= 0 then
+                    if _state.combat.myTargetID ~= 0 and not _state.combat.manualTargetMode then
                         mq.cmd('/target id ' .. _state.combat.myTargetID)
                         mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == _state.combat.myTargetID end)
                     end
@@ -1537,6 +1537,7 @@ function Combat.fight(fromWhere)
                         if tgtPct <= _state.combat.assistAt and tgtDist < combatRadius then
                             -- Re-target if we drifted (mac:1222-1224)
                             if not _state.combat.targetSwitchingOn
+                               and not _state.combat.manualTargetMode
                                and (mq.TLO.Target.ID() or 0) ~= myID then
                                 mq.cmd('/squelch /target id ' .. myID)
                                 mq.delay(500, function()
