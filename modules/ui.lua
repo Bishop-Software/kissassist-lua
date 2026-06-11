@@ -25,6 +25,9 @@ local UI = {}
 local _state
 local _open = true
 local COL    = 130  -- column width for checkbox SameLine and button widths
+local _savedFullW, _savedFullH = 0, 0  -- window size saved before entering mini mode
+local _pendingW,   _pendingH   = 0, 0  -- next-frame SetNextWindowSize values (0 = no pending)
+local MINI_W, MINI_H           = 465, 0
 
 -- ---------------------------------------------------------------------------
 -- Status panel
@@ -2071,11 +2074,41 @@ end
 
 local function draw()
     if not _open then return end
+    local miniMode = _state.ui.miniMode
+    if _pendingW > 0 then
+        ImGui.SetNextWindowSize(_pendingW, _pendingH, 1)  -- 1 = ImGuiCond_Always
+        _pendingW, _pendingH = 0, 0
+    end
+    local winFlags = miniMode and ImGuiWindowFlags.NoResize or 0
     local shouldDraw
-    _open, shouldDraw = ImGui.Begin('KissAssist', _open)
+    _open, shouldDraw = ImGui.Begin('KissAssist Lua', _open, winFlags)
     if not _open then _state.terminate = true end
     if shouldDraw then
+        -- mini-mode toggle button, right-aligned on the first status row
+        local btnLabel = miniMode and '[+]' or '[-]'
+        local savedY = ImGui.GetCursorPosY()
+        ImGui.SetCursorPosX(ImGui.GetWindowWidth() - 32)
+        if ImGui.SmallButton(btnLabel) then
+            if not miniMode then
+                -- entering mini: save current size, schedule shrink to fixed mini dimensions
+                _savedFullW, _savedFullH = ImGui.GetWindowSize()
+                _pendingW, _pendingH = MINI_W, MINI_H
+            else
+                -- exiting mini: schedule restore to saved (or default) size
+                _pendingW = _savedFullW > 0 and _savedFullW or 640
+                _pendingH = _savedFullH > 0 and _savedFullH or 500
+            end
+            _state.ui.miniMode = not miniMode
+            Config.set('UI', 'MiniMode', _state.ui.miniMode and '1' or '0')
+            Config.save()
+        end
+        ImGui.SetCursorPosY(savedY)
+
         drawStatus()
+        if miniMode then
+            ImGui.End()
+            return
+        end
         ImGui.Separator()
         if ImGui.BeginTabBar('KATabs') then
             if ImGui.BeginTabItem('Combat') then
@@ -2196,8 +2229,17 @@ end
 
 function UI.init(state)
     _state = state
-    mq.imgui.init('KissAssist', draw)
-    mq.bind('/kaui', function() _open = not _open end)
+    _state.ui.miniMode = Config.get('UI', 'MiniMode', '0') == '1'
+    mq.imgui.init('KissAssist Lua', draw)
+    mq.bind('/kaui', function(arg)
+        if arg == 'mini' then
+            _state.ui.miniMode = not _state.ui.miniMode
+            Config.set('UI', 'MiniMode', _state.ui.miniMode and '1' or '0')
+            Config.save()
+        else
+            _open = not _open
+        end
+    end)
 end
 
 return UI
