@@ -395,11 +395,55 @@ local function onKABegCheck(_, who, what, _)
     state.combat.eventFlag = true
     if not who or who == mq.TLO.Me.CleanName() then return end
     if not what or (what ~= 'BEGFORITEMS' and what ~= 'BEGFORBUFFS') then return end
+    if not state.buffs.buffsOn then return end
+    if #state.buffs.kaBegForList > 2000 then return end  -- guard against unbounded list growth
+
     local spawnID = mq.TLO.Spawn('PC ' .. who).ID()
     if not spawnID or spawnID == 0 or spawnID == mq.TLO.Me.ID() then return end
     if mq.TLO.Spawn('id ' .. spawnID).Type() ~= 'PC' then return end
-    state.buffs.kaBegActive = true
-    -- Buff list building + raid/fellowship/guild/friends check in M6 (buffs.lua)
+
+    -- Social check: must be in raid/fellowship/guild/friends (mac:11625-11632)
+    local inRaid       = mq.TLO.Raid.Member(who)() ~= nil
+    local inFellowship = (mq.TLO.Me.Fellowship.Member(who).Level() or 0) > 0
+    local sameGuild    = mq.TLO.Me.Guild() ~= nil and mq.TLO.Me.Guild() == (mq.TLO.Spawn(who).Guild() or '')
+    local isFriend     = false
+    pcall(function() isFriend = (mq.TLO.Friends.Friend(who)() ~= nil) end) ---@diagnostic disable-line: undefined-field
+    if not (inRaid or inFellowship or sameGuild or isFriend) then return end
+
+    -- Find a buff slot matching |alias|BCWhat; build beg entry if we can cast it (mac:11633-11647)
+    local buffsArray = state.buffs.buffsArray
+    for bcx = 1, #buffsArray do
+        local slot = buffsArray[bcx]
+        if slot and slot.name then
+            local entry = slot.name
+            if entry:find('|alias|' .. what, 1, true) then
+                local buffToCast = entry:match('^([^|]*)') or entry
+                if buffToCast == '' then goto bcxcontinue end
+                if not mq.TLO.Me.Book(buffToCast)() and (mq.TLO.Me.AltAbility(buffToCast).ID() or 0) == 0 then
+                    goto bcxcontinue
+                end
+
+                -- memberBuffs check: skip adding if requester already has the buff (replaces INI read)
+                local received = state.buffs.memberBuffs[spawnID]
+                local bsExpiry = state.buffs.memberBuffsExpiry[spawnID] or 0
+                if received and bsExpiry > os.clock() then
+                    if (received[buffToCast] or 0) > os.clock() then
+                        goto bcxcontinue
+                    end
+                end
+
+                local listEntry = what .. ':' .. who .. ':' .. tostring(bcx)
+                state.buffs.kaBegActive = true
+                if state.buffs.kaBegForList == '' then
+                    state.buffs.kaBegForList = listEntry
+                else
+                    state.buffs.kaBegForList = state.buffs.kaBegForList .. '|' .. listEntry
+                end
+                break
+            end
+        end
+        ::bcxcontinue::
+    end
 end
 
 local function onPetSusStateAdd1()

@@ -5,7 +5,7 @@
 -- Run in-game while kissassist is running: /katest toggle_cmds
 local M = {}
 
-local D = 10  -- ms delay after each mq.cmd() to let the deferred bind execute
+local D = 250  -- ms delay after each mq.cmd() to let the deferred bind execute
 
 function M.run(mq, State, TH)
     TH.setSuite('test_toggle_cmds')

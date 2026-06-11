@@ -5,7 +5,7 @@
 -- Run in-game while kissassist is running: /katest switchma
 local M = {}
 
-local D = 10  -- ms delay after each mq.cmd() to let the deferred bind execute
+local D = 250  -- ms delay after each mq.cmd() — combatReset inside onSwitchMA needs time to finish
 
 function M.run(mq, State, TH)
     TH.setSuite('test_switchma')

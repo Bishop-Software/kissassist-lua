@@ -82,6 +82,21 @@ local function onMessage(message)
             _utils.debug('comms', 'DEBUFFS from %s: id=%s total=%d', data.from, spawnID, data.total or 0)
         end
 
+    elseif msgType == 'BUFFSTATE' then
+        local spawnID = data.spawnID
+        if spawnID and spawnID ~= 0 then
+            local buffs = data.buffs or {}
+            local now   = os.clock()
+            _state.buffs.memberBuffs[spawnID]       = {}
+            _state.buffs.memberBuffsExpiry[spawnID] = now + 90
+            local count = 0
+            for spellName, dur in pairs(buffs) do
+                _state.buffs.memberBuffs[spawnID][spellName] = now + (tonumber(dur) or 0)
+                count = count + 1
+            end
+            _utils.debug('comms', 'BUFFSTATE from id=%s buffs=%d', tostring(spawnID), count)
+        end
+
     elseif msgType == 'PULL' then
         local mob  = data.mob  or '?'
         local dist = data.dist or 0
@@ -126,6 +141,27 @@ function Comms.broadcast(msgType, data)
     end
 
     _utils.debug('comms', 'broadcast %s from %s', msgType, msg.from)
+end
+
+-- Broadcast active buff list with per-buff remaining durations to all Lua group members.
+-- Receiver populates State.buffs.memberBuffs[spawnID] for pre-cast buff checks.
+function Comms.broadcastBuffState()
+    if not _actor then return end
+    local buffs = {}
+    for i = 1, 41 do
+        local name = mq.TLO.Me.Buff(i).Name() or ''
+        if name ~= '' and name ~= 'null' then
+            local perm = name:find(':Permanent', 1, true)
+            if perm and perm > 1 then name = name:sub(1, perm - 1) end
+            local dur = tonumber(mq.TLO.Me.Buff(i).Duration.TotalSeconds()) or 0
+            buffs[name] = dur
+        end
+    end
+    local count = 0
+    for _ in pairs(buffs) do count = count + 1 end
+    local msg = payload('BUFFSTATE', { spawnID = mq.TLO.Me.ID(), buffs = buffs })
+    _actor:send(msg)
+    _utils.debug('comms', 'broadcastBuffState: id=%s buffs=%d', tostring(mq.TLO.Me.ID()), count)
 end
 
 -- Group-visible announcement: /dgtell all if DanNet+peers, else /echo (mac:Sub BroadCast)

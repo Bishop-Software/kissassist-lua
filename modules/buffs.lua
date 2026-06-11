@@ -253,6 +253,7 @@ function Buffs.writeBuffs()
             blockedList = blockedlist,
             zone        = zone,
         })
+        _comms.broadcastBuffState()
     end
 
     -- INI write: only when DanNet shim is active so .mac chars can still read it
@@ -830,6 +831,19 @@ function Buffs.checkBuffs(forceGroup)
 
                     if (timers_i[j] or 0) > os.clock() then goto jcontinue end
 
+                    -- Skip if member already has this buff per actors BUFFSTATE data
+                    do
+                        local received = _state.buffs.memberBuffs[memberID]
+                        local bsExpiry = _state.buffs.memberBuffsExpiry[memberID] or 0
+                        if received and bsExpiry > os.clock() then
+                            local buffExpiry = received[buffToCheck] or 0
+                            if buffExpiry > os.clock() then
+                                timers_i[j] = buffExpiry
+                                goto jcontinue
+                            end
+                        end
+                    end
+
                     -- |me / |Dualme: self only (mac:4535)
                     if (p2 == 'me' or p2 == 'Dualme') and j > 0 then goto jcontinue end
 
@@ -1032,6 +1046,19 @@ function Buffs.checkBegforBuffs()
 
         if spellType ~= 'self' then
             local targetID = mq.TLO.Spawn('PC ' .. part2).ID() or 0
+
+            -- memberBuffs check: skip cast if requester already has the buff (replaces INI read)
+            if targetID ~= 0 then
+                local received = _state.buffs.memberBuffs[targetID]
+                local bsExpiry = _state.buffs.memberBuffsExpiry[targetID] or 0
+                if received and bsExpiry > os.clock() then
+                    if (received[buffToCast] or 0) > os.clock() then
+                        removeFromBegList(entry, spellType)
+                        goto begcontinue
+                    end
+                end
+            end
+
             local result   = _cast.castWhat(buffToCast, targetID, 'Buffs')
             if result == 'CAST_SUCCESS' or result == 'CAST_RECOVER' then
                 removeFromBegList(entry, spellType)
@@ -1043,6 +1070,7 @@ function Buffs.checkBegforBuffs()
         else
             removeFromBegList(entry, 'self')
         end
+        ::begcontinue::
     end
 end
 
