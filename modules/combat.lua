@@ -964,6 +964,10 @@ function Combat.combatTargetCheck(setTarget)
         end
     end
 
+    -- Manual target mode: skip MA/non-MA override logic while target is alive.
+    -- Dead/gone clear above still applies so we re-engage normally when mob dies.
+    if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then return end
+
     local cMyTargetID = _state.combat.myTargetID
     local ma          = _state.session.mainAssist
     local maSpawn     = mq.TLO.Spawn('=' .. ma)
