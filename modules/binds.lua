@@ -166,6 +166,14 @@ local function onSwitchTarget()
     end
 end
 
+local function onTargetMode()
+    state.combat.manualTargetMode = not state.combat.manualTargetMode
+    _config.set('Melee', 'ManualTargetMode', state.combat.manualTargetMode and '1' or '0')
+    _config.save()
+    printf('\aw/katargetmode: Manual Target Mode is \at%s',
+           state.combat.manualTargetMode and 'ON' or 'OFF')
+end
+
 local function onKissCast(castWhat, whatID, forceInterrupt)
     if not castWhat or castWhat == '' then
         printf('\ay/kisscast <spellname>')
@@ -891,6 +899,7 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/backoff',           onBackOff)
     bind('/switchnow',         onSwitch)
     bind('/kaswitchtarget',    onSwitchTarget)
+    bind('/katargetmode',      onTargetMode)
     if mq.TLO.Alias('/switchma')() then mq.cmd('/alias /switchma delete') end
     bind('/switchma',          onSwitchMA)
     bind('/kisscast',       onKissCast)

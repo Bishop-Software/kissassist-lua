@@ -403,8 +403,9 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.dpsOnOoc    = dpsOnVal == 2
     _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
     _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
-    _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',          '1') == '1'
+    _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',           '1') == '1'
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
+    _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'
 
     -- Assist-at percent: prefer INI; fall back to CLI-parsed session value (default 95)
     _state.combat.assistAt    = tonumber(Config.get('Melee', 'AssistAt',
@@ -1379,6 +1380,18 @@ function Combat.fight(fromWhere)
                 _state.combat.eventFlag = false
                 mq.doevents()
             until not _state.combat.eventFlag
+
+            -- Manual target mode: if player switches in-game target to a different
+            -- NPC mid-fight, break out so checkForCombat picks up the new target.
+            if _state.combat.manualTargetMode then
+                local liveID   = mq.TLO.Target.ID() or 0
+                local liveType = (mq.TLO.Target.Type() or ''):lower()
+                if liveID ~= 0 and liveID ~= myID
+                   and liveType ~= 'corpse' and liveType ~= 'pc' then
+                    _state.combat.myTargetID = liveID
+                    break
+                end
+            end
 
             -- Pause all commands while player or script is casting
             if (mq.TLO.Me.Casting.ID() or 0) ~= 0

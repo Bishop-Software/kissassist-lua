@@ -183,14 +183,6 @@ local function drawControls()
     end)
     if not campSet then ImGui.EndDisabled() end
 
-    -- Combat Actions
-    ImGui.Spacing()
-    ImGui.Separator()
-    ImGui.Text('Combat')
-    if ImGui.Button('Switch Target', COL, 0) then mq.cmd('/kaswitchtarget') end
-    ImGui.SameLine()
-    ImGui.TextDisabled('(uses current in-game target)')
-
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
@@ -269,6 +261,10 @@ local function drawMelee()
         s.combat.targetSwitchingOn = v
         Config.set('Melee', 'TargetSwitchingOn', v and '1' or '0')
         Config.save()
+    end)
+
+    checkbox('Manual Target', s.combat.manualTargetMode, function(_)
+        mq.cmd('/katargetmode')
     end)
 
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
