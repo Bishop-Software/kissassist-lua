@@ -148,14 +148,19 @@ end
 function Comms.broadcastBuffState()
     if not _actor then return end
     local buffs = {}
-    for i = 1, 41 do
-        local name = mq.TLO.Me.Buff(i).Name() or ''
+    local function collectBuff(name, dur)
         if name ~= '' and name ~= 'null' then
             local perm = name:find(':Permanent', 1, true)
             if perm and perm > 1 then name = name:sub(1, perm - 1) end
-            local dur = tonumber(mq.TLO.Me.Buff(i).Duration.TotalSeconds()) or 0
-            buffs[name] = dur
+            buffs[name] = tonumber(dur) or 0
         end
+    end
+    for i = 1, (mq.TLO.Me.MaxBuffSlots() or 51) do
+        collectBuff(mq.TLO.Me.Buff(i).Name() or '', mq.TLO.Me.Buff(i).Duration.TotalSeconds())
+    end
+    for i = 1, 29 do
+        ---@diagnostic disable-next-line: undefined-field
+        collectBuff(mq.TLO.Me.ShortBuff(i).Name() or '', mq.TLO.Me.ShortBuff(i).Duration.TotalSeconds())
     end
     local count = 0
     for _ in pairs(buffs) do count = count + 1 end

@@ -190,6 +190,12 @@ local function castSpell(spellName, sentFrom)
             while os.clock() < t and mq.TLO.Me.Sitting() do mq.delay(50) end
         end
 
+        -- Wait for stun to clear before attempting cast (mac:Event_CAST_STUNNED)
+        if mq.TLO.Me.Stunned() then
+            local stunEnd = os.clock() + 3
+            while mq.TLO.Me.Stunned() and os.clock() < stunEnd do mq.delay(100) end
+        end
+
         -- Arm cast state; onCastBegin event will also set SUCCESS optimistically
         if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
         state.cast.castReturn = 'CAST_SUCCESS'
@@ -245,10 +251,18 @@ local function castSpell(spellName, sentFrom)
             return 'CAST_SUCCESS'
         end
 
+        -- Retry on STUNNED: wait for stun to clear then loop back (mac:Event_CAST_STUNNED)
+        if castResult == 'CAST_STUNNED' then
+            local stunEnd = os.clock() + 3
+            while mq.TLO.Me.Stunned() and os.clock() < stunEnd do mq.delay(100) end
+            -- continue outer loop → cast again once stun clears
+        end
+
         -- Retry on FIZZLE / INTERRUPTED / RESISTED if recast is short
         local retryable = castResult == 'CAST_FIZZLE'
                        or castResult == 'CAST_INTERRUPTED'
                        or castResult == 'CAST_RESISTED'
+                       or castResult == 'CAST_STUNNED'
         if tryNum < maxTries and retryable then
             ---@diagnostic disable-next-line: undefined-field
             local recast = mq.TLO.Spell(spellName).RecastTime.TotalSeconds() or 99
