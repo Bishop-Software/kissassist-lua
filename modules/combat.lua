@@ -407,6 +407,20 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'
 
+    -- Manual role: disable all automation at startup (mac:8827-8834)
+    if _state.session.role == 'manual' then
+        if Config.get('Melee', 'UseMQ2Melee', '0') == '1' then
+            mq.cmd('/squelch /melee aggro=0')
+        end
+        _state.combat.meleeOn        = false
+        _state.combat.dpsOn          = false
+        _state.combat.dpsOnOoc       = false
+        _state.session.chaseAssist   = false
+        _state.movement.returnToCamp = false
+        _state.buffs.buffsOn         = false
+        _state.debuff.on             = 0
+    end
+
     -- Assist-at percent: prefer INI; fall back to CLI-parsed session value (default 95)
     _state.combat.assistAt    = tonumber(Config.get('Melee', 'AssistAt',
                                     tostring(_state.session.assistAt)))
@@ -1796,6 +1810,8 @@ end
 function Combat.combatReset(sFlag, calledFrom)
     _utils.debug('combat', 'combatReset: enter sFlag=%s from=%s', tostring(sFlag), tostring(calledFrom))
 
+    if _state.session.role == 'manual' then return end
+
     -- DPS meter output (deferred — MQ2DPSAdv not yet wired, Step M9)
 
     Combat.mobRadar('los', _state.combat.meleeDistance)
@@ -2034,6 +2050,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     skipCombat = skipCombat or 0
     fromWhere  = fromWhere  or 'main'
     waitTime   = waitTime   or 0
+
+    if _state.session.role == 'manual' then return end
 
     -- ChaseAssist + moving guard: don't interrupt a moving non-MA chaser (mac:485)
     if _state.session.chaseAssist and mq.TLO.Me.Moving() then
