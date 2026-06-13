@@ -19,7 +19,7 @@ end
 -- Cast event handlers set State.cast.castReturn so the cast engine (cast.lua, M3)
 -- can react. Patterns mirror kissassist.mac lines 48-101.
 
-local state, utils, movement, charm
+local state, utils, movement, charm, _comms
 
 -- CAST_BEGIN: optimistic — assume success until a failure event fires
 local function onCastBegin(_, _)
@@ -303,6 +303,11 @@ local function onZoned(_, message)
     end
     state.misc.lastZone = zoneID
     if charm then charm.resetFight() end
+    -- #133: stale buff state from the previous zone is irrelevant after a zone change
+    state.buffs.memberBuffs       = {}
+    state.buffs.memberBuffsExpiry = {}
+    -- #132: broadcast our own buff state once buffs repopulate after zone-in
+    state.buffs.pendingZoneBroadcast = true
     -- CombatReset, WinTitle, LoadSpawnMaster in M4/M7
 end
 
@@ -314,9 +319,17 @@ local function onJoined(_, joinee)
     -- Per-member buff state reset in M6 (buffs.lua)
 end
 
-local function onLeftGroup()
-    utils.debug('buffs', 'LeftGroup')
+local function onLeftGroup(_, leaver)
+    utils.debug('buffs', 'LeftGroup: ' .. tostring(leaver))
     state.combat.eventFlag = true
+    -- #133: remove departed member's buff state so orphaned entries don't linger
+    if leaver and leaver ~= '' then
+        local sid = mq.TLO.Spawn('PC ' .. leaver).ID()
+        if sid and sid ~= 0 then
+            state.buffs.memberBuffs[sid]       = nil
+            state.buffs.memberBuffsExpiry[sid] = nil
+        end
+    end
 end
 
 local function onInvised()
@@ -369,7 +382,7 @@ local function onWornOff(_, spell, target)
     if spell:find('promised') then return end
     state.buffs.forceBuffs = true
     state.timers.readBuffs  = 0
-    -- Per-member buff slot reset and ReadBuffsTimer clear in M6 (buffs.lua)
+    if _comms then _comms.broadcastBuffState() end
 end
 
 local function onGainSomething(_, text)
@@ -685,11 +698,12 @@ local EVENT_DEFS = {
     { 'MLogOff',         '#*#KissAssist Debug Off Marker!',                      onMLogOff        },
 }
 
-function Events.register(s, u, m, c)
+function Events.register(s, u, m, c, co)
     state    = s
     utils    = u
     movement = m
     charm    = c
+    _comms   = co
     _nameCount = {}
     for _, def in ipairs(EVENT_DEFS) do
         register(def[1], def[2], def[3])
