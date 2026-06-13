@@ -103,7 +103,7 @@ end
 Config.checkPlugins()
 
 -- Register all game text events and in-game command binds
-Events.register(State, Utils, Movement, Charm)
+Events.register(State, Utils, Movement, Charm, Comms)
 Cast.init(State, Utils)
 Cast.setCond(Cond)
 Heal.init(State, Utils, Cast, Cond, Movement, Comms)
@@ -145,6 +145,14 @@ while not State.terminate do
     if State.cast.pendingLoadSpellSet then
         State.cast.pendingLoadSpellSet = false
         Cast.loadSpellSet()
+    end
+    -- #132: broadcast buff state once after zone-in, when buffs have fully populated
+    if State.buffs.pendingZoneBroadcast
+            and State.timers.justZoned <= os.clock()
+            ---@diagnostic disable-next-line: undefined-field
+            and mq.TLO.Me.BuffsPopulated() then
+        State.buffs.pendingZoneBroadcast = false
+        Comms.broadcastBuffState()
     end
     -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
     if State.afk.on > 0 then Afk.check() end
