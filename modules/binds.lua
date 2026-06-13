@@ -954,6 +954,12 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/kasell',         onSell)
     bind('/kadeposit',      onDeposit)
     bind('/kabarter',       onBarter)
+
+    -- Script control
+    bind('/kastop', function()
+        printf('\arKissAssist stopping...\ax')
+        state.terminate = true
+    end)
 end
 
 function Binds.unregister()
