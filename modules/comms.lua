@@ -158,9 +158,12 @@ function Comms.broadcastBuffState()
     for i = 1, (mq.TLO.Me.MaxBuffSlots() or 51) do
         collectBuff(mq.TLO.Me.Buff(i).Name() or '', mq.TLO.Me.Buff(i).Duration.TotalSeconds())
     end
-    for i = 1, 29 do
-        ---@diagnostic disable-next-line: undefined-field
-        collectBuff(mq.TLO.Me.ShortBuff(i).Name() or '', mq.TLO.Me.ShortBuff(i).Duration.TotalSeconds())
+    ---@diagnostic disable-next-line: undefined-field
+    if mq.TLO.Me.ShortBuff then
+        for i = 1, 29 do
+            ---@diagnostic disable-next-line: undefined-field
+            collectBuff(mq.TLO.Me.ShortBuff(i).Name() or '', mq.TLO.Me.ShortBuff(i).Duration.TotalSeconds()) ---@diagnostic disable-line: undefined-field
+        end
     end
     local count = 0
     for _ in pairs(buffs) do count = count + 1 end
