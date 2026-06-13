@@ -234,9 +234,12 @@ function Buffs.writeBuffs()
     for i = 1, (mq.TLO.Me.MaxBuffSlots() or 51) do
         collectWriteBuff(mq.TLO.Me.Buff(i).Name() or '')
     end
-    for i = 1, 29 do
-        ---@diagnostic disable-next-line: undefined-field
-        collectWriteBuff(mq.TLO.Me.ShortBuff(i).Name() or '')
+    ---@diagnostic disable-next-line: undefined-field
+    if mq.TLO.Me.ShortBuff then
+        for i = 1, 29 do
+            ---@diagnostic disable-next-line: undefined-field
+            collectWriteBuff(mq.TLO.Me.ShortBuff(i).Name() or '')
+        end
     end
 
     -- Collect blocked buff list (mac:17109-17115)
