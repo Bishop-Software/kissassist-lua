@@ -220,17 +220,23 @@ function Buffs.writeBuffs()
     local id   = tostring(mq.TLO.Me.ID() or 0)
     local zone = tostring(mq.TLO.Zone.ID() or 0)
 
-    -- Collect buff list: slots 1..41, strip ':Permanent' suffix (mac:17098-17105)
+    -- Collect buff list: long-duration slots (51 on Live) + short-duration slots (29), strip ':Permanent' suffix (mac:17098-17105)
     local bufflist  = ''
     local buffCount = 0
-    for i = 1, 41 do
-        local name = mq.TLO.Me.Buff(i).Name() or ''
+    local function collectWriteBuff(name)
         if name ~= '' and name ~= 'null' then
             local perm = name:find(':Permanent', 1, true)
             if perm and perm > 1 then name = name:sub(1, perm - 1) end
             bufflist  = bufflist .. name .. '|'
             buffCount = buffCount + 1
         end
+    end
+    for i = 1, (mq.TLO.Me.MaxBuffSlots() or 51) do
+        collectWriteBuff(mq.TLO.Me.Buff(i).Name() or '')
+    end
+    for i = 1, 29 do
+        ---@diagnostic disable-next-line: undefined-field
+        collectWriteBuff(mq.TLO.Me.ShortBuff(i).Name() or '')
     end
 
     -- Collect blocked buff list (mac:17109-17115)
