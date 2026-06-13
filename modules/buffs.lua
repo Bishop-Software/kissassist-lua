@@ -697,6 +697,24 @@ function Buffs.checkBuffs(forceGroup)
         elseif p2 == 'mount' then
             -- |mount: handled by the pre-loop castMount() block; skip here (mac:13880)
             goto continue
+        elseif p2 == 'me' then
+            -- |me: self-only cast. Live Buff/Song check means clicking the buff off triggers
+            -- an immediate recast — no long duration timer needed (unlike group member slots).
+            -- timers_i[0] is only used for short fizzle/takehold backoffs.
+            if (mq.TLO.Me.Buff(buffToCheck).ID() or 0) ~= 0
+            or (mq.TLO.Me.Song(buffToCheck).ID() or 0) ~= 0 then goto continue end
+            if timers_i[0] > os.clock() then goto continue end
+            local result = _cast.castWhat(spellToCast, mq.TLO.Me.ID(), 'buffs-nomem')
+            if result == 'CAST_FIZZLE' or result == 'CAST_INTERRUPTED' then
+                timers_i[0] = os.clock() + 3  -- gem recovery ~2s; retry after brief backoff
+            elseif result == 'CAST_TAKEHOLD' then
+                timers_i[0] = os.clock() + 60  -- buff blocked; back off before retrying
+            elseif result == 'CAST_COMPONENTS' then
+                mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                _state.buffs.buffsArray[i].name = 'NULL'
+            end
+            -- CAST_SUCCESS / CAST_HASBUFF / CAST_NO_RESULT: no timer; live check handles "already active"
+            goto continue
         elseif p2 ~= 'begfor'
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > 0
             and (tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0) > (mq.TLO.Me.CurrentMana() or 0) then
@@ -820,7 +838,10 @@ function Buffs.checkBuffs(forceGroup)
             local buffID   = mq.TLO.Me.Buff(buffToCheck).ID() or 0
             local songID   = mq.TLO.Me.Song(buffToCheck).ID() or 0
             local willLand = mq.TLO.Spell(buffToCheck).WillLand()
-            if buffID ~= 0 or songID ~= 0 or willLand ~= true then goto continue end
+            -- Skip if active; skip if WillLand explicitly returns false (blocked/won't stack).
+            -- nil means unknown (disc/AA/non-standard) — treat as "try anyway" so |me isn't
+            -- required for every self-only spell whose WillLand TLO is unreliable.
+            if buffID ~= 0 or songID ~= 0 or willLand == false then goto continue end
 
             if timers_i[0] > os.clock() then goto continue end
 
