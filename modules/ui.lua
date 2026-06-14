@@ -808,12 +808,63 @@ end
 -- Bard panel (class-gated)
 -- ---------------------------------------------------------------------------
 
+-- Render an editable song list for one MQ2Medley set.
+-- songs: the State.bard.*Songs array (mutated in place).
+-- setName: the MQ2Medley section name (e.g. 'oor').
+local function drawSongSet(songs, setName)
+    local bard = _state.bard
+    local changed = false
+
+    ImGui.PushItemWidth(300)
+    for i = 1, #songs do
+        local cur = songs[i] or ''
+        local newVal, edited = ImGui.InputText(string.format('##song_%s_%d', setName, i), cur, 0)
+        if edited and newVal ~= cur then
+            songs[i] = newVal ~= '' and newVal or nil
+            changed = true
+        end
+        ImGui.SameLine()
+        if ImGui.Button('[-]##songrem_' .. setName .. '_' .. i) then
+            if i == #songs and #songs > 1 then
+                songs[i] = nil
+            else
+                -- Non-trailing remove: compact the array
+                table.remove(songs, i)
+            end
+            changed = true
+        end
+    end
+    ImGui.PopItemWidth()
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]##songadd_' .. setName) then
+        songs[#songs + 1] = ''
+        -- Don't save on add — user types the name then it saves on edit
+    end
+    ImGui.SameLine()
+    if ImGui.Button('Apply##songapply_' .. setName) then
+        changed = true  -- force save even without text change (e.g. after Add)
+    end
+
+    if changed and bard.saveSongSet then
+        -- Strip empty entries before saving.
+        local clean = {}
+        for _, s in ipairs(songs) do
+            if s and s ~= '' then clean[#clean + 1] = s end
+        end
+        -- Rebuild the live array to match.
+        for k in pairs(songs) do songs[k] = nil end
+        for i, s in ipairs(clean) do songs[i] = s end
+        bard.saveSongSet(setName, clean)
+    end
+end
+
 local function drawBard()
     ---@diagnostic disable-next-line: undefined-field
     local Medley   = mq.TLO.Medley
     local bard     = _state.bard
-    local active    = Medley.Active() or false
-    local activeSet = Medley.Medley() or '—'
+    local active    = Medley and (Medley.Active() or false) or false
+    local activeSet = Medley and (Medley.Medley() or '—') or '—'
 
     ImGui.Text(string.format('Active set: %s  (%s)', activeSet, active and 'playing' or 'stopped'))
     ImGui.Separator()
@@ -825,11 +876,11 @@ local function drawBard()
     ImGui.SameLine()
     if ImGui.Button(bard.oorMedley)   then mq.cmdf('/medley %s', bard.oorMedley)   end
 
-    -- Start / Stop (MQ2Medley has no real pause — stop is the only option)
+    -- Start / Stop
     ImGui.Spacing()
     if ImGui.Button('Start') then
-        _state.bard.manualStop = false
-        _state.bard.twisting   = false
+        _state.bard.manualStop  = false
+        _state.bard.twisting    = false
         _state.bard.dpsTwisting = false
         mq.cmd('/medley start')
     end
@@ -837,6 +888,43 @@ local function drawBard()
     if ImGui.Button('Stop') then
         _state.bard.manualStop = true
         mq.cmd('/medley stop')
+    end
+
+    -- Song set editor sub-tabs
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    if not bard.mqIniPath then
+        ImGui.TextColored(1, 1, 0, 1, 'MQ2 char INI not found — song set editor unavailable.')
+        ImGui.TextDisabled('Expected ServerName_CharName.ini in MQ2 config directory.')
+        return
+    end
+
+    local sets = {
+        { label = 'OOR',   songs = bard.oorSongs,   setName = bard.oorMedley   },
+        { label = 'Melee', songs = bard.meleeSongs, setName = bard.meleeMedley },
+        { label = 'Burn',  songs = bard.burnSongs,  setName = bard.burnMedley  },
+        { label = 'GoM',   songs = bard.gomSongs,   setName = bard.gomMedley   },
+    }
+
+    if ImGui.BeginTabBar('BardSongSets') then
+        for _, set in ipairs(sets) do
+            if ImGui.BeginTabItem(set.label) then
+                ImGui.Spacing()
+                if #set.songs == 0 then
+                    ImGui.TextDisabled(string.format('No songs in [MQ2Medley-%s]. Use [+ Add] to add one.', set.setName))
+                    ImGui.Spacing()
+                    if ImGui.Button('[+ Add]##songadd_' .. set.setName) then
+                        set.songs[1] = ''
+                    end
+                else
+                    drawSongSet(set.songs, set.setName)
+                end
+                ImGui.EndTabItem()
+            end
+        end
+        ImGui.EndTabBar()
     end
 end
 
