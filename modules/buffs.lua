@@ -600,6 +600,11 @@ function Buffs.checkBuffs(forceGroup)
             end
         end
 
+        -- Evaluate embedded TLO expressions before any spell lookups.
+        -- Mac auto-expands ${...} in variables; Lua requires an explicit mq.parse() call.
+        if spellToCast:find('%$%{') then spellToCast = mq.parse(spellToCast) end
+        if p3:find('%$%{') then p3 = mq.parse(p3) end
+
         -- Resolve base spell name to highest rank in the character's book before any TLO lookups.
         -- Allows INI entries like 'Aura of Foo|Aura' to match 'Aura of Foo Rk. II' automatically.
         if not DUAL_TAGS[p2] then
