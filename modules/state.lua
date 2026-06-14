@@ -93,6 +93,7 @@ local State = {
         petTargetSwitch    = false,    -- set from INI [General] PetTargetSwitch
         targetSwitchingOn  = false,
         manualTargetMode   = false,
+        useMQ2Melee        = false,
         useTribute         = false,
         raidAssistEntry    = 1,
         raidTargetID       = '0',
