@@ -1336,7 +1336,11 @@ function Combat.fight(fromWhere)
                     _comms.announce(string.format('%s is TANKING-> %s <- ID:%d', petName, tgtName, myID))
                 end
             end
-            -- Hunter LOS position (deferred M7)
+            -- Hunter: close gap before combat announce (mac:1112 context)
+            if (role == 'hunter' or role == 'hunterpettank')
+               and not _state.combat.useMQ2Melee and _movement then
+                _movement.checkStick(0, 0)
+            end
         end
 
         -- Look level when not underwater (mac:1095)
@@ -1559,7 +1563,10 @@ function Combat.fight(fromWhere)
                                     return (mq.TLO.Target.ID() or 0) == myID
                                 end)
                             end
-                            -- CheckStick (deferred M7)
+                            -- Maintain stick mid-fight (mac:1218-1224)
+                            if not _state.combat.useMQ2Melee and _movement then
+                                _movement.checkStick(0, 0)
+                            end
                         end
                         -- Keep attack on while standing (mac:1237); MQ2Melee handles this itself
                         if not _state.combat.useMQ2Melee and (mq.TLO.Target.ID() or 0) ~= 0 then
@@ -1938,6 +1945,11 @@ function Combat.combatReset(sFlag, calledFrom)
         _state.combat.eventFlag = false
         mq.doevents()
     until not _state.combat.eventFlag
+
+    -- Release combat stick; if ChaseAssist is on, doWeChase manages stick itself (mac:2326)
+    if mq.TLO.Stick.Active() and not _state.session.chaseAssist then
+        mq.cmd('/squelch /stick off')
+    end
 
     -- Re-enable MQ2Melee melee mode for next engagement (mac:2246 inverse)
     if _state.combat.useMQ2Melee then mq.cmd('/squelch /melee melee=1') end
