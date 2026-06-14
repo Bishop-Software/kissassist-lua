@@ -825,13 +825,11 @@ local function drawBard()
     ImGui.SameLine()
     if ImGui.Button(bard.oorMedley)   then mq.cmdf('/medley %s', bard.oorMedley)   end
 
-    -- Pause / Resume
+    -- Start / Stop (MQ2Medley has no real pause — stop is the only option)
     ImGui.Spacing()
-    if ImGui.Button('Pause')  then mq.cmd('/medley pause')  end
+    if ImGui.Button('Start') then mq.cmd('/medley start') end
     ImGui.SameLine()
-    if ImGui.Button('Resume') then mq.cmd('/medley resume') end
-    ImGui.SameLine()
-    if ImGui.Button('Stop')   then mq.cmd('/medley stop')   end
+    if ImGui.Button('Stop')  then mq.cmd('/medley stop')  end
 end
 
 -- ---------------------------------------------------------------------------

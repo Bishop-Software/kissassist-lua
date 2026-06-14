@@ -155,19 +155,19 @@ Bard.stopMedley = stopMedley
 
 local _medleyWasPaused = false
 
--- Pause the active medley before an AA cast; uses /medley pause.
+-- Pause the active medley before an item/AA cast; stop is the only real pause MQ2Medley supports.
 function Bard.pauseMedley()
     if Medley.Active() then
-        mq.cmd('/medley pause')
+        mq.cmd('/medley stop')
         _medleyWasPaused = true
         mq.delay(300, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
     end
 end
 
--- Resume a paused medley after an AA cast — only if we actually paused it.
+-- Resume a stopped medley after an item/AA cast — only if we actually stopped it.
 function Bard.resumeMedley()
     if _medleyWasPaused then
-        mq.cmd('/medley resume')
+        mq.cmd('/medley start')
         _medleyWasPaused = false
     end
 end
