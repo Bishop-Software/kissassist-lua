@@ -837,10 +837,14 @@ local function drawSongSet(songs, setName)
     ImGui.PopItemWidth()
 
     ImGui.Spacing()
+    local maxSongs = mq.TLO.Me.NumGems() or 13
+    local atMax = #songs >= maxSongs
+    if atMax then ImGui.BeginDisabled() end
     if ImGui.Button('[+ Add]##songadd_' .. setName) then
         songs[#songs + 1] = ''
         -- Don't save on add — user types the name then it saves on edit
     end
+    if atMax then ImGui.EndDisabled() end
     ImGui.SameLine()
     if ImGui.Button('Apply##songapply_' .. setName) then
         changed = true  -- force save even without text change (e.g. after Add)
