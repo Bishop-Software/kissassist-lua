@@ -2091,7 +2091,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
 
         Combat.mobRadar('los', _state.combat.meleeDistance)
 
-        -- DoWeChase (deferred — movement module Step 7.x)
+        if _movement then _movement.doWeChase() end
 
         -- Hard guards: bail if combat is not appropriate now (mac:493)
         local aggroID  = tonumber(_state.combat.aggroTargetID) or 0
