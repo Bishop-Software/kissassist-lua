@@ -364,6 +364,13 @@ local State = {
         manualStop     = false,      -- user clicked Stop in UI; suppress auto-restart until Start or combat
         wasTwisting    = 'null',
         wasTwistingBool = false,
+        -- Song lists read from [MQ2Medley-*] sections in the MQ2 char INI at init.
+        mqIniPath      = nil,        -- full path to the MQ2 char INI file
+        mqIniFile      = nil,        -- filename only (for Ini TLO)
+        oorSongs       = {},
+        meleeSongs     = {},
+        burnSongs      = {},
+        gomSongs       = {},
     },
 
     loot = {

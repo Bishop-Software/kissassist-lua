@@ -107,24 +107,10 @@ local function migrateBardMedley(readFn, cfg)
     end
 
     -- Locate the MQ2 character config INI (ServerShortName_CharName.ini).
-    local charName  = mq.TLO.Me.CleanName()
-    local configWin = mq.configDir:gsub('/', '\\')
-    local mqIniPath, mqIniFile
-    local handle = io.popen(string.format('dir /b "%s\\*_%s.ini" 2>nul', configWin, charName))
-    if handle then
-        for line in handle:lines() do
-            line = line:match('^%s*(.-)%s*$')
-            if line ~= '' and not line:lower():find('kissassist') then
-                mqIniPath = mq.configDir .. '/' .. line
-                mqIniFile = line
-                break
-            end
-        end
-        handle:close()
-    end
+    local mqIniPath, mqIniFile = Config.findMQCharIni()
 
     if not mqIniPath then
-        printf('\ayKissAssist: \awCould not find MQ2 character config for %s — add [MQ2Medley-oor] and [MQ2Medley-melee] manually.', charName)
+        printf('\ayKissAssist: \awCould not find MQ2 character config for %s — add [MQ2Medley-oor] and [MQ2Medley-melee] manually.', mq.TLO.Me.CleanName())
     else
         local function writeMedleySection(setName, songs)
             if #songs == 0 then return end
@@ -718,6 +704,27 @@ function Config.checkPlugins()
         return false
     end
     return true
+end
+
+-- Returns the full path and filename of the MQ2 character config INI
+-- (e.g. "ServerName_CharName.ini" in mq.configDir).  Returns nil, nil if
+-- not found.  Used by bard.lua to locate the [MQ2Medley-*] sections.
+function Config.findMQCharIni()
+    local charName  = mq.TLO.Me.CleanName()
+    local configWin = mq.configDir:gsub('/', '\\')
+    local handle = io.popen(string.format('dir /b "%s\\*_%s.ini" 2>nul', configWin, charName))
+    if not handle then return nil, nil end
+    local mqIniPath, mqIniFile
+    for line in handle:lines() do
+        line = line:match('^%s*(.-)%s*$')
+        if line ~= '' and not line:lower():find('kissassist') then
+            mqIniPath = mq.configDir .. '/' .. line
+            mqIniFile = line
+            break
+        end
+    end
+    handle:close()
+    return mqIniPath, mqIniFile
 end
 
 return Config
