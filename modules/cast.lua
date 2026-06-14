@@ -887,7 +887,8 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
 
     elseif rtc == 5 then
         local spellMana = mq.TLO.Spell(castWhat).Mana() or 0
-        if spellMana < (mq.TLO.Me.CurrentMana() or 0) then
+        -- mac:2545 uses <= so 0-cost spells cast even when currentMana == 0 (e.g. Bard auras)
+        if spellMana <= (mq.TLO.Me.CurrentMana() or 0) then
             local canCast = isBard
                 and (mq.TLO.Me.Gem(castWhat)() and (mq.TLO.Me.GemTimer(castWhat)() or 0) == 0)
                 or  (mq.TLO.Me.SpellReady(castWhat)() and inBook)
