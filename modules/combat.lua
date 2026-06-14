@@ -1113,7 +1113,7 @@ local function aeCheck()
 
         -- Strip optional |condNNN suffix
         local condNo  = 0
-        local condPos = raw:find('|cond%d')
+        local condPos = raw:lower():find('|cond%d')
         if condPos then
             condNo = tonumber(raw:sub(condPos + 5, condPos + 7)) or 0
             raw    = raw:sub(1, condPos - 1)
@@ -1876,7 +1876,7 @@ function Combat.combatReset(sFlag, calledFrom)
     _state.combat.validTarget     = false
     _state.combat.combatStart     = false
     _state.pull.pulled            = false
-    -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOR medley.
+    -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOC medley.
     if _bard and _state.session.iAmABard then _state.bard.dpsTwisting = false end
 
     -- Stop attacking and clear target; reset autofire (mac:2246-2250)

@@ -22,7 +22,7 @@ local MEZ_MODE_LABELS   = { 'Off', 'Single + AE', 'Single only', 'AE only' }
 local Config = require('modules.config')
 
 local UI = {}
-local _state
+local _state, _cond
 local _open = true
 local COL    = 130  -- column width for checkbox SameLine and button widths
 local _savedFullW, _savedFullH = 0, 0  -- window size saved before entering mini mode
@@ -341,7 +341,7 @@ end
 local function splitHeal(raw)
     -- SpellName[|pct[|tag]][|condNNN]  →  spell, pct, tag, cond
     local spell, pct, tag, cond = '', '0', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -388,15 +388,14 @@ local function drawHealThresholds()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('heals_tbl', 5, tblFlags) then
-        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 2)
         ImGui.TableSetupColumn('Pct',   ImGuiTableColumnFlags.WidthFixed,    95)
-        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   100)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthStretch,   1)
         ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
         ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
@@ -523,7 +522,7 @@ local function drawSpellSlots()
     ImGui.Spacing()
     local gemSlots = _state.cast.gemSlots or 8
     local gems = Config.get('Spells', 'Gems', {})
-    ImGui.PushItemWidth(220)
+    ImGui.PushItemWidth(300)
     for i = 1, gemSlots do
         local current = gems[i] or ''
         local newVal, changed = ImGui.InputText('Gem ' .. i .. '##gem' .. i, current, 0)
@@ -810,7 +809,7 @@ end
 
 -- Render an editable song list for one MQ2Medley set.
 -- songs: the State.bard.*Songs array (mutated in place).
--- setName: the MQ2Medley section name (e.g. 'oor').
+-- setName: the MQ2Medley section name (e.g. 'ooc').
 local function drawSongSet(songs, setName)
     local bard = _state.bard
     local changed = false
@@ -878,7 +877,7 @@ local function drawBard()
     ImGui.SameLine()
     if ImGui.Button(bard.burnMedley)  then mq.cmdf('/medley %s', bard.burnMedley)  end
     ImGui.SameLine()
-    if ImGui.Button(bard.oorMedley)   then mq.cmdf('/medley %s', bard.oorMedley)   end
+    if ImGui.Button(bard.oocMedley)   then mq.cmdf('/medley %s', bard.oocMedley)   end
 
     -- Start / Stop
     ImGui.Spacing()
@@ -906,7 +905,7 @@ local function drawBard()
     end
 
     local sets = {
-        { label = 'OOR',   songs = bard.oorSongs,   setName = bard.oorMedley   },
+        { label = 'OOC',   songs = bard.oocSongs,   setName = bard.oocMedley   },
         { label = 'Melee', songs = bard.meleeSongs, setName = bard.meleeMedley },
         { label = 'Burn',  songs = bard.burnSongs,  setName = bard.burnMedley  },
         { label = 'GoM',   songs = bard.gomSongs,   setName = bard.gomMedley   },
@@ -952,9 +951,10 @@ local function drawConditions()
     -- Conditions are stored as an indexed array under the 'Cond' key.
     local condArr = Config.get('KConditions', 'Cond', nil) or {}
 
-    if ImGui.BeginTable('##condtbl', 3, 0) then
+    if ImGui.BeginTable('##condtbl', 4, 0) then
         ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Label',      ImGuiTableColumnFlags.WidthFixed,   68)
+        ImGui.TableSetupColumn('Now',        ImGuiTableColumnFlags.WidthFixed,   28)
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
@@ -974,6 +974,17 @@ local function drawConditions()
             ImGui.TableSetColumnIndex(1)
             ImGui.Text(string.format('Cond %03d', i))
             ImGui.TableSetColumnIndex(2)
+            if current ~= '' and _cond then
+                local ok = _cond.evalStr(current)
+                if ok then
+                    ImGui.TextColored(0, 1, 0, 1, 'T')
+                else
+                    ImGui.TextColored(1, 0, 0, 1, 'F')
+                end
+            else
+                ImGui.TextDisabled('-')
+            end
+            ImGui.TableSetColumnIndex(3)
             if ImGui.Button('[-]##condrem' .. i) then
                 s.cond.expressions[i] = nil
                 if i == s.cond.size and s.cond.size > 1 then
@@ -1008,7 +1019,7 @@ end
 -- debuffType absent or 'me' → no type filter; 'me' alone → self-only scope
 local function splitCure(raw)
     local spell, dtype, selfOnly, cond = raw, '', false, ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1077,8 +1088,7 @@ local function drawCures()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1173,7 +1183,7 @@ end
 local function splitBuff(raw)
     -- SpellName[|TargetTag][|condNNN]  →  spell, tag, cond
     local spell, tag, cond = raw, '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond  = raw:sub(condPos + 1)
         spell = raw:sub(1, condPos - 1)
@@ -1262,14 +1272,13 @@ local function drawBuffs()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
     if ImGui.BeginTable('buffs_tbl', 4, tblFlags) then
-        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthFixed,   110)
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 2)
+        ImGui.TableSetupColumn('Tag',   ImGuiTableColumnFlags.WidthStretch,   1)
         ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,   160)
         ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
@@ -1430,7 +1439,7 @@ end
 local function splitAggro(raw)
     -- SpellName[|pct[|glt[|target]]][|condNNN]  →  spell, pct, glt, target, cond
     local spell, pct, glt, target, cond = '', '0', '<', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1458,7 +1467,7 @@ end
 local function splitDPS(raw)
     -- SpellName[|thresh[|target[|damod]]][|condNNN]  →  spell, thresh, target, damod, cond
     local spell, thresh, target, damod, cond = '', '0', '', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1507,8 +1516,7 @@ local function drawAggro()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1666,8 +1674,7 @@ local function drawDPS()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1813,8 +1820,7 @@ local function drawBurn()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1920,7 +1926,7 @@ local function splitAE(raw)
     -- "SpellName|MobCount|Target[|condNNN]" → spell, count, target, cond
     local spell, count, target, cond = '', '1', 'Mob', ''
     if not raw or raw == 'null' or raw == '' then return spell, count, target, cond end
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1969,8 +1975,7 @@ local function drawAE()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        local expr = (s.cond.expressions and s.cond.expressions[j]) or ''
-        condLabels[j + 1] = string.format('cond%03d: %s', j, expr ~= '' and expr or '(empty)')
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -2405,8 +2410,9 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function UI.init(state)
+function UI.init(state, cond)
     _state = state
+    _cond  = cond
     _state.ui.miniMode = Config.get('UI', 'MiniMode', '0') == '1'
     mq.imgui.init('KissAssist Lua', draw)
     mq.bind('/kaui', function(arg)

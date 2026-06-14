@@ -87,7 +87,7 @@ function M.run(TH, _MockMQ)
     -- bard (M8)
     TH.assert_eq(State.bard.burnMedley,        'burn',   'bard.burnMedley')
     TH.assert_eq(State.bard.meleeMedley,       'melee',  'bard.meleeMedley')
-    TH.assert_eq(State.bard.oorMedley,         'oor',    'bard.oorMedley')
+    TH.assert_eq(State.bard.oocMedley,         'ooc',    'bard.oocMedley')
     TH.assert_eq(State.bard.meleeTwistOn,      0,        'bard.meleeTwistOn')
 
     -- loot

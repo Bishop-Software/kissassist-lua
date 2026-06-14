@@ -355,7 +355,7 @@ local State = {
         gomMedley      = 'gomSong',  -- MQ2Medley one-shot set for GoM proc (INI GoMMedley)
         meleeMedley    = 'melee',    -- MQ2Medley set name for combat (INI MeleeMedley)
         meleeTwistOn   = 0,          -- 0=off, 1=swap to melee set, 2=swap when aggro (INI MeleeTwistOn)
-        oorMedley      = 'oor',      -- MQ2Medley set name for OOC (INI OORMedley)
+        oocMedley      = 'ooc',      -- MQ2Medley set name for OOC (INI OOCMedley)
         pullTwistOn    = false,      -- pause medley during pull (INI PullTwistOn)
         startTwist     = false,
         twistHold      = false,
@@ -367,7 +367,7 @@ local State = {
         -- Song lists read from [MQ2Medley-*] sections in the MQ2 char INI at init.
         mqIniPath      = nil,        -- full path to the MQ2 char INI file
         mqIniFile      = nil,        -- filename only (for Ini TLO)
-        oorSongs       = {},
+        oocSongs       = {},
         meleeSongs     = {},
         burnSongs      = {},
         gomSongs       = {},

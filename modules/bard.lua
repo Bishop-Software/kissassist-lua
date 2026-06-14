@@ -53,7 +53,7 @@ function Bard.init(state, utils, cast)
     _state.bard.pullTwistOn  = Config.get('Pull',    'PullTwistOn',  '0') == '1'
 
     -- MQ2Medley set names (Lua port addition; not in original .mac which used MQ2Twist)
-    _state.bard.oorMedley    = Config.get('General', 'OORMedley',    'oor')
+    _state.bard.oocMedley    = Config.get('General', 'OOCMedley',    'ooc')
     _state.bard.meleeMedley  = Config.get('General', 'MeleeMedley',  'melee')
     _state.bard.burnMedley   = Config.get('General', 'BurnMedley',   'burn')
     _state.bard.gomMedley    = Config.get('General', 'GoMMedley',    'gomSong')
@@ -74,7 +74,7 @@ function Bard.init(state, utils, cast)
             end
             return songs
         end
-        _state.bard.oorSongs   = readSongs(_state.bard.oorMedley)
+        _state.bard.oocSongs   = readSongs(_state.bard.oocMedley)
         _state.bard.meleeSongs = readSongs(_state.bard.meleeMedley)
         _state.bard.burnSongs  = readSongs(_state.bard.burnMedley)
         _state.bard.gomSongs   = readSongs(_state.bard.gomMedley)
@@ -150,21 +150,21 @@ function Bard.doBardStuff()
             s.bard.twisting    = false
         end
 
-    -- OOC path (mac:6303-6329): switch to OOR medley set when out of combat.
+    -- OOC path (mac:6303-6329): switch to OOC medley set when out of combat.
     elseif not s.combat.combatStart then
         if s.bard.manualStop then return end
         if s.bard.twistOn and not s.bard.twisting then
             local activeSet = Medley.Medley() or ''
-            if activeSet ~= s.bard.oorMedley then
+            if activeSet ~= s.bard.oocMedley then
                 stopMedley()
-                mq.cmdf('/medley %s', s.bard.oorMedley)
+                mq.cmdf('/medley %s', s.bard.oocMedley)
             end
             s.bard.dpsTwisting = false
             s.bard.twisting    = true
         elseif not s.bard.twistOn then
             stopMedley()
         end
-        -- GoM one-shot: queue after starting/resuming OOR medley (migration plan)
+        -- GoM one-shot: queue after starting/resuming OOC medley (migration plan)
         if s.bard.gomActive then
             mq.cmdf('/medley queue %s', s.bard.gomMedley)
             s.bard.gomActive = false
