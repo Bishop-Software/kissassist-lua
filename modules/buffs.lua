@@ -889,13 +889,16 @@ function Buffs.checkBuffs(forceGroup)
 
         if isSingle then
             local groupCount = mq.TLO.Group.Members() or 0
-            if groupCount > 0 then
+            -- DUAL_TAGS self-only entries (dualme, me) must still check self when ungrouped.
+            if groupCount > 0 or DUAL_TAGS[p2] ~= nil then
                 local spellMana = tonumber(mq.TLO.Spell(spellToCast).Mana()) or 0
 
                 for j = groupCount, 0, -1 do
                     if mq.TLO.Me.Invis() then break end
 
                     local memberID = mq.TLO.Group.Member(j).ID() or 0
+                    -- When ungrouped, Group.Member(0) is nil; fall back to Me directly.
+                    if j == 0 and memberID == 0 then memberID = mq.TLO.Me.ID() or 0 end
                     if memberID == 0 then goto jcontinue end
 
                     local memberDist = mq.TLO.Spawn(memberID).Distance() or 999
