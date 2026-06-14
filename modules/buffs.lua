@@ -600,6 +600,14 @@ function Buffs.checkBuffs(forceGroup)
             end
         end
 
+        -- Resolve base spell name to highest rank in the character's book before any TLO lookups.
+        -- Allows INI entries like 'Aura of Foo|Aura' to match 'Aura of Foo Rk. II' automatically.
+        if not DUAL_TAGS[p2] then
+            spellToCast = _utils.resolveSpellRank(spellToCast)
+        else
+            p3 = _utils.resolveSpellRank(p3)
+        end
+
         -- buffToCheck resolution: non-gold strips " Rk." suffix (mac:4273-4293)
         local buffToCheck
         if not _state.misc.redguides then

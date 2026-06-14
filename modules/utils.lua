@@ -1,5 +1,6 @@
 local Utils = {}
 
+local mq      = require('mq')
 local Config  = require('modules.config')
 local VERSION = Config.VERSION
 
@@ -46,5 +47,17 @@ end
 -- Replacements for .mac timer variables. Timers are stored as os.clock() expiry timestamps.
 function Utils.timerExpired(t) return os.clock() >= t end
 function Utils.setTimer(seconds) return os.clock() + seconds end
+
+-- Resolve a spell name to the highest rank in the character's spellbook.
+-- Handles INI entries like 'Foo|Aura' where only 'Foo Rk. II' is in the book.
+-- Returns name unchanged for AAs, items, discs, or spells already at base rank.
+function Utils.resolveSpellRank(name)
+    if (mq.TLO.Me.Book(name)() or 0) ~= 0 then return name end
+    local rk2 = name .. ' Rk. II'
+    if (mq.TLO.Me.Book(rk2)() or 0) ~= 0 then return rk2 end
+    local rk3 = name .. ' Rk. III'
+    if (mq.TLO.Me.Book(rk3)() or 0) ~= 0 then return rk3 end
+    return name
+end
 
 return Utils
