@@ -404,6 +404,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
     _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
     _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',           '1') == '1'
+    _state.combat.useMQ2Melee       = Config.get('Melee', 'UseMQ2Melee',       '0') == '1'
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'
 
@@ -1560,8 +1561,8 @@ function Combat.fight(fromWhere)
                             end
                             -- CheckStick (deferred M7)
                         end
-                        -- Keep attack on while standing (mac:1237)
-                        if (mq.TLO.Target.ID() or 0) ~= 0 then
+                        -- Keep attack on while standing (mac:1237); MQ2Melee handles this itself
+                        if not _state.combat.useMQ2Melee and (mq.TLO.Target.ID() or 0) ~= 0 then
                             local meState = (mq.TLO.Me.State() or ''):lower()
                             if meState == 'stand' or meState == 'mount' then
                                 mq.cmd('/squelch /attack on')
@@ -1870,7 +1871,8 @@ function Combat.combatReset(sFlag, calledFrom)
     -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOR medley.
     if _bard and _state.session.iAmABard then _state.bard.dpsTwisting = false end
 
-    -- Stop attacking and clear target; reset autofire (mac:2247-2250)
+    -- Stop attacking and clear target; reset autofire (mac:2246-2250)
+    if _state.combat.useMQ2Melee then mq.cmd('/squelch /melee melee=0') end
     mq.cmd('/squelch /attack off')
     if mq.TLO.Me.AutoFire() then mq.cmd('/autofire') end
     if _state.combat.autoFireOn == 2 then _state.combat.autoFireOn = 1 end
@@ -1937,7 +1939,8 @@ function Combat.combatReset(sFlag, calledFrom)
         mq.doevents()
     until not _state.combat.eventFlag
 
-    -- Stick release and MQ2Melee re-enable (deferred — movement module Step 7.x)
+    -- Re-enable MQ2Melee melee mode for next engagement (mac:2246 inverse)
+    if _state.combat.useMQ2Melee then mq.cmd('/squelch /melee melee=1') end
 
     if _debuff then _debuff.resetFight() end
     if _charm  then _charm.resetFight()  end
