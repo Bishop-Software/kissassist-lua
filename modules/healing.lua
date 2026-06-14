@@ -83,8 +83,8 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     for _, entry in ipairs(_state.heal.healsArray) do
         local spell = entry.name:match('^([^|]+)') or ''
         local pct   = tonumber(entry.name:match('^[^|]+|([^|]+)')) or 0
-        local tag   = entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''
-        if tag == 'MA' then
+        local tag   = (entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
+        if tag == 'ma' then
             if pct > _state.heal.singleHealPointMA then _state.heal.singleHealPointMA = pct end
         else
             if pct > _state.heal.singleHealPoint then _state.heal.singleHealPoint = pct end

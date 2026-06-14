@@ -153,17 +153,23 @@ end
 -- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
 Bard.stopMedley = stopMedley
 
+local _medleyWasPaused = false
+
 -- Pause the active medley before an AA cast; uses /medley pause.
 function Bard.pauseMedley()
     if Medley.Active() then
         mq.cmd('/medley pause')
+        _medleyWasPaused = true
         mq.delay(300, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
     end
 end
 
--- Resume a paused medley after an AA cast.
+-- Resume a paused medley after an AA cast — only if we actually paused it.
 function Bard.resumeMedley()
-    mq.cmd('/medley resume')
+    if _medleyWasPaused then
+        mq.cmd('/medley resume')
+        _medleyWasPaused = false
+    end
 end
 
 return Bard

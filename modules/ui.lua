@@ -1976,6 +1976,9 @@ local function drawCC()
 
             ImGui.Spacing()
             ImGui.Separator()
+            ImGui.Text(string.format('Mobs in radar: %d  (AE range: %d)',
+                s.mez.mobCount or 0, s.mez.mobAECount or 0))
+            ImGui.Spacing()
             ImGui.PushItemWidth(220)
             local mezSpell, msc = ImGui.InputText('Mez Spell##mezspell', s.mez.spell, 0)
             if msc and mezSpell ~= s.mez.spell then
