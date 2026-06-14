@@ -58,6 +58,33 @@ function Bard.init(state, utils, cast)
     _state.bard.burnMedley   = Config.get('General', 'BurnMedley',   'burn')
     _state.bard.gomMedley    = Config.get('General', 'GoMMedley',    'gomSong')
 
+    -- Locate the MQ2 char INI and read all four medley song lists into State.
+    local mqIniPath, mqIniFile = Config.findMQCharIni()
+    _state.bard.mqIniPath = mqIniPath
+    _state.bard.mqIniFile = mqIniFile
+    if mqIniPath then
+        local function readSongs(setName)
+            local songs = {}
+            local i = 1
+            while true do
+                local song = mq.TLO.Ini(mqIniFile, 'MQ2Medley-' .. setName, 'song' .. i)()
+                if not song then break end
+                songs[i] = song
+                i = i + 1
+            end
+            return songs
+        end
+        _state.bard.oorSongs   = readSongs(_state.bard.oorMedley)
+        _state.bard.meleeSongs = readSongs(_state.bard.meleeMedley)
+        _state.bard.burnSongs  = readSongs(_state.bard.burnMedley)
+        _state.bard.gomSongs   = readSongs(_state.bard.gomMedley)
+    else
+        printf('\ayKissAssist: \awMQ2 char INI not found — song set editor will be unavailable')
+    end
+
+    -- Expose saveSongSet through State so ui.lua can call it without a direct import.
+    _state.bard.saveSongSet = Bard.saveSongSet
+
     _utils.debug('bard', 'Bard.init: twistOn=%s meleeTwistOn=%d meleeMedley=%s',
         tostring(_state.bard.twistOn), _state.bard.meleeTwistOn, _state.bard.meleeMedley)
 end
@@ -172,6 +199,67 @@ function Bard.resumeMedley()
         mq.cmd('/medley start')
         _medleyWasPaused = false
     end
+end
+
+-- Persist a song list to a [MQ2Medley-<setName>] section in the MQ2 char INI
+-- and reload MQ2Medley so changes take effect immediately.
+-- Rewrites the section line-by-line so excess old song keys are removed cleanly.
+function Bard.saveSongSet(setName, songs)
+    local path = _state and _state.bard.mqIniPath
+    if not path then
+        printf('\arKissAssist: cannot save song set — MQ2 char INI not found')
+        return
+    end
+
+    local f = io.open(path, 'r')
+    if not f then
+        printf('\arKissAssist: cannot read MQ2 char INI')
+        return
+    end
+    local lines = {}
+    for line in f:lines() do lines[#lines + 1] = line end
+    f:close()
+
+    local target = '[MQ2Medley-' .. setName .. ']'
+    local result = {}
+    local i = 1
+    local found = false
+
+    while i <= #lines do
+        if lines[i] == target then
+            found = true
+            result[#result + 1] = target
+            for j, song in ipairs(songs) do
+                result[#result + 1] = string.format('song%d=%s', j, song)
+            end
+            -- Skip the old song keys that follow.
+            i = i + 1
+            while i <= #lines and lines[i]:match('^song%d+=') do
+                i = i + 1
+            end
+        else
+            result[#result + 1] = lines[i]
+            i = i + 1
+        end
+    end
+
+    if not found then
+        result[#result + 1] = ''
+        result[#result + 1] = target
+        for j, song in ipairs(songs) do
+            result[#result + 1] = string.format('song%d=%s', j, song)
+        end
+    end
+
+    local fw = io.open(path, 'w')
+    if not fw then
+        printf('\arKissAssist: cannot write MQ2 char INI')
+        return
+    end
+    fw:write(table.concat(result, '\n'))
+    fw:close()
+
+    mq.cmd('/medley reload')
 end
 
 return Bard
