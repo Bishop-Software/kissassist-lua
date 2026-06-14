@@ -56,6 +56,12 @@ local unitTests = {
         clearModules = { 'modules.config' },
     },
     {
+        name         = 'test_config_cond',
+        path         = 'tests.unit.test_config_cond',
+        useMock      = true,
+        clearModules = { 'modules.config' },
+    },
+    {
         name         = 'test_charm',
         path         = 'tests.unit.test_charm',
         useMock      = true,

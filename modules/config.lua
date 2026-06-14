@@ -110,7 +110,7 @@ local function migrateBardMedley(readFn, cfg)
     local mqIniPath, mqIniFile = Config.findMQCharIni()
 
     if not mqIniPath then
-        printf('\ayKissAssist: \awCould not find MQ2 character config for %s — add [MQ2Medley-oor] and [MQ2Medley-melee] manually.', mq.TLO.Me.CleanName())
+        printf('\ayKissAssist: \awCould not find MQ2 character config for %s — add [MQ2Medley-ooc] and [MQ2Medley-melee] manually.', mq.TLO.Me.CleanName())
     else
         local function writeMedleySection(setName, songs)
             if #songs == 0 then return end
@@ -131,12 +131,12 @@ local function migrateBardMedley(readFn, cfg)
             f:close()
             printf('\agKissAssist: \awWrote [MQ2Medley-%s] (%d songs) to \at%s', setName, #songs, mqIniFile)
         end
-        writeMedleySection('oor',   slotsToSongs(twistWhat))
+        writeMedleySection('ooc',   slotsToSongs(twistWhat))
         writeMedleySection('melee', slotsToSongs(meleeWhat))
     end
 
     -- Replace old slot-list keys with medley set names; nil removes them from pickle.
-    cfg.General.OORMedley    = cfg.General.OORMedley   or 'oor'
+    cfg.General.OOCMedley    = cfg.General.OOCMedley   or 'ooc'
     cfg.General.MeleeMedley  = cfg.General.MeleeMedley or 'melee'
     cfg.General.BurnMedley   = cfg.General.BurnMedley  or 'burn'
     cfg.General.GoMMedley    = cfg.General.GoMMedley   or 'gomSong'
@@ -274,7 +274,7 @@ function Config.migrateIni(state)
         TwistOn          = r('General','TwistOn'),
         TwistMed         = r('General','TwistMed'),
         TwistWhat        = r('General','TwistWhat'),
-        OORMedley        = r('General','OORMedley') or 'oor',
+        OOCMedley        = r('General','OOCMedley') or 'ooc',
         MeleeMedley      = r('General','MeleeMedley') or 'melee',
         BurnMedley       = r('General','BurnMedley') or 'burn',
         GoMMedley        = r('General','GoMMedley') or 'gomSong',
@@ -530,7 +530,7 @@ function Config.defaultCfg()
             IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
             DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
             UseSpawnMaster   = '0', TwistOn = '0',
-            OORMedley = 'oor', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
+            OOCMedley = 'ooc', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
         },
         Spells = {
@@ -617,7 +617,7 @@ end
 -- Returns stripped name and condition slot number (0 = no condition).
 -- e.g. "Harm Touch|cond001" → "Harm Touch", 1
 local function extractCond(entry)
-    local pos = entry:find('|cond')
+    local pos = entry:lower():find('|cond')
     if not pos then return entry, 0 end
     local condNo = tonumber(entry:sub(pos + 5, pos + 7)) or 0
     return entry:sub(1, pos - 1), condNo
