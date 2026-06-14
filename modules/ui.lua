@@ -267,6 +267,12 @@ local function drawMelee()
         mq.cmd('/katargetmode')
     end)
 
+    checkbox('Use MQ2Melee', s.combat.useMQ2Melee, function(v)
+        s.combat.useMQ2Melee = v
+        Config.set('Melee', 'UseMQ2Melee', v and '1' or '0')
+        Config.save()
+    end)
+
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
         mq.cmd('/autofireon')
     end)
