@@ -112,6 +112,7 @@ function Bard.doBardStuff()
     -- Combat path (mac:6256-6302): switch to melee medley set when in combat or
     -- when meleeTwistOn==2 with an aggro target (pre-combat aggro mode).
     if s.combat.combatStart or (s.bard.meleeTwistOn == 2 and aggroID > 0) then
+        s.bard.manualStop = false  -- combat overrides manual stop
         if s.bard.meleeTwistOn ~= 0 and not s.bard.dpsTwisting then
             local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.meleeMedley then
@@ -124,6 +125,7 @@ function Bard.doBardStuff()
 
     -- OOC path (mac:6303-6329): switch to OOR medley set when out of combat.
     elseif not s.combat.combatStart then
+        if s.bard.manualStop then return end
         if s.bard.twistOn and not s.bard.twisting then
             local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.oorMedley then

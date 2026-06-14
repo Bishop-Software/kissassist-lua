@@ -827,9 +827,17 @@ local function drawBard()
 
     -- Start / Stop (MQ2Medley has no real pause — stop is the only option)
     ImGui.Spacing()
-    if ImGui.Button('Start') then mq.cmd('/medley start') end
+    if ImGui.Button('Start') then
+        _state.bard.manualStop = false
+        _state.bard.twisting   = false
+        _state.bard.dpsTwisting = false
+        mq.cmd('/medley start')
+    end
     ImGui.SameLine()
-    if ImGui.Button('Stop')  then mq.cmd('/medley stop')  end
+    if ImGui.Button('Stop') then
+        _state.bard.manualStop = true
+        mq.cmd('/medley stop')
+    end
 end
 
 -- ---------------------------------------------------------------------------
