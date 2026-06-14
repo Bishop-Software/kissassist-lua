@@ -82,6 +82,12 @@ function Bard.init(state, utils, cast)
         printf('\ayKissAssist: \awMQ2 char INI not found — song set editor will be unavailable')
     end
 
+    -- Read MQ2Medley quiet state from the MQ char INI ([MQ2Medley] Quiet=1).
+    if mqIniFile then
+        local quietVal = mq.TLO.Ini(mqIniFile, 'MQ2Medley', 'Quiet')()
+        _state.bard.medleyQuiet = (quietVal == '1' or quietVal == 'true')
+    end
+
     -- Expose saveSongSet through State so ui.lua can call it without a direct import.
     _state.bard.saveSongSet = Bard.saveSongSet
 
