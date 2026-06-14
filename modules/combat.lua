@@ -1427,10 +1427,10 @@ function Combat.fight(fromWhere)
                 goto continue_fight
             end
 
-            -- Face mob every tick when enabled (mac:1094)
+            -- Face mob every tick when enabled (mac:1094); skip when MQ2Melee handles facing
             do
                 local faceMob = _state.movement.faceMobOn or 0
-                if faceMob > 0 and myID ~= 0 then
+                if faceMob > 0 and myID ~= 0 and not _state.combat.useMQ2Melee then
                     local meState = mq.TLO.Me.State() or ''
                     if meState == 'STAND' or (mq.TLO.Me.Mount.ID() or 0) ~= 0 then
                         local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
@@ -1459,8 +1459,8 @@ function Combat.fight(fromWhere)
                and (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) == 0 then
                 mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
             end
-            -- Re-stick if mob moved beyond MaxRangeTo and stick dropped (mac:1150)
-            if _movement and _state.combat.meleeOn then
+            -- Re-stick if mob moved beyond MaxRangeTo and stick dropped (mac:1150); MQ2Melee repositions itself
+            if not _state.combat.useMQ2Melee and _movement and _state.combat.meleeOn then
                 local _mob = mq.TLO.Spawn('id ' .. myID)
                 if _mob and (_mob.Distance() or 0) > (_mob.MaxRangeTo() or 999)
                    and not mq.TLO.Stick.Active() then
