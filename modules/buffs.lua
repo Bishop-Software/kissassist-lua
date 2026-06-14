@@ -6,8 +6,8 @@ local _state, _utils, _cast, _heal, _comms, _cond
 
 -- Dual tag set used in buffToCheck resolution and target-type dispatch.
 local DUAL_TAGS = {
-    Dual=true, DualMA=true, DualMelee=true, DualCaster=true,
-    DualClass=true, ['Dual!Class']=true, DualMgb=true, Dualme=true,
+    dual=true, dualma=true, dualmelee=true, dualcaster=true,
+    dualclass=true, ['dual!class']=true, dualmgb=true, dualme=true,
 }
 
 -- Class sets for |caster / |Melee filter tags (mac:4538).
@@ -16,9 +16,9 @@ local MELEE_CLASSES  = { BRD=true, BER=true, BST=true, MNK=true, PAL=true, ROG=t
 
 -- Tag set that implies single-target filtering; suppresses no-group fallback (mac:4614).
 local CLASS_FILTER_TAGS = {
-    MA=true, ['!MA']=true, Melee=true, caster=true,
-    DualMA=true, DualMelee=true, DualCaster=true,
-    ['class']=true, ['!class']=true, DualClass=true, ['Dual!Class']=true,
+    ma=true, ['!ma']=true, melee=true, caster=true,
+    dualma=true, dualmelee=true, dualcaster=true,
+    ['class']=true, ['!class']=true, dualclass=true, ['dual!class']=true,
 }
 
 local function classInList(shortName, classList)
@@ -171,12 +171,13 @@ end
 
 -- Mirrors Sub CheckEndurance (mac:4820): cast endurance disc/AA on self.
 local function checkEndurance(spellName)
-    if mq.TLO.Me.Invis() then return end
+    if mq.TLO.Me.Invis() then return 'CAST_CANCELLED' end
     if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then mq.cmd('/stand') end
     local result = _cast.castWhat(spellName, mq.TLO.Me.ID(), 'CheckEndurance')
     if result == 'CAST_SUCCESS' then
         printf('\awCasting \at%s\aw for endurance.', spellName)
     end
+    return result
 end
 
 local BUFFS_FILE  = 'KissAssist_Buffs.ini'
@@ -573,19 +574,19 @@ function Buffs.checkBuffs(forceGroup)
 
         if #parts >= 2 and (parts[2] or '') ~= '' then
             spellToCast = parts[1] or ''
-            p2          = parts[2] or ''
+            p2          = (parts[2] or ''):lower()
             p3          = parts[3] or ''
-            p4          = parts[4] or ''
+            p4          = (parts[4] or ''):lower()
             p5          = parts[5] or ''
 
-            if p2 == 'Dual' then
-                if     p4 == 'MA'     then p2 = 'DualMA'
-                elseif p4 == 'melee'  then p2 = 'DualMelee'
-                elseif p4 == 'caster' then p2 = 'DualCaster'
-                elseif p4 == 'class'  then p2 = 'DualClass'
-                elseif p4 == '!class' then p2 = 'Dual!Class'
-                elseif p4 == 'mgb'    then p2 = 'DualMgb'
-                elseif p4 == 'me'     then p2 = 'Dualme'
+            if p2 == 'dual' then
+                if     p4 == 'ma'     then p2 = 'dualma'
+                elseif p4 == 'melee'  then p2 = 'dualmelee'
+                elseif p4 == 'caster' then p2 = 'dualcaster'
+                elseif p4 == 'class'  then p2 = 'dualclass'
+                elseif p4 == '!class' then p2 = 'dual!class'
+                elseif p4 == 'mgb'    then p2 = 'dualmgb'
+                elseif p4 == 'me'     then p2 = 'dualme'
                 end
             elseif p2 == 'class' or p2 == '!class' then
                 p5 = p3
@@ -653,10 +654,10 @@ function Buffs.checkBuffs(forceGroup)
         -- Special action tag chain (mac:4319-4403).
         -- Mirrors the mac's big if-elseif in CheckBuffs; each branch ends with goto continue
         -- so special-tag entries never fall through to the group/self/single cast loops.
-        if p2 == 'Endgroup' or p2 == 'Managroup' then
+        if p2 == 'endgroup' or p2 == 'managroup' then
             -- |Endgroup / |Managroup: regen on lowest-stat group member (mac:4319-4328)
             if (mq.TLO.Group.Members() or 0) > 0 then
-                local stat    = (p2 == 'Endgroup') and 'Endurance' or 'Mana'
+                local stat    = (p2 == 'endgroup') and 'Endurance' or 'Mana'
                 local didCast = regenOther(spellToCast, stat, tonumber(p3) or 0)
                 if didCast then
                     local dur = tonumber(mq.TLO.Spell(spellToCast).Duration.TotalSeconds()) or 0
@@ -678,17 +679,23 @@ function Buffs.checkBuffs(forceGroup)
                 end
             end
             goto continue
-        elseif p2 == 'End' then
+        elseif p2 == 'end' then
             -- |End: endurance disc/AA when below threshold (mac:4341-4342)
             local pctEnd = tonumber(mq.TLO.Me.PctEndurance()) or 100
             local thresh = tonumber(p3) or 0
             if pctEnd <= thresh then
+                if timers_i[0] > os.clock() then goto continue end
                 local caReady = mq.TLO.Me.CombatAbilityReady(spellToCast)()
                 local aaReady = mq.TLO.Me.AltAbilityReady(spellToCast)()
-                if caReady or aaReady then checkEndurance(spellToCast) end
+                if caReady or aaReady then
+                    local result = checkEndurance(spellToCast)
+                    if result == 'CAST_INTERRUPTED' or result == 'CAST_NO_RESULT' then
+                        timers_i[0] = os.clock() + 10
+                    end
+                end
             end
             goto continue
-        elseif p2 == 'Remove' then
+        elseif p2 == 'remove' then
             -- |Remove: /removebuff if buff/song slot active (mac:4344-4348)
             local buffID = mq.TLO.Me.Buff(spellToCast).ID() or 0
             local songID = mq.TLO.Me.Song(spellToCast).ID() or 0
@@ -724,11 +731,11 @@ function Buffs.checkBuffs(forceGroup)
             -- Global mana bail: inside elseif chain so it only fires for entries not caught
             -- by the branches above (Endgroup, mana, End, Remove, Mount) (mac:4350).
             goto continue
-        elseif p2 == 'Aura' then
+        elseif p2 == 'aura' then
             -- |Aura: cast aura if slot not already matching (mac:4353-4354)
             checkAura(spellToCast)
             goto continue
-        elseif p2 == 'Once' then
+        elseif p2 == 'once' then
             -- |Once: cast once; disable entry on success (mac:4356-4361)
             if buffOnce(spellToCast) then
                 _state.buffs.buffsArray[i].name = spellToCast .. '|0'
@@ -747,9 +754,9 @@ function Buffs.checkBuffs(forceGroup)
                 end
             end
             goto continue
-        elseif p2 == 'mgb' or p2 == 'DualMgb' or p2:lower() == 'dualmgb' then
+        elseif p2 == 'mgb' or p2 == 'dualmgb' then
             -- |mgb / |dualmgb: mass group buff via MGB AA (mac:4370-4371)
-            local passes  = (p2 == 'DualMgb' or p2:lower() == 'dualmgb') and 2 or 1
+            local passes  = (p2 == 'dualmgb') and 2 or 1
             local needBuff = false
             for m = 0, (mq.TLO.Group.Members() or 0) do
                 local member = m == 0 and mq.TLO.Me or mq.TLO.Group.Member(m)
@@ -893,24 +900,24 @@ function Buffs.checkBuffs(forceGroup)
                         end
                     end
 
-                    -- |me / |Dualme: self only (mac:4535)
-                    if (p2 == 'me' or p2 == 'Dualme') and j > 0 then goto jcontinue end
+                    -- |me / |dualme: self only (mac:4535)
+                    if (p2 == 'me' or p2 == 'dualme') and j > 0 then goto jcontinue end
 
                     -- Per-cast mana check; break entire j loop if insufficient (mac:4536)
                     if mq.TLO.Me.CurrentMana() < spellMana then break end
 
                     -- Class and role filters (mac:4538-4542)
                     local memberClass = mq.TLO.Group.Member(j).Class.ShortName() or ''
-                    if (p2 == 'caster'  or p2 == 'DualCaster') and not CASTER_CLASSES[memberClass] then goto jcontinue end
-                    if (p2 == 'Melee'   or p2 == 'DualMelee')  and not MELEE_CLASSES[memberClass]  then goto jcontinue end
-                    if (p2 == 'class'   or p2 == 'DualClass')  and not classInList(memberClass, p5) then goto jcontinue end
-                    if (p2 == '!class'  or p2 == 'Dual!Class') and     classInList(memberClass, p5) then goto jcontinue end
-                    if p2 == 'MA' or p2 == 'DualMA' then
+                    if (p2 == 'caster'  or p2 == 'dualcaster') and not CASTER_CLASSES[memberClass] then goto jcontinue end
+                    if (p2 == 'melee'   or p2 == 'dualmelee')  and not MELEE_CLASSES[memberClass]  then goto jcontinue end
+                    if (p2 == 'class'   or p2 == 'dualclass')  and not classInList(memberClass, p5) then goto jcontinue end
+                    if (p2 == '!class'  or p2 == 'dual!class') and     classInList(memberClass, p5) then goto jcontinue end
+                    if p2 == 'ma' or p2 == 'dualma' then
                         local maID = (_state.session.mainAssist ~= '')
                                  and (mq.TLO.Spawn('PC ' .. _state.session.mainAssist).ID() or 0) or 0
                         if memberID ~= maID then goto jcontinue end
                     end
-                    if p2 == '!MA' then
+                    if p2 == '!ma' then
                         local maID = (_state.session.mainAssist ~= '')
                                  and (mq.TLO.Spawn('PC ' .. _state.session.mainAssist).ID() or 0) or 0
                         if memberID == maID then goto jcontinue end
