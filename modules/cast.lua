@@ -197,7 +197,8 @@ local function castSpell(spellName, sentFrom)
         end
 
         -- Arm cast state; onCastBegin event will also set SUCCESS optimistically
-        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
+        -- Bards: Casting.ID stays non-zero between medley songs; mac:2469 gates this on !IAmABard.
+        if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return 'CAST_NO_RESULT' end
         state.cast.castReturn = 'CAST_SUCCESS'
         mq.cmdf('/cast "%s"', spellName)
         utils.debug('cast', 'CastSpell: /cast "%s"', spellName)
