@@ -1876,7 +1876,7 @@ function Combat.combatReset(sFlag, calledFrom)
     _state.combat.validTarget     = false
     _state.combat.combatStart     = false
     _state.pull.pulled            = false
-    -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOR medley.
+    -- Bard: reset dpsTwisting so next doBardStuff tick transitions back to OOC medley.
     if _bard and _state.session.iAmABard then _state.bard.dpsTwisting = false end
 
     -- Stop attacking and clear target; reset autofire (mac:2246-2250)
