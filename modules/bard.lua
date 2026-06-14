@@ -112,6 +112,7 @@ function Bard.doBardStuff()
     -- Combat path (mac:6256-6302): switch to melee medley set when in combat or
     -- when meleeTwistOn==2 with an aggro target (pre-combat aggro mode).
     if s.combat.combatStart or (s.bard.meleeTwistOn == 2 and aggroID > 0) then
+        s.bard.manualStop = false  -- combat overrides manual stop
         if s.bard.meleeTwistOn ~= 0 and not s.bard.dpsTwisting then
             local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.meleeMedley then
@@ -124,6 +125,7 @@ function Bard.doBardStuff()
 
     -- OOC path (mac:6303-6329): switch to OOR medley set when out of combat.
     elseif not s.combat.combatStart then
+        if s.bard.manualStop then return end
         if s.bard.twistOn and not s.bard.twisting then
             local activeSet = Medley.Medley() or ''
             if activeSet ~= s.bard.oorMedley then
@@ -153,17 +155,23 @@ end
 -- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
 Bard.stopMedley = stopMedley
 
--- Pause the active medley before an AA cast; uses /medley pause.
+local _medleyWasPaused = false
+
+-- Pause the active medley before an item/AA cast; stop is the only real pause MQ2Medley supports.
 function Bard.pauseMedley()
     if Medley.Active() then
-        mq.cmd('/medley pause')
+        mq.cmd('/medley stop')
+        _medleyWasPaused = true
         mq.delay(300, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
     end
 end
 
--- Resume a paused medley after an AA cast.
+-- Resume a stopped medley after an item/AA cast — only if we actually stopped it.
 function Bard.resumeMedley()
-    mq.cmd('/medley resume')
+    if _medleyWasPaused then
+        mq.cmd('/medley start')
+        _medleyWasPaused = false
+    end
 end
 
 return Bard

@@ -361,6 +361,7 @@ local State = {
         twistHold      = false,
         twistOn        = false,      -- OOC medley enabled (INI TwistOn)
         twisting       = false,
+        manualStop     = false,      -- user clicked Stop in UI; suppress auto-restart until Start or combat
         wasTwisting    = 'null',
         wasTwistingBool = false,
     },

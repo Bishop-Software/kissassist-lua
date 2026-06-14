@@ -454,7 +454,8 @@ local function castItem(whatItem, sentFrom)
 
     if state.session.iAmABard and _bard then _bard.pauseMedley() end
     ---@diagnostic disable-next-line: undefined-field
-    local castTime = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime.TotalSeconds() or 0
+    local _castTimeObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
+    local castTime = (_castTimeObj and _castTimeObj.TotalSeconds and _castTimeObj.TotalSeconds()) or 0
 
     if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then
         mq.cmd('/stand')
