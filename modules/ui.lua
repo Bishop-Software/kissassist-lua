@@ -8,8 +8,8 @@ local mq = require('mq')
 local AF_LABELS = { [0]='OFF', [1]='RANGED', [2]='PAUSED' }
 local GLT_VALUES  = { '<', '<<', '>' }
 local GLT_LABELS  = { '< gain', '<< sec', '> lose' }
-local ATGT_VALUES = { '', 'me', 'ma', 'pet', 'inc' }
-local ATGT_LABELS = { 'current', 'me', 'ma', 'pet', 'inc' }
+local ATGT_VALUES = { '', 'me', 'ma', 'pet', 'inc', 'weave', 'mash', 'ambush' }
+local ATGT_LABELS = { 'current', 'me', 'ma', 'pet', 'inc', 'weave', 'mash', 'ambush' }
 local AF_COLORS = {
     [0] = {0.6, 0.6, 0.6},
     [1] = {0.4, 1.0, 0.4},
