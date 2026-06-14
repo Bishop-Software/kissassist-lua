@@ -952,31 +952,43 @@ local function drawConditions()
     -- Conditions are stored as an indexed array under the 'Cond' key.
     local condArr = Config.get('KConditions', 'Cond', nil) or {}
 
-    ImGui.PushItemWidth(300)
-    for i = 1, (s.cond.size or 5) do
-        local current = s.cond.expressions[i] or ''
-        local newVal, changed = ImGui.InputText(string.format('Cond %03d##cond%d', i, i), current, 0)
-        if changed and newVal ~= current then
-            s.cond.expressions[i] = newVal ~= '' and newVal or nil
-            condArr[i] = newVal ~= '' and newVal or 'null'
-            Config.set('KConditions', 'Cond', condArr)
-            Config.save()
-        end
-        ImGui.SameLine()
-        if ImGui.Button('[-]##condrem' .. i) then
-            s.cond.expressions[i] = nil
-            if i == s.cond.size and s.cond.size > 1 then
-                condArr[s.cond.size] = nil
-                s.cond.size = s.cond.size - 1
-                Config.set('KConditions', 'CondSize', tostring(s.cond.size))
-            else
-                condArr[i] = 'null'
+    if ImGui.BeginTable('##condtbl', 3, 0) then
+        ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Label',      ImGuiTableColumnFlags.WidthFixed,   68)
+        ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, (s.cond.size or 5) do
+            local current = s.cond.expressions[i] or ''
+            ImGui.TableNextRow()
+            ImGui.TableSetColumnIndex(0)
+            ImGui.PushItemWidth(-1)
+            local newVal, changed = ImGui.InputText('##cond' .. i, current, 0)
+            ImGui.PopItemWidth()
+            if changed and newVal ~= current then
+                s.cond.expressions[i] = newVal ~= '' and newVal or nil
+                condArr[i] = newVal ~= '' and newVal or 'null'
+                Config.set('KConditions', 'Cond', condArr)
+                Config.save()
             end
-            Config.set('KConditions', 'Cond', condArr)
-            Config.save()
+            ImGui.TableSetColumnIndex(1)
+            ImGui.Text(string.format('Cond %03d', i))
+            ImGui.TableSetColumnIndex(2)
+            if ImGui.Button('[-]##condrem' .. i) then
+                s.cond.expressions[i] = nil
+                if i == s.cond.size and s.cond.size > 1 then
+                    condArr[s.cond.size] = nil
+                    s.cond.size = s.cond.size - 1
+                    Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+                else
+                    condArr[i] = 'null'
+                end
+                Config.set('KConditions', 'Cond', condArr)
+                Config.save()
+            end
         end
+        ImGui.EndTable()
     end
-    ImGui.PopItemWidth()
 
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
@@ -2074,29 +2086,84 @@ local function drawCC()
 
             ImGui.Spacing()
             ImGui.Separator()
-            ImGui.Text(string.format('Mobs in radar: %d  (AE range: %d)',
+            ImGui.Text(string.format(
+                'Haters on XTarget: %d total  /  %d within Mez Radius',
                 s.mez.mobCount or 0, s.mez.mobAECount or 0))
             ImGui.Spacing()
-            ImGui.PushItemWidth(220)
-            local mezSpell, msc = ImGui.InputText('Mez Spell##mezspell', s.mez.spell, 0)
-            if msc and mezSpell ~= s.mez.spell then
-                s.mez.spell = mezSpell
-                Config.set('Mez', 'MezSpell', mezSpell)
-                Config.save()
+
+            -- Spell + mob-count columns
+            if ImGui.BeginTable('##mezspells', 3, 0) then
+                ImGui.TableSetupColumn('Spell',     ImGuiTableColumnFlags.WidthStretch, 0)
+                ImGui.TableSetupColumn('Min Mobs',  ImGuiTableColumnFlags.WidthFixed,  100)
+                ImGui.TableSetupColumn('Label',     ImGuiTableColumnFlags.WidthFixed,  90)
+                ImGui.TableHeadersRow()
+
+                -- Mez Spell row
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+                ImGui.PushItemWidth(-1)
+                local mezSpell, msc = ImGui.InputText('##mezspell', s.mez.spell, 0)
+                ImGui.PopItemWidth()
+                if msc and mezSpell ~= s.mez.spell then
+                    s.mez.spell = mezSpell
+                    Config.set('Mez', 'MezSpell', mezSpell .. '|' .. (s.mez.singleCount or 2))
+                    Config.save()
+                end
+                ImGui.TableSetColumnIndex(1)
+                ImGui.PushItemWidth(-1)
+                local sc, scc = ImGui.InputInt('##singlecount', s.mez.singleCount or 2, 1, 1)
+                ImGui.PopItemWidth()
+                if scc then
+                    sc = math.max(2, sc)
+                    s.mez.singleCount = sc
+                    Config.set('Mez', 'MezSpell', s.mez.spell .. '|' .. sc)
+                    Config.save()
+                end
+                ImGui.TableSetColumnIndex(2)
+                ImGui.Text('Mez Spell')
+
+                -- AE Mez Spell row
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+                ImGui.PushItemWidth(-1)
+                local aeMezSpell, asc = ImGui.InputText('##aespell', s.mez.aeSpell, 0)
+                ImGui.PopItemWidth()
+                if asc and aeMezSpell ~= s.mez.aeSpell then
+                    s.mez.aeSpell = aeMezSpell
+                    Config.set('Mez', 'MezAESpell', aeMezSpell .. '|' .. (s.mez.aeCount or 0))
+                    Config.save()
+                end
+                ImGui.TableSetColumnIndex(1)
+                ImGui.PushItemWidth(-1)
+                local ac, acc = ImGui.InputInt('##aecount', s.mez.aeCount or 0, 1, 1)
+                ImGui.PopItemWidth()
+                if acc then
+                    ac = math.max(0, ac)
+                    s.mez.aeCount = ac
+                    Config.set('Mez', 'MezAESpell', s.mez.aeSpell .. '|' .. ac)
+                    Config.save()
+                end
+                ImGui.TableSetColumnIndex(2)
+                ImGui.Text('AE Mez Spell')
+
+                -- Debuff Spell row (no mob count)
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+                ImGui.PushItemWidth(-1)
+                local debuffSpell, dsc = ImGui.InputText('##mezDebuff', s.mez.mezDebuffSpell, 0)
+                ImGui.PopItemWidth()
+                if dsc and debuffSpell ~= s.mez.mezDebuffSpell then
+                    s.mez.mezDebuffSpell = debuffSpell
+                    Config.set('Mez', 'MezDebuffSpell', debuffSpell)
+                    Config.save()
+                end
+                ImGui.TableSetColumnIndex(1)
+                ImGui.TextDisabled('—')
+                ImGui.TableSetColumnIndex(2)
+                ImGui.Text('Debuff Spell')
+
+                ImGui.EndTable()
             end
-            local aeMezSpell, asc = ImGui.InputText('AE Mez Spell##aeSpell', s.mez.aeSpell, 0)
-            if asc and aeMezSpell ~= s.mez.aeSpell then
-                s.mez.aeSpell = aeMezSpell
-                Config.set('Mez', 'MezAESpell', aeMezSpell)
-                Config.save()
-            end
-            local debuffSpell, dsc = ImGui.InputText('Debuff Spell##mezDebuff', s.mez.mezDebuffSpell, 0)
-            if dsc and debuffSpell ~= s.mez.mezDebuffSpell then
-                s.mez.mezDebuffSpell = debuffSpell
-                Config.set('Mez', 'MezDebuffSpell', debuffSpell)
-                Config.save()
-            end
-            ImGui.PopItemWidth()
             ImGui.EndTabItem()
         end
 
