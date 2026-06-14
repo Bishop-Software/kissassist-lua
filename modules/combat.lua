@@ -1113,7 +1113,7 @@ local function aeCheck()
 
         -- Strip optional |condNNN suffix
         local condNo  = 0
-        local condPos = raw:find('|cond%d')
+        local condPos = raw:lower():find('|cond%d')
         if condPos then
             condNo = tonumber(raw:sub(condPos + 5, condPos + 7)) or 0
             raw    = raw:sub(1, condPos - 1)

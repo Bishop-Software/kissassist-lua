@@ -617,7 +617,7 @@ end
 -- Returns stripped name and condition slot number (0 = no condition).
 -- e.g. "Harm Touch|cond001" → "Harm Touch", 1
 local function extractCond(entry)
-    local pos = entry:find('|cond')
+    local pos = entry:lower():find('|cond')
     if not pos then return entry, 0 end
     local condNo = tonumber(entry:sub(pos + 5, pos + 7)) or 0
     return entry:sub(1, pos - 1), condNo

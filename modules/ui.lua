@@ -341,7 +341,7 @@ end
 local function splitHeal(raw)
     -- SpellName[|pct[|tag]][|condNNN]  →  spell, pct, tag, cond
     local spell, pct, tag, cond = '', '0', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1008,7 +1008,7 @@ end
 -- debuffType absent or 'me' → no type filter; 'me' alone → self-only scope
 local function splitCure(raw)
     local spell, dtype, selfOnly, cond = raw, '', false, ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1173,7 +1173,7 @@ end
 local function splitBuff(raw)
     -- SpellName[|TargetTag][|condNNN]  →  spell, tag, cond
     local spell, tag, cond = raw, '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond  = raw:sub(condPos + 1)
         spell = raw:sub(1, condPos - 1)
@@ -1430,7 +1430,7 @@ end
 local function splitAggro(raw)
     -- SpellName[|pct[|glt[|target]]][|condNNN]  →  spell, pct, glt, target, cond
     local spell, pct, glt, target, cond = '', '0', '<', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1458,7 +1458,7 @@ end
 local function splitDPS(raw)
     -- SpellName[|thresh[|target[|damod]]][|condNNN]  →  spell, thresh, target, damod, cond
     local spell, thresh, target, damod, cond = '', '0', '', '', ''
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
@@ -1920,7 +1920,7 @@ local function splitAE(raw)
     -- "SpellName|MobCount|Target[|condNNN]" → spell, count, target, cond
     local spell, count, target, cond = '', '1', 'Mob', ''
     if not raw or raw == 'null' or raw == '' then return spell, count, target, cond end
-    local condPos = raw:find('|cond%d')
+    local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
