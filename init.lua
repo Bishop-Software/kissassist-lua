@@ -138,6 +138,9 @@ end
 -- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
 -- Verified against .mac source. Two intentional Lua additions: Comms.tick(), mq.delay(50).
 -- Divergence from plan note: Buffs/Healing order was already correct; plan comment was stale.
+-- pcall wrapper ensures the shutdown block below runs on both /kastop (clean exit) and
+-- /lua stop (which throws from mq.delay, bypassing the while condition).
+pcall(function()
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
@@ -224,7 +227,9 @@ while not State.terminate do
     Comms.tick()
     mq.delay(50)
 end
+end) -- end pcall
 
 Events.unregister()
 Binds.unregister()
+if State.session.iAmABard then Bard.stopMedley() end
 printf('\ayKissAssist \aw%s stopped.', VERSION)
