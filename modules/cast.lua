@@ -782,7 +782,9 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     local isCommand = castWhat:find('command:', 1, true)
     local hasAA     = (mq.TLO.Me.AltAbility(castWhat).ID() or 0) ~= 0
     local hasDisc   = mq.TLO.Me.CombatAbility(castWhat)() ~= nil
+    -- FindItem searches bags; also cover equipped items (e.g. charm slot clickies) via ItemReady.
     local hasItem   = (mq.TLO.FindItem('=' .. castWhat).ID() or 0) ~= 0
+                   or mq.TLO.Me.ItemReady('=' .. castWhat)() == true
     local hasSkill  = (mq.TLO.Me.Skill(castWhat)() or 0) > 0
     local inBook    = (mq.TLO.Me.Book(castWhat)() or 0) ~= 0
 
