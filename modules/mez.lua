@@ -20,10 +20,31 @@ function Mez.init(state, utils, cast)
     _state.mez.minLevel         = tonumber(Config.get('Mez', 'MezMinLevel',       '1')) or 1
     _state.mez.maxLevel         = tonumber(Config.get('Mez', 'MezMaxLevel',       '115')) or 115
     _state.mez.stopHPs          = tonumber(Config.get('Mez', 'MezStopHPs',        '80')) or 80
-    _state.mez.spell            = Config.get('Mez', 'MezSpell',          '') or ''
     _state.mez.mezDebuffOnResist = Config.get('Mez', 'MezDebuffOnResist', '0') == '1'
     _state.mez.mezDebuffSpell   = Config.get('Mez', 'MezDebuffSpell',    '') or ''
-    _state.mez.aeSpell          = Config.get('Mez', 'MezAESpell',        '') or ''
+
+    -- Parse "SpellName|N" format: N = min mob count threshold (mac:14869-14871).
+    -- singleCount minimum is 2 (mac enforces this); aeCount 0 = disabled.
+    local rawSpell = Config.get('Mez', 'MezSpell', '') or ''
+    local spPipe   = rawSpell:find('|', 1, true)
+    if spPipe then
+        _state.mez.spell        = rawSpell:sub(1, spPipe - 1)
+        _state.mez.singleCount  = math.max(2, tonumber(rawSpell:sub(spPipe + 1)) or 2)
+    else
+        _state.mez.spell        = rawSpell
+        _state.mez.singleCount  = 2
+    end
+
+    local rawAE  = Config.get('Mez', 'MezAESpell', '') or ''
+    local aePipe = rawAE:find('|', 1, true)
+    if aePipe then
+        _state.mez.aeSpell  = rawAE:sub(1, aePipe - 1)
+        _state.mez.aeCount  = tonumber(rawAE:sub(aePipe + 1)) or 0
+    else
+        _state.mez.aeSpell  = rawAE
+        _state.mez.aeCount  = 0
+    end
+
     -- PetBreakMezSpell lives in [Pet] section (mac:14822)
     _state.mez.petBreakSpell    = Config.get('Pet', 'PetBreakMezSpell',  '') or ''
 end
