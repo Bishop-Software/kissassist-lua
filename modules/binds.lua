@@ -948,6 +948,15 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
     bind('/resetcharmed',   onResetCharmed)
     bind('/addcimmune',     onAddCharmImmune)
 
+    bind('/kamedleyquiet',  function()
+        if not state.session.iAmABard then
+            printf('--MedleyQuiet: bard only.')
+            return
+        end
+        mq.cmd('/medley quiet')
+        state.bard.medleyQuiet = not state.bard.medleyQuiet
+    end)
+
     -- Loot
     bind('/kalooton',       onLootOn)
     bind('/kalootoff',      onLootOff)

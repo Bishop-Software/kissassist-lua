@@ -893,6 +893,14 @@ local function drawBard()
         mq.cmd('/medley stop')
     end
 
+    -- Quiet mode toggle
+    ImGui.SameLine()
+    local quietVal, quietChanged = ImGui.Checkbox('Quiet##medleyquiet', bard.medleyQuiet)
+    if quietChanged then
+        mq.cmd('/medley quiet')
+        _state.bard.medleyQuiet = quietVal
+    end
+
     -- Song set editor sub-tabs
     ImGui.Spacing()
     ImGui.Separator()

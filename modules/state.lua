@@ -362,6 +362,7 @@ local State = {
         twistOn        = false,      -- OOC medley enabled (INI TwistOn)
         twisting       = false,
         manualStop     = false,      -- user clicked Stop in UI; suppress auto-restart until Start or combat
+        medleyQuiet    = false,      -- MQ2Medley quiet mode (suppress "Scheduled:" spam); toggled by /medley quiet
         wasTwisting    = 'null',
         wasTwistingBool = false,
         -- Song lists read from [MQ2Medley-*] sections in the MQ2 char INI at init.
