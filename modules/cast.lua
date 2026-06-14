@@ -488,6 +488,14 @@ local function castItem(whatItem, sentFrom)
         end
     else
         mq.delay(100)   -- let cast-result event fire for instant-click items
+        -- castTime may be 0 because FindItem can't see equipped items; detect if a cast
+        -- window actually opened (e.g. charm slot clicky with a song cast time) and wait.
+        if mq.TLO.Window('CastingWindow').Open() then
+            local timeout = os.clock() + 30
+            while os.clock() < timeout and mq.TLO.Window('CastingWindow').Open() do
+                mq.delay(100)
+            end
+        end
     end
 
     local castResult = state.cast.castReturn
