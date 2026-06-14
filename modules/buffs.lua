@@ -513,7 +513,10 @@ function Buffs.checkBuffs(forceGroup)
     if not _state.buffs.buffsOn then return end
     if _state.misc.iAmDead then return end
     if mq.TLO.Me.Hovering() then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
+    -- Bards are always "casting" a song; mac:4171 has no casting guard in CheckBuffs.
+    if not _state.session.iAmABard then
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
+    end
     if mq.TLO.Me.Invis() and mq.TLO.Me.Class.Name() ~= 'Rogue' then return end
     if _state.movement.chaseAssist and mq.TLO.Me.Moving() then return end
     if mq.TLO.Me.Moving() and _state.movement.whoToChase == mq.TLO.Me.Name() then return end
