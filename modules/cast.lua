@@ -444,7 +444,8 @@ local function castItem(whatItem, sentFrom)
     -- Block prestige items for non-gold accounts
     local sub = mq.TLO.Me.Subscription() or ''
     ---@diagnostic disable-next-line: undefined-field
-    if sub ~= 'gold' and mq.TLO.FindItem('=' .. whatItem).Prestige() then
+    local isPrestige = mq.TLO.FindItem('=' .. whatItem).Prestige()
+    if sub:lower() ~= 'gold' and isPrestige then
         return 'CAST_NO_RESULT'
     end
 
@@ -487,13 +488,29 @@ local function castItem(whatItem, sentFrom)
             end
         end
     else
-        mq.delay(100)   -- let cast-result event fire for instant-click items
-        -- castTime may be 0 because FindItem can't see equipped items; detect if a cast
-        -- window actually opened (e.g. charm slot clicky with a song cast time) and wait.
-        if mq.TLO.Window('CastingWindow').Open() then
+        -- castTime=0 because FindItem can't see equipped items (e.g. charm slot clickies).
+        -- pauseMedley() above already stopped any active medley, so Casting.ID is a
+        -- reliable cast-in-progress signal here regardless of class.
+        -- Poll up to 500ms for the cast to start (EQ client needs a frame or two after /useitem).
+        local castDetected = false
+        local detectEnd = os.clock() + 0.5
+        while os.clock() < detectEnd do
+            mq.delay(50)
+            if mq.TLO.Window('CastingWindow').Open()
+               or (mq.TLO.Me.Casting.ID() or 0) ~= 0 then
+                castDetected = true
+                break
+            end
+        end
+        -- If a cast started, wait for it to complete before returning.
+        if castDetected then
             local timeout = os.clock() + 30
-            while os.clock() < timeout and mq.TLO.Window('CastingWindow').Open() do
+            while os.clock() < timeout do
                 mq.delay(100)
+                if not mq.TLO.Window('CastingWindow').Open()
+                        and (mq.TLO.Me.Casting.ID() or 0) == 0 then
+                    break
+                end
             end
         end
     end
@@ -772,6 +789,23 @@ end
 -- Determines what type of ability castWhat is, checks readiness, acquires target,
 -- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
 -- StopMoving, and bard twist-restart are stubbed → M4/M5/M6/M7/M8.
+
+-- FindItem searches bags only, not worn equipment slots (charm, neck, rings, etc.).
+-- This scan detects an item's presence in any wear slot, independent of its reuse timer,
+-- so hasItem stays true while an equipped clicky is on cooldown.
+local WEAR_SLOTS = {
+    'charm','leftear','head','face','rightear','neck','shoulders',
+    'arms','back','bracer1','bracer2','range','hands',
+    'primary','secondary','ring1','ring2','chest','legs','feet',
+    'waist','powersource','ammo',
+}
+local function findItemWorn(name)
+    for _, slot in ipairs(WEAR_SLOTS) do
+        if (mq.TLO.InvSlot(slot).Item.Name() or '') == name then return true end
+    end
+    return false
+end
+
 function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     -- Non-bard: bail immediately if already casting with the window open
     if not state.session.iAmABard then
@@ -790,14 +824,17 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     local isCommand = castWhat:find('command:', 1, true)
     local hasAA     = (mq.TLO.Me.AltAbility(castWhat).ID() or 0) ~= 0
     local hasDisc   = mq.TLO.Me.CombatAbility(castWhat)() ~= nil
-    -- FindItem searches bags; also cover equipped items (e.g. charm slot clickies) via ItemReady.
+    -- FindItem searches bags only. ItemReady covers ready worn items. findItemWorn
+    -- detects worn items even when they're on a reuse cooldown (ItemReady = false).
     local hasItem   = (mq.TLO.FindItem('=' .. castWhat).ID() or 0) ~= 0
                    or mq.TLO.Me.ItemReady('=' .. castWhat)() == true
+                   or findItemWorn(castWhat)
     local hasSkill  = (mq.TLO.Me.Skill(castWhat)() or 0) > 0
     local inBook    = (mq.TLO.Me.Book(castWhat)() or 0) ~= 0
 
     if not (isCommand or hasAA or hasDisc or hasItem or hasSkill or inBook) then
-        utils.debug('cast', 'CastWhat: %s not found', castWhat)
+        printf('\ayKissAssist \arcastWhat: \aw%s\ar not found (AA=%s disc=%s item=%s skill=%s book=%s)',
+            castWhat, tostring(hasAA), tostring(hasDisc), tostring(hasItem), tostring(hasSkill), tostring(inBook))
         return 'CAST_NOT_FOUND'
     end
 

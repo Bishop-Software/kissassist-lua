@@ -602,7 +602,13 @@ function Buffs.checkBuffs(forceGroup)
 
         -- Evaluate embedded TLO expressions before any spell lookups.
         -- Mac auto-expands ${...} in variables; Lua requires an explicit mq.parse() call.
-        if spellToCast:find('%$%{') then spellToCast = mq.parse(spellToCast) end
+        if spellToCast:find('%$%{') then
+            spellToCast = mq.parse(spellToCast)
+            if spellToCast == 'NULL' or spellToCast == '' then
+                printf('\ayKissAssist \awBuffs slot %d: TLO resolved to NULL — skipping (%s)', i, (slot.name or ''))
+                goto continue
+            end
+        end
         if p3:find('%$%{') then p3 = mq.parse(p3) end
 
         -- Resolve base spell name to highest rank in the character's book before any TLO lookups.
@@ -978,10 +984,12 @@ function Buffs.checkBuffs(forceGroup)
                     -- WornOff drain (mac:4553-4557)
                     mq.doevents()
 
+                    _utils.debug('buffs', 'checkBuffs[%d] j=%d calling castWhat: %s on memberID=%d', i, j, spellToCast, memberID)
                     local result = _cast.castWhat(spellToCast, memberID, 'buffs-nomem')
+                    _utils.debug('buffs', 'checkBuffs[%d] j=%d castWhat result: %s', i, j, result)
                     if result == 'CAST_SUCCESS' then
-                        printf('\awBuffing \at%s\aw on \at%s', spellToCast,
-                            mq.TLO.Group.Member(j).CleanName() or '')
+                        local memberName = (mq.TLO.Group.Member(j) and mq.TLO.Group.Member(j).CleanName()) or mq.TLO.Me.Name() or ''
+                        printf('\awBuffing \at%s\aw on \at%s', spellToCast, memberName)
                         timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
                         mq.doevents()
                         if j == 0 then
@@ -996,6 +1004,8 @@ function Buffs.checkBuffs(forceGroup)
                         goto jcontinue
                     elseif result == 'CAST_TAKEHOLD' then
                         timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
+                    elseif result == 'CAST_RECOVER' then
+                        timers_i[j] = os.clock() + 5  -- item on reuse cooldown; retry in 5s
                     end
 
                     -- Pet buff via DanNet: deferred to M9
