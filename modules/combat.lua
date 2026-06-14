@@ -443,7 +443,8 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     -- Burn flags
     _state.combat.burnOn        = (Config.get('Burn', 'BurnOn', '1') ~= '0')
     _state.combat.burnAllNamed  = tonumber(Config.get('Burn',    'BurnAllNamed',  '0')) or 0
-    _state.combat.autoBurnTimer = tonumber(Config.get('General', 'AutoBurnTimer', '0')) or 0
+    _state.combat.autoBurnTimer   = tonumber(Config.get('General', 'AutoBurnTimer',   '0')) or 0
+    _state.combat.losBeforeCombat = Config.get('General', 'LOSBeforeCombat', '0') == '1'
 
     -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
     -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN
@@ -2057,6 +2058,39 @@ function Combat.checkForAdds(calledFrom)
     _utils.debug('combat', 'checkForAdds: mobCount=%d from=%s', mobCount, tostring(calledFrom))
 end
 
+-- Port of GetCombatPosition (kissassist.mac:627).
+-- Moves toward mobID using nav or moveto until LineOfSight is established
+-- or the mob is within meleeDistance. Called only when LOSBeforeCombat=1.
+local function getCombatPosition(mobID)
+    local mob = mq.TLO.Spawn('id ' .. mobID)
+    if not mob or (mob.ID() or 0) == 0 then return end
+    local md = _state.combat.meleeDistance
+    if (mob.Distance() or 999) <= md then return end
+
+    local meshLoaded = _state.pull.moveUse == 'nav' and (mq.TLO.Navigation.MeshLoaded() or false)
+    local timeout    = os.clock() + 15
+
+    while os.clock() < timeout do
+        mq.doevents()
+        mob = mq.TLO.Spawn('id ' .. mobID)
+        if not mob or (mob.ID() or 0) == 0 then break end
+        if mob.LineOfSight() or (mob.Distance() or 999) <= md then break end
+        if _state.session.iAmDead or mq.TLO.Me.Hovering() then break end
+
+        if meshLoaded then
+            if not mq.TLO.Navigation.Active() then
+                mq.cmdf('/squelch /nav id %d dist=%d', mobID, md - 2)
+            end
+        else
+            mq.cmdf('/squelch /moveto id %d dist %d', mobID, md - 2)
+        end
+        mq.delay(100)
+    end
+
+    if meshLoaded and mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
+    if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
+end
+
 -- Mirrors Sub CheckForCombat (kissassist.mac:484).
 -- Called from the main loop each tick when dpsOn or meleeOn.
 -- skipCombat: 0=full combat path, 1=healer/no-DPS mode (cures/heals only, no melee)
@@ -2132,7 +2166,16 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                 end
                 mq.delay(50)
             end
-            -- LOSBeforeCombat position check (deferred — movement module Step 7.x)
+            -- Reposition to LOS before engaging (mac:516)
+            if _state.combat.losBeforeCombat then
+                local tid = _state.combat.myTargetID
+                if tid ~= 0 and aggroID ~= 0 then
+                    local tgtSp = mq.TLO.Spawn('id ' .. tid)
+                    if tgtSp and not tgtSp.LineOfSight() then
+                        getCombatPosition(tid)
+                    end
+                end
+            end
 
         else
             -- MA/Offtank path: wait for mob in melee radius then select target (mac:520–535)
