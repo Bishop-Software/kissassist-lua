@@ -1162,7 +1162,7 @@ local function aeCheck()
                 local xtCount  = mq.TLO.SpawnCount('npc xtarhater loc ' .. locStr)() or 0
                 local allCount = mq.TLO.SpawnCount('npc loc ' .. locStr)() or 0
                 if xtCount < allCount then
-                    mq.cmdf('/echo AE-> Casting %s would aggro more mobs(%d) than on xtarget(%d)',
+                    _utils.debug('combat', 'AE-> Casting %s would aggro more mobs(%d) than on xtarget(%d)',
                         spell, allCount, xtCount)
                     goto ae_next
                 end
