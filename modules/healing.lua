@@ -669,7 +669,8 @@ end
 function Heal.rezCheck()
     if _state.heal.autoRezOn == 0 then return end
     ---@diagnostic disable-next-line: undefined-field
-    if _state.misc.dmz and not (mq.TLO.Zone.IsInstance() or false) then return end
+    local isInst = mq.TLO.Zone.IsInstance and mq.TLO.Zone.IsInstance() or false
+    if _state.misc.dmz and not isInst then return end
     if mq.TLO.Me.Hovering() then return end
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
     -- autoRezOn==2: rez only OOC; abort if in combat (mac:6840)
