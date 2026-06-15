@@ -806,6 +806,21 @@ local function findItemWorn(name)
     return false
 end
 
+-- MQ Lua spell TLOs require exact name matches. Resolve "Spell Name" to
+-- "Spell Name Rk. II" (or Rk. III) when only the ranked form is in book/gem.
+local function resolveSpellRank(name)
+    if (mq.TLO.Me.Book(name)() or 0) ~= 0 or mq.TLO.Me.Gem(name)() ~= nil then
+        return name
+    end
+    for _, suffix in ipairs({' Rk. II', ' Rk. III'}) do
+        local ranked = name .. suffix
+        if (mq.TLO.Me.Book(ranked)() or 0) ~= 0 or mq.TLO.Me.Gem(ranked)() ~= nil then
+            return ranked
+        end
+    end
+    return name
+end
+
 function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     -- Non-bard: bail immediately if already casting with the window open
     if not state.session.iAmABard then
@@ -822,6 +837,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
 
     -- Existence check — must be recognisable as one of: command, AA, disc, item, skill, spell
     local isCommand = castWhat:find('command:', 1, true)
+    if not isCommand then castWhat = resolveSpellRank(castWhat) end
     local hasAA     = (mq.TLO.Me.AltAbility(castWhat).ID() or 0) ~= 0
     local hasDisc   = mq.TLO.Me.CombatAbility(castWhat)() ~= nil
     -- FindItem searches bags only. ItemReady covers ready worn items. findItemWorn
@@ -831,10 +847,13 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
                    or findItemWorn(castWhat)
     local hasSkill  = (mq.TLO.Me.Skill(castWhat)() or 0) > 0
     local inBook    = (mq.TLO.Me.Book(castWhat)() or 0) ~= 0
+    -- Me.Gem does prefix matching, so "Brilliant Acquittal" finds "Brilliant Acquittal Rk. II".
+    -- Catches ranked spells whose config entries omit the rank suffix.
+    local inGem     = mq.TLO.Me.Gem(castWhat)() ~= nil
 
-    if not (isCommand or hasAA or hasDisc or hasItem or hasSkill or inBook) then
-        printf('\ayKissAssist \arcastWhat: \aw%s\ar not found (AA=%s disc=%s item=%s skill=%s book=%s)',
-            castWhat, tostring(hasAA), tostring(hasDisc), tostring(hasItem), tostring(hasSkill), tostring(inBook))
+    if not (isCommand or hasAA or hasDisc or hasItem or hasSkill or inBook or inGem) then
+        printf('\ayKissAssist \arcastWhat: \aw%s\ar not found (AA=%s disc=%s item=%s skill=%s book=%s gem=%s)',
+            castWhat, tostring(hasAA), tostring(hasDisc), tostring(hasItem), tostring(hasSkill), tostring(inBook), tostring(inGem))
         return 'CAST_NOT_FOUND'
     end
 
@@ -859,7 +878,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     if rtc == 0 and isCommand then rtc = 6 end
 
     -- Stuck-gem / not-memed override
-    if (rtc == 0 or (mq.TLO.Me.Casting.ID() or 0) ~= 0) and inBook then
+    if (rtc == 0 or (mq.TLO.Me.Casting.ID() or 0) ~= 0) and (inBook or inGem) then
         if not isBard
                 and (mq.TLO.Me.Casting.ID() or 0) ~= 0
                 and not mq.TLO.Window('CastingWindow').Open() then

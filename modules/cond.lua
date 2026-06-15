@@ -51,10 +51,21 @@ end
 -- We evaluate the expanded result as a Lua expression to handle this case.
 function Cond.evalStr(expr)
     if not expr or expr == '' then return true end
+    -- Resolve ${Cond[N]} before mq.parse — Cond is not an MQ TLO.
+    expr = expr:gsub('%${Cond%[(%d+)%]}', function(n)
+        return Cond.eval(tonumber(n)) and 'TRUE' or 'FALSE'
+    end)
     local result = mq.parse(expr)
     if result == nil then return false end
     if result == 'FALSE' or result == '0' then return false end
     if result == 'TRUE'  or result == '1' then return true end
+    -- mq.parse leaves MQ operators (!  &&  ||) and NULL untouched; normalize to Lua.
+    -- !<number>: MQ treats 0 as false, nonzero as true, so !0=true, !13=false.
+    result = result:gsub('NULL', '0')
+    result = result:gsub('!(%d+)', function(n) return tonumber(n) == 0 and 'true' or 'false' end)
+    result = result:gsub('!TRUE', 'false'):gsub('!FALSE', 'true')
+    result = result:gsub('TRUE', 'true'):gsub('FALSE', 'false')
+    result = result:gsub('&&', ' and '):gsub('||', ' or ')
     local fn = load('return ' .. result)
     if fn then
         local ok, val = pcall(fn)
