@@ -152,7 +152,7 @@ local function getFilteredOptions(expression)
     local options = {}
     local tloInput = expression:match(typePatterns[1].groups)
     if tloInput then
-        for _, tlo in ipairs(TLOOptions) do
+        for _, tlo in ipairs(TLOOptions) do ---@diagnostic disable-line: param-type-mismatch
             if tlo:find(tloInput) then
                 table.insert(options, tlo)
             end
