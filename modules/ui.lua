@@ -19,7 +19,8 @@ local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
 local AFK_ACTION_LABELS = { 'Hold until GM leaves', 'End macro', 'Unload MQ2', 'Quit EQ' }
 local MEZ_MODE_LABELS   = { 'Off', 'Single + AE', 'Single only', 'AE only' }
 
-local Config = require('modules.config')
+local Config      = require('modules.config')
+local CondBuilder = require('modules.condbuilder')
 
 local UI = {}
 local _state, _cond
@@ -959,10 +960,11 @@ local function drawConditions()
     -- Conditions are stored as an indexed array under the 'Cond' key.
     local condArr = Config.get('KConditions', 'Cond', nil) or {}
 
-    if ImGui.BeginTable('##condtbl', 4, 0) then
+    if ImGui.BeginTable('##condtbl', 5, 0) then
         ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Label',      ImGuiTableColumnFlags.WidthFixed,   68)
         ImGui.TableSetupColumn('Now',        ImGuiTableColumnFlags.WidthFixed,   28)
+        ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   28)
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
@@ -993,6 +995,15 @@ local function drawConditions()
                 ImGui.TextDisabled('-')
             end
             ImGui.TableSetColumnIndex(3)
+            if ImGui.Button('[...]##condbuild' .. i) then
+                CondBuilder.open(i, s.cond.expressions[i] or '', function(slotIdx, newValue)
+                    s.cond.expressions[slotIdx] = newValue ~= '' and newValue or nil
+                    condArr[slotIdx] = newValue ~= '' and newValue or 'null'
+                    Config.set('KConditions', 'Cond', condArr)
+                    Config.save()
+                end)
+            end
+            ImGui.TableSetColumnIndex(4)
             if ImGui.Button('[-]##condrem' .. i) then
                 s.cond.expressions[i] = nil
                 if i == s.cond.size and s.cond.size > 1 then
@@ -2412,6 +2423,7 @@ local function draw()
         end
     end
     ImGui.End()
+    CondBuilder.draw()
 end
 
 -- ---------------------------------------------------------------------------
