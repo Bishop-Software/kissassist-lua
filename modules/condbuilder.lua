@@ -58,7 +58,7 @@ function CondBuilder.draw()
     if isDraw then
         -- Reference link
         if ImGui.Button('\xee\x89\x90 TLO Reference') then
-            os.execute('start https://docs.macroquest.org/reference/top-level-objects/')
+            os.execute('start https://www.redguides.com/docs/projects/macroquest/reference/top-level-objects/')
         end
 
         -- Expression input
