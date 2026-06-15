@@ -174,10 +174,10 @@ local function ComboFiltered(label, current_value, options)
     local avail = ImGui.GetContentRegionAvailVec()
     ImGui.SetNextItemWidth(avail.x - ImGui.CalcTextSize(label))
     local result, changed = ImGui.InputText(label, current_value, ImGuiInputTextFlags.EnterReturnsTrue)
-    local active    = ImGui.IsItemActive()
-    local activated = ImGui.IsItemActivated()
-    -- Only open the popup when there are options to show
-    if activated and #options > 0 then ImGui.OpenPopup('##combopopup' .. label) end
+    local active = ImGui.IsItemActive()
+    -- Open popup whenever the input is focused and options exist.
+    -- Called every frame so the popup appears as soon as a pattern matches.
+    if active and #options > 0 then ImGui.OpenPopup('##combopopup' .. label) end
     local itemMinX, _  = ImGui.GetItemRectMin()
     local _, itemMaxY  = ImGui.GetItemRectMax()
     ImGui.SetNextWindowPos(itemMinX, itemMaxY)
