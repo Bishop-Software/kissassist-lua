@@ -1200,6 +1200,10 @@ function Cast.combatCast()
             parts[#parts + 1] = part
         end
         local spellName   = parts[1] or ''
+        if spellName:find('%$%{') then
+            spellName = mq.parse(spellName)
+            if spellName == 'NULL' or spellName == '' then goto next_dps end
+        end
         local hpThreshStr = parts[2] or ''
         local targetType  = parts[3] or ''
         local part4       = parts[4] or ''

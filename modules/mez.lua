@@ -2,14 +2,15 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Mez = {}
-local _state, _utils, _cast
+local _state, _utils, _cast, _bard
 
 local MEZ_CLASSES = { BRD = true, ENC = true, NEC = true }
 
-function Mez.init(state, utils, cast)
+function Mez.init(state, utils, cast, bard)
     _state = state
     _utils = utils
     _cast  = cast
+    _bard  = bard
 
     local class = (mq.TLO.Me.Class.ShortName() or ''):upper()
     _state.session.iAmAMezClass = MEZ_CLASSES[class] == true
@@ -114,6 +115,7 @@ end
 -- AE mez cast dispatch. Port of Sub MezMobsAE (kissassist.mac:7440).
 local function mezMobsAE(aeTargetID)
     local spell   = _state.mez.aeSpell
+    _utils.debug('mez', 'mezMobsAE: spell="%s" targetID=%d', spell, aeTargetID)
     if spell == '' or spell == 'null' then return end
 
     local myClass = (mq.TLO.Me.Class.ShortName() or ''):upper()
@@ -122,26 +124,37 @@ local function mezMobsAE(aeTargetID)
 
     if not isBard and not isEnc then return end
 
-    if not mq.TLO.Me.AltAbility(spell)() and not mq.TLO.Me.Book(spell)() then
+    local inBook = mq.TLO.Me.Book(spell)()
+    local hasAA  = mq.TLO.Me.AltAbility(spell)()
+    _utils.debug('mez', 'mezMobsAE: inBook=%s hasAA=%s', tostring(inBook), tostring(hasAA))
+    if not hasAA and not inBook then
         printf('\ay[Mez] Invalid AEMezSpell "%s" — check spelling.', spell)
         return
     end
 
     if isBard then
         local tid = (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() or aeTargetID
+        if _bard then _bard.pauseMedley() end
+        if _state.terminate then if _bard then _bard.resumeMedley() end; return end
         _cast.castWhat(spell, tid, 'Mez', 0, 0)
+        if _bard then _bard.resumeMedley() end
+        if _state.terminate then return end
         printf('\ay[Mez] AE Mezzing (Bard) -> %s', spell)
-        _state.timers.mezAE = mq.gettime() + 300000  -- 5 min default
+        local dur = (mq.TLO.Spell(spell).Duration() and
+                     mq.TLO.Spell(spell).Duration.TotalSeconds() or 0)
+        _state.timers.mezAE = mq.gettime() + (dur > 0 and dur * 1000 or 30000)
     elseif isEnc then
         local wasChasing = _state.session.chaseAssist
         if wasChasing then
             _state.session.chaseAssist = false
             mq.cmd('/squelch /stick off')
             mq.cmd('/squelch /moveto off')
-            mq.delay(3000, function() return not mq.TLO.Me.Moving() end)
+            mq.delay(3000, function() return not mq.TLO.Me.Moving() or _state.terminate end)
         end
+        if _state.terminate then if wasChasing then _state.session.chaseAssist = true end; return end
         printf('\ay[Mez] AE Mezzing (Enc) -> %s', spell)
-        while not mq.TLO.Me.SpellReady(spell)() do mq.delay(200) end
+        while not mq.TLO.Me.SpellReady(spell)() and not _state.terminate do mq.delay(200) end
+        if _state.terminate then if wasChasing then _state.session.chaseAssist = true end; return end
         _cast.castWhat(spell, aeTargetID, 'Mez', 0, 0)
         local dur = (mq.TLO.Spell(spell).Duration() and
                      mq.TLO.Spell(spell).Duration.TotalSeconds() or 0)
@@ -162,10 +175,17 @@ local function mezMobs(mobID, slotIndex)
     -- Stop attack before mezzing (mac:7496-7498)
     if mq.TLO.Me.Combat() then
         mq.cmd('/attack off')
-        mq.delay(2500, function() return not mq.TLO.Me.Combat() end)
+        mq.delay(2500, function() return not mq.TLO.Me.Combat() or _state.terminate end)
     end
+    if _state.terminate then return end
 
+    local mobName = (mq.TLO.Spawn('id ' .. tostring(mobID)).CleanName() or tostring(mobID))
+    printf('\ay[Mez] Mezzing %s (ID:%d) -> %s', mobName, mobID, spell)
+    if _bard then _bard.pauseMedley() end
+    if _state.terminate then if _bard then _bard.resumeMedley() end; return end
     _cast.castWhat(spell, mobID, 'Mez', 0, 0)
+    if _bard then _bard.resumeMedley() end
+    if _state.terminate then return end
 
     -- Set per-slot timer to spell duration (mac:7492-style)
     local dur = (mq.TLO.Spell(spell).Duration() and
@@ -176,9 +196,9 @@ end
 -- Core mez loop. Port of Sub MezCheck / DoMezStuff (kissassist.mac:8074 / 7256).
 -- sentFrom: 'CheckForCombat' | 'Combat' | 'Combat1' | 'CombatCast' | 'CheckBeforeCombat'
 function Mez.check(sentFrom)
-    if _state.mez.on == 0 then return end
-    if mq.TLO.Me.Hovering() then return end
-    if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
+    if _state.mez.on == 0 then _utils.debug('mez', 'Mez.check: skip MezOn=0'); return end
+    if mq.TLO.Me.Hovering() then _utils.debug('mez', 'Mez.check: skip hovering'); return end
+    if _state.misc.dmz and not mq.TLO.Me.InInstance() then _utils.debug('mez', 'Mez.check: skip dmz'); return end
 
     -- No combat target and MA is alive → nothing to mez around yet (mac:7271)
     local maSpawn = mq.TLO.Spawn('=' .. (_state.session.mainAssist or ''))
@@ -186,6 +206,7 @@ function Mez.check(sentFrom)
     local maAlive = maID > 0
     if _state.combat.myTargetID == 0 and maAlive
        and (maSpawn.Type() or ''):lower() ~= 'mercenary' then
+        _utils.debug('mez', 'Mez.check: skip myTargetID=0 maAlive=%s maType=%s', tostring(maAlive), (maSpawn and maSpawn.Type() or 'nil'))
         return
     end
 
@@ -196,6 +217,7 @@ function Mez.check(sentFrom)
 
     -- Return if mob count is below single-mez threshold (mac:7283-7287)
     if _state.mez.mobCount < _state.mez.singleCount and maAlive then
+        _utils.debug('mez', 'Mez.check: skip mobCount=%d < singleCount=%d', _state.mez.mobCount, _state.mez.singleCount)
         _state.mez.mobDone = true
         return
     end
@@ -204,12 +226,18 @@ function Mez.check(sentFrom)
     local canAE   = myClass == 'BRD' or myClass == 'ENC'
 
     -- AE mez: modes 1 (single+AE) or 3 (AE only), BRD/ENC only (mac:7290-7297)
+    _utils.debug('mez', 'Mez.check: AE gate canAE=%s on=%d aeCount=%d mobAECount=%d timerOk=%s aeClosest=%d',
+        tostring(canAE), _state.mez.on, _state.mez.aeCount or 0, _state.mez.mobAECount,
+        tostring((_state.timers.mezAE or 0) < mq.gettime()), _state.mez.aeClosest)
     if canAE and (_state.mez.on == 1 or _state.mez.on == 3)
        and _state.mez.aeCount > 0
        and _state.mez.mobAECount >= _state.mez.aeCount
        and (_state.timers.mezAE or 0) < mq.gettime()
        and _state.mez.aeClosest > 0 then
         mezMobsAE(_state.mez.aeClosest)
+        -- Bard AE mez covers all targets; skip single-mez this pass.
+        -- Single mez handles stragglers on the next tick via onMezBroke + per-slot timers.
+        if myClass == 'BRD' then return end
     end
 
     -- Single mez: modes 1 or 2 only (mac:7411)
@@ -222,11 +250,12 @@ function Mez.check(sentFrom)
     if not _state.session.iAmABard and not mq.TLO.Me.SpellReady(spell)() then return end
 
     local arr = _state.arrays.mezArray
+    local mezzedOne = false
     for i = 1, math.min(#arr, 13) do
+        if mezzedOne then break end
         local entry   = arr[i]
         local mobID   = entry[1]
         local mobLvl  = tonumber(entry[2]) or 0
-        local mobName = entry[3]
 
         if mobID == 'NULL' or mobID == nil then goto continue_mez end
 
@@ -297,9 +326,10 @@ function Mez.check(sentFrom)
             if maType == 'mercenary' or maType == 'pet' then goto continue_mez end
         end
 
-        -- Cast single mez (mac:7419)
+        -- Cast single mez (mac:7419); set flag so the loop exits after one cast.
         mezMobs(tonumber(mobID) or 0, i)
         _state.mez.mobDone = true
+        mezzedOne = true
 
         ::continue_mez::
     end
