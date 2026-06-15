@@ -25,18 +25,8 @@ local TLOOptions = nil
 -- TLO list: try runtime enumeration, fall back to hardcoded
 -- ---------------------------------------------------------------------------
 
+-- mq.TLO is userdata so pairs() cannot enumerate it; use a curated list.
 local function buildTLOOptions()
-    local opts = {}
-    local ok = pcall(function()
-        for name in pairs(mq.TLO) do
-            table.insert(opts, name)
-        end
-    end)
-    if ok and #opts > 0 then
-        table.sort(opts)
-        return opts
-    end
-    -- Fallback list from the original + KissAssist additions
     return {
         'Me', 'Target', 'Spawn', 'SpawnCount', 'Spell', 'Math',
         'Cursor', 'Defined', 'FindItem', 'FindItemCount', 'Group', 'Raid',
