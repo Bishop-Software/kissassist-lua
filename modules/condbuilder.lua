@@ -176,27 +176,27 @@ local function ComboFiltered(label, current_value, options)
     local result, changed = ImGui.InputText(label, current_value, ImGuiInputTextFlags.EnterReturnsTrue)
     local active    = ImGui.IsItemActive()
     local activated = ImGui.IsItemActivated()
-    if activated then ImGui.OpenPopup('##combopopup' .. label) end
-    if #options > 0 then
-        local itemMinX, _  = ImGui.GetItemRectMin()
-        local _, itemMaxY  = ImGui.GetItemRectMax()
-        ImGui.SetNextWindowPos(itemMinX, itemMaxY)
-        ImGui.SetNextWindowSize(
-            avail.x - ImGui.CalcTextSize(label),
-            #options > 20 and ImGui.GetTextLineHeight() * 20 or -1
-        )
-        if ImGui.BeginPopup('##combopopup' .. label, COMBO_POPUP_FLAGS) then
-            for _, value in ipairs(options) do
-                if ImGui.Selectable(value) then
-                    local prefix = current_value:match(typePatterns[options.filterType].prefix)
-                    result = prefix .. value
-                end
+    -- Only open the popup when there are options to show
+    if activated and #options > 0 then ImGui.OpenPopup('##combopopup' .. label) end
+    local itemMinX, _  = ImGui.GetItemRectMin()
+    local _, itemMaxY  = ImGui.GetItemRectMax()
+    ImGui.SetNextWindowPos(itemMinX, itemMaxY)
+    ImGui.SetNextWindowSize(
+        avail.x - ImGui.CalcTextSize(label),
+        #options > 20 and ImGui.GetTextLineHeight() * 20 or -1
+    )
+    if ImGui.BeginPopup('##combopopup' .. label, COMBO_POPUP_FLAGS) then
+        for _, value in ipairs(options) do
+            if ImGui.Selectable(value) then
+                local prefix = current_value:match(typePatterns[options.filterType].prefix)
+                result = prefix .. value
             end
-            if changed or (not active and not ImGui.IsWindowFocused()) then
-                ImGui.CloseCurrentPopup()
-            end
-            ImGui.EndPopup()
         end
+        -- Close on Enter, focus lost, or no options left (pattern no longer matches)
+        if changed or #options == 0 or (not active and not ImGui.IsWindowFocused()) then
+            ImGui.CloseCurrentPopup()
+        end
+        ImGui.EndPopup()
     end
     return result, current_value ~= result
 end
