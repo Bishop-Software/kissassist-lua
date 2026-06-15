@@ -57,7 +57,7 @@ function Cond.evalStr(expr)
     end)
     local result = mq.parse(expr)
     if result == nil then return false end
-    if result == 'FALSE' or result == '0' then return false end
+    if result == 'FALSE' or result == '0' or result == 'NULL' then return false end
     if result == 'TRUE'  or result == '1' then return true end
     -- mq.parse leaves MQ operators (!  &&  ||) and NULL untouched; normalize to Lua.
     -- !<number>: MQ treats 0 as false, nonzero as true, so !0=true, !13=false.
@@ -69,7 +69,7 @@ function Cond.evalStr(expr)
     local fn = load('return ' .. result)
     if fn then
         local ok, val = pcall(fn)
-        if ok then return not not val end
+        if ok then return val ~= nil and val ~= false and val ~= 0 end
     end
     return result ~= ''
 end
