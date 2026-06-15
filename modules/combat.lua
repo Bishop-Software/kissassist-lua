@@ -1413,6 +1413,8 @@ function Combat.fight(fromWhere)
                 mq.doevents()
             until not _state.combat.eventFlag
 
+            if _state.terminate then break end
+
             -- Manual target mode: if player switches in-game target to a different
             -- NPC mid-fight, break out so checkForCombat picks up the new target.
             if _state.combat.manualTargetMode then
@@ -1424,6 +1426,11 @@ function Combat.fight(fromWhere)
                     break
                 end
             end
+
+            -- Mez/AE-mez runs before the casting gate so bards (always "casting"
+            -- via MQ2Medley) are not permanently blocked from mezzing.
+            if _mez then _mez.check('Combat') end
+            if _mez then _mez.aeCheck() end
 
             -- Pause all commands while player or script is casting
             if (mq.TLO.Me.Casting.ID() or 0) ~= 0
@@ -1472,8 +1479,6 @@ function Combat.fight(fromWhere)
                     _movement.checkStick(0, 1)
                 end
             end
-            if _mez then _mez.check('Combat') end
-            if _mez then _mez.aeCheck() end
             if _bard then _bard.doBardStuff() end
             -- AggroCheck (mac:1165)
             if _state.combat.aggroOn and _cast and _cast.castWhat then
