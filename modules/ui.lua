@@ -427,7 +427,7 @@ local function drawHealThresholds()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
@@ -1140,7 +1140,7 @@ local function drawCures()
 
             -- Cond
             ImGui.TableNextColumn()
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo + 1, condLabels)
             local newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
 
@@ -1310,7 +1310,7 @@ local function drawBuffs()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
@@ -1577,7 +1577,7 @@ local function drawAggro()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##acond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
@@ -1731,7 +1731,7 @@ local function drawDPS()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##dcond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
@@ -1877,7 +1877,7 @@ local function drawBurn()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
@@ -2028,7 +2028,7 @@ local function drawAE()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:match('cond(%d+)')) or 0
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##aecond' .. i, condNo + 1, condLabels)
             newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)

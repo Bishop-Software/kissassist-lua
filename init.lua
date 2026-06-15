@@ -140,7 +140,7 @@ end
 -- Divergence from plan note: Buffs/Healing order was already correct; plan comment was stale.
 -- pcall wrapper ensures the shutdown block below runs on both /kastop (clean exit) and
 -- /lua stop (which throws from mq.delay, bypassing the while condition).
-pcall(function()
+local _ok, _err = pcall(function()
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
@@ -228,6 +228,9 @@ while not State.terminate do
     mq.delay(50)
 end
 end) -- end pcall
+if not _ok and _err then
+    printf('\arKissAssist error: %s', tostring(_err))
+end
 
 Events.unregister()
 Binds.unregister()
