@@ -1683,18 +1683,130 @@ end
 -- DPS rotation panel
 -- ---------------------------------------------------------------------------
 
+local function drawDebuffs()
+    local s = _state
+
+    local DEBUFF_ON_LABELS = { 'Off', 'In Combat', 'OOC Also' }
+    local debuffOnIdx = (s.debuff.on or 0) + 1
+    local newDebuffOnIdx, debuffOnChanged = ImGui.Combo('Debuff##debuffon', debuffOnIdx, DEBUFF_ON_LABELS)
+    if debuffOnChanged then
+        s.debuff.on = newDebuffOnIdx - 1
+        Config.set('Debuff', 'DebuffOn', tostring(s.debuff.on))
+        Config.save()
+    end
+
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Spacing()
+
+    local debuffRaw  = Config.get('Debuff', 'Debuff',     nil) or {}
+    local debuffSize = tonumber(Config.get('Debuff', 'DebuffSize', '0')) or 0
+
+    local function syncDebuffArray()
+        s.debuff.slots = {}
+        s.debuff.count = 0
+        s.debuff.size  = debuffSize
+        for i = 1, debuffSize do
+            local raw = debuffRaw[i] or 'null'
+            if raw ~= 'null' and raw ~= '' then
+                local cond    = ''
+                local condPos = raw:lower():find('|cond%d')
+                if condPos then
+                    cond = raw:sub(condPos + 1)
+                    raw  = raw:sub(1, condPos - 1)
+                end
+                local spell  = raw
+                local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
+                if spell ~= '' then
+                    s.debuff.slots[#s.debuff.slots + 1] = { spell = spell, condNo = condNo }
+                    s.debuff.count = s.debuff.count + 1
+                end
+            end
+        end
+    end
+
+    local condLabels = { '(none)' }
+    for j = 1, (s.cond.size or 0) do
+        condLabels[j + 1] = string.format('cond%03d', j)
+    end
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('debuff_tbl', 3, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,  160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
+        ImGui.TableHeadersRow()
+
+        for i = 1, debuffSize do
+            local raw     = debuffRaw[i] or 'null'
+            local isEmpty = (raw == 'null' or raw == '')
+            local spell, cond = '', ''
+            if not isEmpty then
+                local condPos = raw:lower():find('|cond%d')
+                if condPos then
+                    cond = raw:sub(condPos + 1)
+                    raw  = raw:sub(1, condPos - 1)
+                end
+                spell = raw
+            end
+            local newSpell, newCond = spell, cond
+            local sc, cc = false, false
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            newSpell, sc = ImGui.InputText('##dbspell' .. i, spell, 0)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
+            local newCondIdx
+            newCondIdx, cc = ImGui.Combo('##dbcond' .. i, condNo + 1, condLabels)
+            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            ImGui.PopItemWidth()
+
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##dbrem' .. i) then
+                if i == debuffSize and debuffSize > 1 then
+                    debuffRaw[i] = nil
+                    debuffSize   = debuffSize - 1
+                    Config.set('Debuff', 'DebuffSize', tostring(debuffSize))
+                else
+                    debuffRaw[i] = 'null'
+                end
+                Config.set('Debuff', 'Debuff', debuffRaw)
+                Config.save()
+                syncDebuffArray()
+            end
+
+            if sc or cc then
+                local spellVal = sc and newSpell or spell
+                local condVal  = cc and newCond  or cond
+                debuffRaw[i]   = spellVal ~= '' and (spellVal .. (condVal ~= '' and '|' .. condVal or '')) or 'null'
+                Config.set('Debuff', 'Debuff', debuffRaw)
+                Config.save()
+                syncDebuffArray()
+            end
+        end
+        ImGui.EndTable()
+    end
+
+    ImGui.Spacing()
+    if ImGui.Button('[+ Add]##dbadd') then
+        debuffSize = debuffSize + 1
+        debuffRaw[debuffSize] = 'null'
+        Config.set('Debuff', 'DebuffSize', tostring(debuffSize))
+        Config.set('Debuff', 'Debuff', debuffRaw)
+        Config.save()
+    end
+end
+
 local function drawDPS()
     local s = _state
 
     checkbox('DPS', s.combat.dpsOn, function(v)
         s.combat.dpsOn = v
         Config.set('DPS', 'DPSOn', v and '1' or '0')
-        Config.save()
-    end)
-    ImGui.SameLine(120)
-    checkbox('Debuff All', s.debuff.on ~= 0, function(v)
-        s.debuff.on = v and 1 or 0
-        Config.set('DPS', 'DebuffAllOn', v and '1' or '0')
         Config.save()
     end)
 
@@ -1705,32 +1817,15 @@ local function drawDPS()
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Spacing()
-    ImGui.TextColored(0.7, 0.7, 0.7, 1.0, 'HP% 0 = use AssistAt.  HP% >= 101 = debuff slot.')
-    ImGui.Spacing()
 
     local dpsRaw  = Config.get('DPS', 'DPS',     nil) or {}
     local dpsSize = tonumber(Config.get('DPS', 'DPSSize', '20')) or 20
 
     local function syncDpsArray()
         s.combat.dpsArray = {}
-        s.debuff.slots    = {}
-        s.debuff.count    = 0
         for _, slot in ipairs(Config.parseCondArray(dpsRaw)) do
             if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                local parts = {}
-                for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
-                local thresh = tonumber(parts[2]) or 0
-                if thresh >= 101 then
-                    s.debuff.slots[#s.debuff.slots + 1] = {
-                        spell  = parts[1] or '',
-                        tag1   = parts[3] or '',
-                        tag2   = parts[4] or '',
-                        condNo = slot.condNo,
-                    }
-                    s.debuff.count = s.debuff.count + 1
-                else
-                    s.combat.dpsArray[#s.combat.dpsArray + 1] = slot
-                end
+                s.combat.dpsArray[#s.combat.dpsArray + 1] = slot
             end
         end
     end
@@ -1767,7 +1862,7 @@ local function drawDPS()
             local threshNum = tonumber(thresh) or 0
             local newThreshNum
             newThreshNum, tc = ImGui.InputInt('##dthresh' .. i, threshNum)
-            if tc then newThresh = tostring(math.max(0, math.min(200, newThreshNum))) end
+            if tc then newThresh = tostring(math.max(0, math.min(100, newThreshNum))) end
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -2365,6 +2460,10 @@ local function draw()
                     end
                     if ImGui.BeginTabItem('DPS') then
                         drawDPS()
+                        ImGui.EndTabItem()
+                    end
+                    if ImGui.BeginTabItem('Debuff') then
+                        drawDebuffs()
                         ImGui.EndTabItem()
                     end
                     if ImGui.BeginTabItem('Burn') then

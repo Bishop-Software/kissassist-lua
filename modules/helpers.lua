@@ -7,12 +7,6 @@ function Helpers.dist2D(y1, x1, y2, x2)
     return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
 end
 
--- Returns true when a DPS-slot threshold value routes the slot to the debuff
--- rotation instead of the normal DPS rotation (mac: thresh >= 101 convention).
-function Helpers.slotIsDebuff(threshold)
-    return threshold >= 101
-end
-
 -- Apply a DAMod string to a base duration (seconds).
 -- DAMod formats:
 --   '+N' / '-N'  → add/subtract N from baseDur (clamped to 0)

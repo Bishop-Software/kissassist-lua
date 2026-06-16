@@ -393,9 +393,10 @@ local State = {
     },
 
     debuff = {
-        on     = 0,   -- DebuffAllOn: 0=off 1=in-combat only 2=OOC also
-        count  = 0,   -- number of debuff slots parsed from [DPS] array
-        slots  = {},  -- array of slot defs: { spell, tag1, tag2, condNo }
+        on     = 0,   -- DebuffOn: 0=off 1=in-combat only 2=OOC also
+        size   = 0,   -- DebuffSize: total configured slots (from [Debuff] INI)
+        count  = 0,   -- number of non-null slots after parsing
+        slots  = {},  -- array of slot defs: { spell, condNo }
         timers = {},  -- slot index → expiry timestamp (os.clock())
         lists  = {},  -- slot index → string of "|id|id..." already-debuffed mobs
     },

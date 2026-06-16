@@ -419,7 +419,6 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
         _state.session.chaseAssist   = false
         _state.movement.returnToCamp = false
         _state.buffs.buffsOn         = false
-        _state.debuff.on             = 0
     end
 
     -- Assist-at percent: prefer INI; fall back to CLI-parsed session value (default 95)
@@ -446,27 +445,12 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.autoBurnTimer   = tonumber(Config.get('General', 'AutoBurnTimer',   '0')) or 0
     _state.combat.losBeforeCombat = Config.get('General', 'LOSBeforeCombat', '0') == '1'
 
-    -- DPS / debuff split: slots with pipe-field-2 >= 101 go to state.debuff.slots;
-    -- all others go to state.combat.dpsArray.  Slot format: Spell|thresh|tag1|tag2|condNNN
-    _state.debuff.on = tonumber(Config.get('DPS', 'DebuffAllOn', '0')) or 0
+    -- DPS array: state.debuff.* is now loaded by Debuff.init()
     local rawDps = Config.get('DPS', 'DPS', nil)
     if type(rawDps) == 'table' then
         for _, slot in ipairs(Config.parseCondArray(rawDps)) do
             if slot and slot.name and slot.name ~= '' then
-                local parts = {}
-                for p in (slot.name .. '|'):gmatch('([^|]*)|') do parts[#parts+1] = p end
-                local thresh = tonumber(parts[2]) or 0
-                if Helpers.slotIsDebuff(thresh) then
-                    _state.debuff.slots[#_state.debuff.slots + 1] = {
-                        spell  = parts[1] or '',
-                        tag1   = parts[3] or '',
-                        tag2   = parts[4] or '',
-                        condNo = slot.condNo,
-                    }
-                    _state.debuff.count = _state.debuff.count + 1
-                else
-                    _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
-                end
+                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
             end
         end
     end
