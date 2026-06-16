@@ -19,6 +19,7 @@ local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
 local AFK_ACTION_LABELS = { 'Hold until GM leaves', 'End macro', 'Unload MQ2', 'Quit EQ' }
 local MEZ_MODE_LABELS   = { 'Off', 'Single + AE', 'Single only', 'AE only' }
 
+
 local Config      = require('modules.config')
 local CondBuilder = require('modules.condbuilder')
 
@@ -809,56 +810,99 @@ end
 -- ---------------------------------------------------------------------------
 
 -- Render an editable song list for one MQ2Medley set.
--- songs: the State.bard.*Songs array (mutated in place).
+-- songs: the State.bard.*Songs array; each entry is {name,dur,cond} (mutated in place).
 -- setName: the MQ2Medley section name (e.g. 'ooc').
+-- entry.cond stores a KCondition reference ('cond001' etc.); bard.saveSongSet
+-- resolves it to the actual expression when writing the MQ2 char INI.
 local function drawSongSet(songs, setName)
-    local bard = _state.bard
+    local bard    = _state.bard
     local changed = false
 
-    ImGui.PushItemWidth(300)
-    for i = 1, #songs do
-        local cur = songs[i] or ''
-        local newVal, edited = ImGui.InputText(string.format('##song_%s_%d', setName, i), cur, 0)
-        if edited and newVal ~= cur then
-            songs[i] = newVal ~= '' and newVal or nil
-            changed = true
-        end
-        ImGui.SameLine()
-        if ImGui.Button('[-]##songrem_' .. setName .. '_' .. i) then
-            if i == #songs and #songs > 1 then
-                songs[i] = nil
-            else
-                -- Non-trailing remove: compact the array
-                table.remove(songs, i)
-            end
-            changed = true
-        end
+    -- Build condition labels from KConditions array (same pattern as Buffs/Heals tabs).
+    local condLabels = { '(none)' }
+    for j = 1, (_state.cond.size or 0) do
+        condLabels[j + 1] = string.format('cond%03d', j)
     end
-    ImGui.PopItemWidth()
+
+    local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
+    if ImGui.BeginTable('songs_' .. setName, 4, tblFlags) then
+        ImGui.TableSetupColumn('Song',      ImGuiTableColumnFlags.WidthStretch)
+        ImGui.TableSetupColumn('Dur (s)',   ImGuiTableColumnFlags.WidthFixed,  90)
+        ImGui.TableSetupColumn('Condition', ImGuiTableColumnFlags.WidthFixed, 150)
+        ImGui.TableSetupColumn('',          ImGuiTableColumnFlags.WidthFixed,  30)
+        ImGui.TableHeadersRow()
+
+        for i = 1, #songs do
+            local entry = songs[i]
+            -- Upgrade legacy plain-string entries on first render.
+            if type(entry) ~= 'table' then
+                entry = { name = tostring(entry or ''), dur = '', cond = '' }
+                songs[i] = entry
+            end
+
+            ImGui.TableNextRow()
+
+            -- Song name (stretches to fill available width)
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newName, ne = ImGui.InputText(('##sname_%s_%d'):format(setName, i), entry.name or '', 0)
+            ImGui.PopItemWidth()
+            if ne and newName ~= entry.name then entry.name = newName; changed = true end
+
+            -- Duration expression hint (e.g. "30" or "${Medley.Tune}+30").
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local newDur, de = ImGui.InputText(('##sdur_%s_%d'):format(setName, i), entry.dur or '', 0)
+            ImGui.PopItemWidth()
+            if de and newDur ~= entry.dur then entry.dur = newDur; changed = true end
+
+            -- Condition — same cond001/cond002 dropdown as Buffs/Heals/Aggro tabs.
+            ImGui.TableNextColumn()
+            ImGui.PushItemWidth(-1)
+            local condNo    = tonumber((entry.cond or ''):lower():match('cond(%d+)')) or 0
+            local newCondIdx, cc = ImGui.Combo(('##scond_%s_%d'):format(setName, i), condNo + 1, condLabels)
+            ImGui.PopItemWidth()
+            if cc then
+                entry.cond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+                changed    = true
+            end
+
+            -- Remove button
+            ImGui.TableNextColumn()
+            if ImGui.Button('[-]##songrem_' .. setName .. '_' .. i) then
+                if i == #songs and #songs > 1 then
+                    songs[i] = nil
+                else
+                    table.remove(songs, i)
+                end
+                changed = true
+            end
+        end
+
+        ImGui.EndTable()
+    end
 
     ImGui.Spacing()
     local maxSongs = mq.TLO.Me.NumGems() or 13
     local atMax = #songs >= maxSongs
     if atMax then ImGui.BeginDisabled() end
     if ImGui.Button('[+ Add]##songadd_' .. setName) then
-        songs[#songs + 1] = ''
-        -- Don't save on add — user types the name then it saves on edit
+        songs[#songs + 1] = { name = '', dur = '', cond = '' }
     end
     if atMax then ImGui.EndDisabled() end
     ImGui.SameLine()
     if ImGui.Button('Apply##songapply_' .. setName) then
-        changed = true  -- force save even without text change (e.g. after Add)
+        changed = true
     end
 
     if changed and bard.saveSongSet then
-        -- Strip empty entries before saving.
         local clean = {}
         for _, s in ipairs(songs) do
-            if s and s ~= '' then clean[#clean + 1] = s end
+            local n = type(s) == 'table' and (s.name or '') or tostring(s or '')
+            if n ~= '' then clean[#clean + 1] = s end
         end
-        -- Rebuild the live array to match.
         for k in pairs(songs) do songs[k] = nil end
-        for i, s in ipairs(clean) do songs[i] = s end
+        for i2, s in ipairs(clean) do songs[i2] = s end
         bard.saveSongSet(setName, clean)
     end
 end
@@ -928,7 +972,7 @@ local function drawBard()
                     ImGui.TextDisabled(string.format('No songs in [MQ2Medley-%s]. Use [+ Add] to add one.', set.setName))
                     ImGui.Spacing()
                     if ImGui.Button('[+ Add]##songadd_' .. set.setName) then
-                        set.songs[1] = ''
+                        set.songs[1] = { name = '', dur = '', cond = '' }
                     end
                 else
                     drawSongSet(set.songs, set.setName)
