@@ -1,5 +1,5 @@
 -- tests/unit/test_helpers_module.lua
--- Tests Helpers.dist2D, Helpers.slotIsDebuff, Helpers.applyDAMod.
+-- Tests Helpers.dist2D, Helpers.applyDAMod.
 -- Pure math — no mq dependency, no mock injection needed.
 local M = {}
 
@@ -32,15 +32,6 @@ function M.run(TH, _MockMQ)
 
     -- Large coords
     TH.assert_near(Helpers.dist2D(0,0,300,400), 500.0, 0.01, 'dist2D large 300-400-500')
-
-    -- slotIsDebuff -----------------------------------------------------
-
-    TH.assert_false(Helpers.slotIsDebuff(0),   'slotIsDebuff(0)=false')
-    TH.assert_false(Helpers.slotIsDebuff(50),  'slotIsDebuff(50)=false')
-    TH.assert_false(Helpers.slotIsDebuff(100), 'slotIsDebuff(100)=false')
-    TH.assert_true( Helpers.slotIsDebuff(101), 'slotIsDebuff(101)=true  (boundary)')
-    TH.assert_true( Helpers.slotIsDebuff(150), 'slotIsDebuff(150)=true')
-    TH.assert_true( Helpers.slotIsDebuff(200), 'slotIsDebuff(200)=true')
 
     -- applyDAMod -------------------------------------------------------
 

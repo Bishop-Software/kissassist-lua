@@ -352,6 +352,14 @@ function Config.migrateIni(state)
         DPS         = ra('DPS','DPS', dpsSize),
     }
 
+    -- [Debuff] — debuff spell list; format "SpellName|target|damod[|condNNN]"
+    local debuffSize = tonumber(r('Debuff','DebuffSize')) or 0
+    cfg.Debuff = {
+        DebuffOn   = r('Debuff','DebuffOn'),
+        DebuffSize = debuffSize,
+        Debuff     = ra('Debuff','Debuff', debuffSize),
+    }
+
     -- [Aggro] — aggro/taunt spell list (numbered array)
     local aggroSize = tonumber(r('Aggro','AggroSize')) or 10
     cfg.Aggro = {
@@ -548,6 +556,9 @@ function Config.defaultCfg()
             DPSOn = '1', DPSSize = '5', DPSSkip = '0', DPSInterval = '0',
             DebuffAllOn = '0', DPS = emptyArr(5),
         },
+        Debuff = {
+            DebuffOn = '0', DebuffSize = '0', Debuff = emptyArr(0),
+        },
         Buffs = {
             BuffsOn = '1', BuffsSize = '5', RebuffOn = '1', CheckBuffsTimer = '60',
             PowerSource = '', Buffs = emptyArr(5),
@@ -676,10 +687,53 @@ function Config.writeSpells(state)
     Config.save()
 end
 
+-- One-time migration: extract >=101 HP% entries from [DPS] into a new [Debuff] section.
+-- Skipped if [Debuff] DebuffSize already exists (migration already ran).
+function Config.migrateDebuffSection()
+    if Config.get('Debuff', 'DebuffSize', nil) ~= nil then return end
+
+    local dpsRaw      = Config.get('DPS', 'DPS',        nil) or {}
+    local debuffAllOn = Config.get('DPS', 'DebuffAllOn', '0') or '0'
+
+    local debuffEntries = {}
+    for i, raw in ipairs(dpsRaw) do
+        if raw and raw ~= '' and raw ~= 'null' then
+            -- Extract optional condNNN suffix
+            local cond    = ''
+            local condPos = raw:lower():find('|cond%d')
+            if condPos then
+                cond = raw:sub(condPos + 1)
+                raw  = raw:sub(1, condPos - 1)
+            end
+            local parts = {}
+            for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+            local thresh = tonumber(parts[2]) or 0
+            if thresh >= 101 then
+                local spell  = parts[1] or ''
+                local target = parts[3] or ''
+                local damod  = parts[4] or ''
+                local entry  = spell
+                if target ~= '' or damod ~= '' then entry = entry .. '|' .. target end
+                if damod  ~= ''               then entry = entry .. '|' .. damod  end
+                if cond   ~= ''               then entry = entry .. '|' .. cond   end
+                debuffEntries[#debuffEntries + 1] = entry
+                dpsRaw[i] = 'null'
+            end
+        end
+    end
+
+    Config.set('Debuff', 'DebuffOn',   debuffAllOn)
+    Config.set('Debuff', 'DebuffSize', tostring(#debuffEntries))
+    Config.set('Debuff', 'Debuff',     debuffEntries)
+    Config.set('DPS',    'DPS',        dpsRaw)
+    Config.save()
+end
+
 -- Load config: resolve INI name, migrate if needed, store for Config.get().
 function Config.load(state)
     Config.resolveIniName(state)
     _cfg = Config.migrateIni(state)
+    Config.migrateDebuffSection()
 end
 
 -- Load and validate required plugins.

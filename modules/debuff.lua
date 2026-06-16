@@ -4,6 +4,25 @@ local Config = require('modules.config')
 local Debuff = {}
 local _state, _utils, _cast, _healing, _cond, _combat
 
+-- Parse "SpellName|target|damod[|condNNN]" → { spell, tag1, tag2, condNo }
+local function parseDebuffEntry(raw)
+    local cond    = ''
+    local condPos = raw:lower():find('|cond%d')
+    if condPos then
+        cond = raw:sub(condPos + 1)
+        raw  = raw:sub(1, condPos - 1)
+    end
+    local parts = {}
+    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
+    return {
+        spell  = parts[1] or '',
+        tag1   = parts[2] or '',
+        tag2   = parts[3] or '',
+        condNo = condNo,
+    }
+end
+
 function Debuff.init(state, utils, cast, healing, cond, combat)
     _state   = state
     _utils   = utils
@@ -11,6 +30,28 @@ function Debuff.init(state, utils, cast, healing, cond, combat)
     _healing = healing
     _cond    = cond
     _combat  = combat
+
+    local debuffOn   = tonumber(Config.get('Debuff', 'DebuffOn',   '0')) or 0
+    local debuffSize = tonumber(Config.get('Debuff', 'DebuffSize', '0')) or 0
+    local debuffRaw  = Config.get('Debuff', 'Debuff', nil) or {}
+
+    _state.debuff.on    = debuffOn
+    _state.debuff.size  = debuffSize
+    _state.debuff.slots = {}
+    _state.debuff.count = 0
+
+    for i = 1, debuffSize do
+        local raw = debuffRaw[i] or 'null'
+        if raw ~= 'null' and raw ~= '' then
+            local slot = parseDebuffEntry(raw)
+            if slot.spell ~= '' then
+                _state.debuff.slots[#_state.debuff.slots + 1] = slot
+                _state.debuff.count = _state.debuff.count + 1
+            end
+        end
+    end
+
+    _utils.debug('debuff', 'Debuff.init: on=%d size=%d count=%d', debuffOn, debuffSize, _state.debuff.count)
 end
 
 -- Scan XTarget auto-haters in melee range with LOS; return array of spawn IDs.

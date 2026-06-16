@@ -24,7 +24,7 @@ kissassist does **not** need to be running. The test runner is a standalone scri
 |---|---|---|
 | `unit/test_state.lua` | 86 | All 16 `State.*` sub-tables exist with correct default values and array sizes |
 | `unit/test_utils.lua` | 15 | `timerExpired()` / `setTimer()` math; `setFlag` / `setAll` helpers |
-| `unit/test_helpers_module.lua` | 26 | `dist2D`, `slotIsDebuff` boundary cases, `applyDAMod` (all DAMod forms: `+N`, `-N`, absolute, empty) |
+| `unit/test_helpers_module.lua` | 20 | `dist2D`, `applyDAMod` (all DAMod forms: `+N`, `-N`, absolute, empty) |
 | `unit/test_cond.lua` | 22 | `Cond.eval()`: `conOn=false` bypass, truthy/falsy `mq.parse` results, all `TARGETCHECK` sub-conditions (nil target, PC type, dead, 0 HP, name substring) |
 | `unit/test_config_args.lua` | 56 | `Config.parseArgs()`: all 10 roles, uppercase normalisation, `assistAt` boundary clamping (0/101 ignored), all startup keyword flags (`debug`, `debugall`, `debugcombat`, parse-mode) |
 
