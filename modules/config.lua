@@ -709,13 +709,8 @@ function Config.migrateDebuffSection()
             for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
             local thresh = tonumber(parts[2]) or 0
             if thresh >= 101 then
-                local spell  = parts[1] or ''
-                local target = parts[3] or ''
-                local damod  = parts[4] or ''
-                local entry  = spell
-                if target ~= '' or damod ~= '' then entry = entry .. '|' .. target end
-                if damod  ~= ''               then entry = entry .. '|' .. damod  end
-                if cond   ~= ''               then entry = entry .. '|' .. cond   end
+                local spell = parts[1] or ''
+                local entry = spell .. (cond ~= '' and '|' .. cond or '')
                 debuffEntries[#debuffEntries + 1] = entry
                 dpsRaw[i] = 'null'
             end

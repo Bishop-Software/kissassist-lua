@@ -4,7 +4,7 @@ local Config = require('modules.config')
 local Debuff = {}
 local _state, _utils, _cast, _healing, _cond, _combat
 
--- Parse "SpellName|target|damod[|condNNN]" → { spell, tag1, tag2, condNo }
+-- Parse "SpellName[|condNNN]" → { spell, condNo }
 local function parseDebuffEntry(raw)
     local cond    = ''
     local condPos = raw:lower():find('|cond%d')
@@ -12,14 +12,9 @@ local function parseDebuffEntry(raw)
         cond = raw:sub(condPos + 1)
         raw  = raw:sub(1, condPos - 1)
     end
-    local parts = {}
-    for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-    local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
     return {
-        spell  = parts[1] or '',
-        tag1   = parts[2] or '',
-        tag2   = parts[3] or '',
-        condNo = condNo,
+        spell  = raw,
+        condNo = tonumber(cond:lower():match('cond(%d+)')) or 0,
     }
 end
 

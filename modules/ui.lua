@@ -1715,44 +1715,14 @@ local function drawDebuffs()
                     cond = raw:sub(condPos + 1)
                     raw  = raw:sub(1, condPos - 1)
                 end
-                local parts = {}
-                for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+                local spell  = raw
                 local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
-                local spell  = parts[1] or ''
                 if spell ~= '' then
-                    s.debuff.slots[#s.debuff.slots + 1] = {
-                        spell  = spell,
-                        tag1   = parts[2] or '',
-                        tag2   = parts[3] or '',
-                        condNo = condNo,
-                    }
+                    s.debuff.slots[#s.debuff.slots + 1] = { spell = spell, condNo = condNo }
                     s.debuff.count = s.debuff.count + 1
                 end
             end
         end
-    end
-
-    local function splitDebuff(raw)
-        local spell, target, damod, cond = '', '', '', ''
-        local condPos = raw:lower():find('|cond%d')
-        if condPos then
-            cond = raw:sub(condPos + 1)
-            raw  = raw:sub(1, condPos - 1)
-        end
-        local parts = {}
-        for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-        spell  = parts[1] or ''
-        target = parts[2] or ''
-        damod  = parts[3] or ''
-        return spell, target, damod, cond
-    end
-
-    local function joinDebuff(spell, target, damod, cond)
-        local result = spell
-        if target ~= '' or damod ~= '' then result = result .. '|' .. target end
-        if damod  ~= ''               then result = result .. '|' .. damod  end
-        if cond   ~= ''               then result = result .. '|' .. cond   end
-        return result
     end
 
     local condLabels = { '(none)' }
@@ -1761,38 +1731,30 @@ local function drawDebuffs()
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
-    if ImGui.BeginTable('debuff_tbl', 5, tblFlags) then
-        ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
-        ImGui.TableSetupColumn('DAMod',  ImGuiTableColumnFlags.WidthFixed,    90)
-        ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
-        ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
+    if ImGui.BeginTable('debuff_tbl', 3, tblFlags) then
+        ImGui.TableSetupColumn('Spell', ImGuiTableColumnFlags.WidthStretch, 0)
+        ImGui.TableSetupColumn('Cond',  ImGuiTableColumnFlags.WidthFixed,  160)
+        ImGui.TableSetupColumn('',      ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
         for i = 1, debuffSize do
             local raw     = debuffRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
-            local spell, target, damod, cond = splitDebuff(isEmpty and '' or raw)
-            local newSpell, newTarget, newDamod, newCond = spell, target, damod, cond
-            local sc, tac, dc, cc = false, false, false, false
+            local spell, cond = '', ''
+            if not isEmpty then
+                local condPos = raw:lower():find('|cond%d')
+                if condPos then
+                    cond = raw:sub(condPos + 1)
+                    raw  = raw:sub(1, condPos - 1)
+                end
+                spell = raw
+            end
+            local newSpell, newCond = spell, cond
+            local sc, cc = false, false
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
             newSpell, sc = ImGui.InputText('##dbspell' .. i, spell, 0)
-            ImGui.PopItemWidth()
-
-            ImGui.TableNextColumn()
-            ImGui.PushItemWidth(-1)
-            local targetIdx = 1
-            for k, v in ipairs(ATGT_VALUES) do if v == target then targetIdx = k; break end end
-            local newTargetIdx
-            newTargetIdx, tac = ImGui.Combo('##dbtgt' .. i, targetIdx, ATGT_LABELS)
-            if tac then newTarget = ATGT_VALUES[newTargetIdx] end
-            ImGui.PopItemWidth()
-
-            ImGui.TableNextColumn()
-            ImGui.PushItemWidth(-1)
-            newDamod, dc = ImGui.InputText('##dbdamod' .. i, damod, 0)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1817,14 +1779,10 @@ local function drawDebuffs()
                 syncDebuffArray()
             end
 
-            if sc or tac or dc or cc then
+            if sc or cc then
                 local spellVal = sc and newSpell or spell
-                debuffRaw[i] = spellVal ~= '' and joinDebuff(
-                    spellVal,
-                    tac and newTarget or target,
-                    dc  and newDamod  or damod,
-                    cc  and newCond   or cond
-                ) or 'null'
+                local condVal  = cc and newCond  or cond
+                debuffRaw[i]   = spellVal ~= '' and (spellVal .. (condVal ~= '' and '|' .. condVal or '')) or 'null'
                 Config.set('Debuff', 'Debuff', debuffRaw)
                 Config.save()
                 syncDebuffArray()
