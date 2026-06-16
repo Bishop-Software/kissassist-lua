@@ -63,13 +63,29 @@ function Bard.init(state, utils, cast)
     _state.bard.mqIniPath = mqIniPath
     _state.bard.mqIniFile = mqIniFile
     if mqIniPath then
+        -- Reverse-lookup: find which condNNN slot holds this expression (or return '').
+        local function exprToCondRef(expr)
+            if not expr or expr == '' or expr == '1' then return '' end
+            local exprs = _state.cond and _state.cond.expressions or {}
+            for n, e in ipairs(exprs) do
+                if e == expr then return string.format('cond%03d', n) end
+            end
+            return ''  -- unknown expression: treat as no-condition in UI
+        end
+
         local function readSongs(setName)
             local songs = {}
             local i = 1
             while true do
-                local song = mq.TLO.Ini(mqIniFile, 'MQ2Medley-' .. setName, 'song' .. i)()
-                if not song then break end
-                songs[i] = song
+                local raw = mq.TLO.Ini(mqIniFile, 'MQ2Medley-' .. setName, 'song' .. i)()
+                if not raw then break end
+                -- Parse name^duration^condition (all three parts optional)
+                local name, dur, cond = raw:match('^([^^]*)%^([^^]*)%^(.-)$')
+                if name then
+                    songs[i] = { name = name, dur = dur, cond = exprToCondRef(cond) }
+                else
+                    songs[i] = { name = raw, dur = '', cond = '' }
+                end
                 i = i + 1
             end
             return songs
@@ -231,12 +247,28 @@ function Bard.saveSongSet(setName, songs)
     local i = 1
     local found = false
 
+    -- Resolve a condNNN reference to its actual MQ2 expression for the MQ2Medley INI.
+    local function resolveCondRef(ref)
+        local n = tonumber((ref or ''):lower():match('cond(%d+)'))
+        if not n then return '' end
+        local exprs = _state.cond and _state.cond.expressions or {}
+        return exprs[n] or ''
+    end
+
+    local function serializeSong(song)
+        local name = type(song) == 'table' and (song.name or '') or tostring(song or '')
+        local dur  = type(song) == 'table' and (song.dur  or '') or ''
+        local cond = resolveCondRef(type(song) == 'table' and (song.cond or '') or '')
+        if dur == '' and cond == '' then return name end
+        return string.format('%s^%s^%s', name, dur, cond)
+    end
+
     while i <= #lines do
         if lines[i] == target then
             found = true
             result[#result + 1] = target
             for j, song in ipairs(songs) do
-                result[#result + 1] = string.format('song%d=%s', j, song)
+                result[#result + 1] = string.format('song%d=%s', j, serializeSong(song))
             end
             -- Skip the old song keys that follow.
             i = i + 1
@@ -253,7 +285,7 @@ function Bard.saveSongSet(setName, songs)
         result[#result + 1] = ''
         result[#result + 1] = target
         for j, song in ipairs(songs) do
-            result[#result + 1] = string.format('song%d=%s', j, song)
+            result[#result + 1] = string.format('song%d=%s', j, serializeSong(song))
         end
     end
 
