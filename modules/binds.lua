@@ -9,7 +9,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
-local state, utils, _buffs, _loot, _cast, _combat, _config, _comms
+local state, _buffs, _cast, _combat, _config, _comms
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -808,37 +808,6 @@ local function onMyCmds(cmd, p1, p2, p3)
     mq.cmd(myCmd)
 end
 
--- ─── Loot ─────────────────────────────────────────────────────────────────────
-
-local function onLootOn()
-    state.loot.on = 1
-    mq.cmd('/autoloot turn on')
-    _config.set('General', 'LootOn', '1')
-    _config.save()
-    printf('\agLooting enabled.')
-end
-
-local function onLootOff()
-    state.loot.on = 0
-    mq.cmd('/autoloot turn off')
-    _config.set('General', 'LootOn', '0')
-    _config.save()
-    printf('\ayLooting disabled.')
-end
-
-local function onSell()
-    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
-    _loot.sell()
-end
-local function onDeposit()
-    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
-    _loot.deposit()
-end
-local function onBarter()
-    if state.loot.on == 0 then printf('\ayLooting is disabled (/kalooton to enable).') return end
-    _loot.barter()
-end
-
 -- ─── Integration test runner ──────────────────────────────────────────────────
 
 local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds', 'switchtarget' }
@@ -867,11 +836,9 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, u, b, l, cast, combat, config, comms)
+function Binds.register(s, b, cast, combat, config, comms)
     state   = s
-    utils   = u
     _buffs  = b
-    _loot   = l
     _cast   = cast
     _combat = combat
     _config = config
@@ -956,13 +923,6 @@ function Binds.register(s, u, b, l, cast, combat, config, comms)
         mq.cmd('/medley quiet')
         state.bard.medleyQuiet = not state.bard.medleyQuiet
     end)
-
-    -- Loot
-    bind('/kalooton',       onLootOn)
-    bind('/kalootoff',      onLootOff)
-    bind('/kasell',         onSell)
-    bind('/kadeposit',      onDeposit)
-    bind('/kabarter',       onBarter)
 
     -- Script control
     bind('/kastop', function()
