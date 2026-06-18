@@ -126,10 +126,6 @@ function Bard.doBardStuff()
     -- Class guard (mac:6230)
     if not s.session.iAmABard then return end
 
-    printf('\ag[dbg] doBardStuff: active=%s twistOn=%s twisting=%s dpsTwist=%s combatStart=%s',
-        tostring(Medley.Active()), tostring(s.bard.twistOn), tostring(s.bard.twisting),
-        tostring(s.bard.dpsTwisting), tostring(s.combat.combatStart))
-
     -- Both medley modes disabled (mac:6231): stop any lingering medley and exit
     if not s.bard.twistOn and s.bard.meleeTwistOn == 0 then
         stopMedley()

@@ -1220,9 +1220,6 @@ function Cast.combatCast()
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
     local dpsArr      = state.combat.dpsArray
-    if state.session.iAmABard then
-        printf('\ag[dbg] combatCast: dpsArr=%d dpsStart=%d targetID=%d', #dpsArr, dpsStart, state.combat.myTargetID)
-    end
 
     -- If nothing to cast in DPS slots, still run mash
     if dpsStart > #dpsArr then
@@ -1370,14 +1367,8 @@ function Cast.combatCast()
         end
 
         -- Cast and handle result
-        if state.session.iAmABard then
-            printf('\ag[dbg] combatCast[%d] calling castWhat: %s', i, spellName)
-        end
         local result = Cast.castWhat(spellName, castTargetID, 'dps')
         utils.debug('cast', 'combatCast [%d] %s → %s', i, spellName, result or 'nil')
-        if state.session.iAmABard then
-            printf('\ag[dbg] combatCast[%d] result: %s', i, result or 'nil')
-        end
 
         -- Restore melee if we dropped attack for a self/MA spell
         if state.combat.meleeOn and not mq.TLO.Me.Combat()
