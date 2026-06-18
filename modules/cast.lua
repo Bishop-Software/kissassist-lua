@@ -314,14 +314,16 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard: instant AAs fire natively (no medley disruption); cast-time AAs queue.
+    -- Bard: instant AAs fire via /alt act if ready; cast-time AAs queue through MQ2Medley.
+    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
     if state.session.iAmABard and _bard then
-        local aaID_    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
+        local aaID_     = mq.TLO.Me.AltAbility(whatAA).ID() or 0
         local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
-        printf('\ag[dbg] castAA bard: %s aaID=%d castTime=%d', whatAA, aaID_, castTime_)
         if castTime_ == 0 then
-            mq.cmdf('/alt act %d', aaID_)
-            utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
+            if mq.TLO.Me.AltAbilityReady(whatAA)() then
+                mq.cmdf('/alt act %d', aaID_)
+                utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
+            end
             return 'CAST_SUCCESS'
         else
             local urgent = BARD_URGENT[sentFrom] or false
@@ -476,15 +478,17 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard: instant clickies fire natively; cast-time clickies queue.
+    -- Bard: instant clickies fire via /useitem if ready; cast-time clickies queue through MQ2Medley.
+    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
     if state.session.iAmABard and _bard then
         ---@diagnostic disable-next-line: undefined-field
         local _ctObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
         local ct = (_ctObj and _ctObj.TotalSeconds and _ctObj.TotalSeconds()) or 0
-        printf('\ag[dbg] castItem bard: %s ct=%d', whatItem, ct)
         if ct == 0 then
-            mq.cmdf('/useitem "%s"', whatItem)
-            utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
+            if mq.TLO.Me.ItemReady('=' .. whatItem)() then
+                mq.cmdf('/useitem "%s"', whatItem)
+                utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
+            end
             return 'CAST_SUCCESS'
         else
             local urgent = BARD_URGENT[sentFrom] or false
@@ -923,6 +927,15 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         end
     end
 
+    -- Bards: force dispatch to castAA/castItem even when ability is on cooldown.
+    -- The bard paths check readiness internally; returning CAST_SUCCESS always ensures
+    -- the slot timer is set so combatCast doesn't retry on every tick.
+    if isBard and rtc == 0 then
+        if hasAA and not hasItem then rtc = 2
+        elseif hasItem then rtc = 1
+        end
+    end
+
     if rtc == 0 then
         utils.debug('cast', 'CastWhat: %s CAST_RECOVER', castWhat)
         return 'CAST_RECOVER'
@@ -970,10 +983,10 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
 
     local castResult = 'CAST_NO_RESULT'
 
-    if rtc == 1 and mq.TLO.Me.ItemReady('=' .. castWhat)() and hasItem then
+    if rtc == 1 and (isBard or mq.TLO.Me.ItemReady('=' .. castWhat)()) and hasItem then
         castResult = castItem(castWhat, sentFrom)
 
-    elseif rtc == 2 and mq.TLO.Me.AltAbilityReady(castWhat)() and not hasItem then
+    elseif rtc == 2 and (isBard or mq.TLO.Me.AltAbilityReady(castWhat)()) and not hasItem then
         castResult = castAA(castWhat, sentFrom)
 
     elseif rtc == 3 and mq.TLO.Me.CombatAbilityReady(castWhat)() then
