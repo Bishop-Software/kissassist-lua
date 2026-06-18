@@ -323,8 +323,9 @@ local function castAA(whatAA, sentFrom)
             if mq.TLO.Me.AltAbilityReady(whatAA)() then
                 mq.cmdf('/alt act %d', aaID_)
                 utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
+                return 'CAST_SUCCESS'
             end
-            return 'CAST_SUCCESS'
+            return 'CAST_RECOVER'
         else
             local urgent = BARD_URGENT[sentFrom] or false
             return _bard.queueCast(whatAA, urgent, urgent)
@@ -488,8 +489,9 @@ local function castItem(whatItem, sentFrom)
             if mq.TLO.Me.ItemReady('=' .. whatItem)() then
                 mq.cmdf('/useitem "%s"', whatItem)
                 utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
+                return 'CAST_SUCCESS'
             end
-            return 'CAST_SUCCESS'
+            return 'CAST_RECOVER'
         else
             local urgent = BARD_URGENT[sentFrom] or false
             return _bard.queueCast(whatItem, urgent, urgent)
@@ -1188,10 +1190,16 @@ local function setSlotTimer(spellName, tType, daMod)
         return Helpers.applyDAMod(baseDur, daMod)
     end
 
-    -- Item: use item spell duration (mac:1781-1782)
+    -- Item: use buff duration; fall back to clicky reuse time for instant clickies (mac:1781-1782)
     local item = mq.TLO.FindItem('=' .. spellName)
     if item and (item.ID() or 0) ~= 0 then
         local dur = applyMod(item.Spell.Duration.TotalSeconds() or 0)
+        if dur == 0 then
+            -- Instant clicky with no buff — gate by remaining reuse time so slot isn't polled every tick.
+            -- TimerReady() returns tenths of a second remaining until the item is usable.
+            local reuse = (item.TimerReady() or 0) / 10
+            dur = applyMod(reuse)
+        end
         return dur > 0 and os.clock() + dur or 0
     end
     -- AA: use AA spell duration, then trigger duration (mac:1817-1830)
