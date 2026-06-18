@@ -1194,12 +1194,6 @@ function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
-    -- Bard: MQ2Medley owns the combat rotation. Only run instant-ability mash.
-    if state.session.iAmABard then
-        mashButtons()
-        return
-    end
-
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
     local dpsArr      = state.combat.dpsArray
