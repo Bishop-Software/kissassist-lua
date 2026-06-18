@@ -126,6 +126,10 @@ function Bard.doBardStuff()
     -- Class guard (mac:6230)
     if not s.session.iAmABard then return end
 
+    printf('\ag[dbg] doBardStuff: active=%s twistOn=%s twisting=%s dpsTwist=%s combatStart=%s',
+        tostring(Medley.Active()), tostring(s.bard.twistOn), tostring(s.bard.twisting),
+        tostring(s.bard.dpsTwisting), tostring(s.combat.combatStart))
+
     -- Both medley modes disabled (mac:6231): stop any lingering medley and exit
     if not s.bard.twistOn and s.bard.meleeTwistOn == 0 then
         stopMedley()
@@ -166,6 +170,7 @@ function Bard.doBardStuff()
             if activeSet ~= s.bard.meleeMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.meleeMedley)
+                mq.delay(500, function() return Medley.Active() or false end)
             end
             s.bard.dpsTwisting = true
             s.bard.twisting    = false
@@ -179,6 +184,7 @@ function Bard.doBardStuff()
             if activeSet ~= s.bard.oocMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.oocMedley)
+                mq.delay(500, function() return Medley.Active() or false end)
             end
             s.bard.dpsTwisting = false
             s.bard.twisting    = true
