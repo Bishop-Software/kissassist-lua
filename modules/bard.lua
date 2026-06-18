@@ -15,10 +15,10 @@ local Medley
 -- Local helpers
 -- ---------------------------------------------------------------------------
 
--- Stop the active medley and wait for any song to cease.
+-- Stop the active medley (or any queued song) and wait for any song to cease.
 -- Replaces Sub CastBardCheck (mac:6050-6060) and inline /stopsong patterns.
 local function stopMedley()
-    if Medley.Active() then
+    if Medley.Active() or mq.TLO.Me.BardSongPlaying() then
         mq.cmd('/medley stop')
         mq.delay(500, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
     end
