@@ -1081,7 +1081,8 @@ end
 -- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
 local function mashButtons()
     if not state.combat.dpsOn then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+    -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
+    if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     local meState = mq.TLO.Me.State() or ''
     if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
 
@@ -1096,7 +1097,7 @@ local function mashButtons()
 
     local mashArr = state.arrays.mashArray
     for i = 1, #mashArr do
-        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+        if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
         local entry = mashArr[i]
         if not entry or entry == 'null' then return end
         local name = entry:match('^([^|]+)') or entry
@@ -1198,7 +1199,8 @@ end
 -- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+    -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
+    if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
