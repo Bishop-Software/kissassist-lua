@@ -167,7 +167,7 @@ function Bard.doBardStuff()
         s.bard.manualStop = false  -- combat overrides manual stop
         if s.bard.meleeTwistOn ~= 0 and not s.bard.dpsTwisting then
             local activeSet = Medley.Medley() or ''
-            if activeSet ~= s.bard.meleeMedley then
+            if not Medley.Active() or activeSet ~= s.bard.meleeMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.meleeMedley)
                 mq.delay(500, function() return Medley.Active() or false end)
@@ -181,7 +181,8 @@ function Bard.doBardStuff()
         if s.bard.manualStop then return end
         if s.bard.twistOn and not s.bard.twisting then
             local activeSet = Medley.Medley() or ''
-            if activeSet ~= s.bard.oocMedley then
+            -- Start if wrong set OR correct set but medley not running.
+            if not Medley.Active() or activeSet ~= s.bard.oocMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.oocMedley)
                 mq.delay(500, function() return Medley.Active() or false end)
