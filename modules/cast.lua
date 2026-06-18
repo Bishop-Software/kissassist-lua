@@ -10,6 +10,12 @@ local Cast = {}
 local Config = require('modules.config')
 local state, utils, _bard, _cond
 
+-- sentFrom values that require immediate interrupt + blocking wait in queueCast.
+local BARD_URGENT = {
+    SingleHeal=true, GroupHeal=true, Cure=true,
+    MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
+}
+
 function Cast.init(s, u)
     state = s
     utils = u
@@ -148,13 +154,11 @@ local function castSpell(spellName, sentFrom)
     end
 
     -- Bard: route through MQ2Medley queue instead of pause/cast/resume.
-    -- Urgent sentFroms interrupt the current song immediately.
+    -- Urgent sentFroms interrupt the current song and block until fired.
+    -- DPS rotation is fire-and-forget so the combat loop is not blocked.
     if state.session.iAmABard and _bard then
-        local URGENT = {
-            SingleHeal=true, GroupHeal=true, Cure=true,
-            MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
-        }
-        return _bard.queueCast(spellName, URGENT[sentFrom] or false)
+        local urgent = BARD_URGENT[sentFrom] or false
+        return _bard.queueCast(spellName, urgent, urgent)
     end
 
     -- Gem guard
@@ -319,7 +323,8 @@ local function castAA(whatAA, sentFrom)
             utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
             return 'CAST_SUCCESS'
         else
-            return _bard.queueCast(whatAA, false)
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(whatAA, urgent, urgent)
         end
     end
 
@@ -480,7 +485,8 @@ local function castItem(whatItem, sentFrom)
             utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
             return 'CAST_SUCCESS'
         else
-            return _bard.queueCast(whatItem, false)
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(whatItem, urgent, urgent)
         end
     end
 

@@ -204,14 +204,19 @@ end
 -- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
 Bard.stopMedley = stopMedley
 
--- Issue a /medley queue cast and poll Medley.TTQE until complete.
--- doInterrupt=true adds -interrupt flag so MQ2Medley stops the current song immediately.
-function Bard.queueCast(name, doInterrupt)
+-- Issue a /medley queue cast.
+-- doInterrupt=true: adds -interrupt so MQ2Medley stops the current song immediately.
+-- doWait=true: polls Medley.TTQE until 0 (ability fired) or 30s timeout — use for
+--   urgent casts (mez, heal) where the caller must know the cast completed.
+-- doWait=false (default): fire-and-forget — returns immediately, MQ2Medley fires the
+--   ability at the next natural song slot. Use for DPS rotation.
+function Bard.queueCast(name, doInterrupt, doWait)
     if doInterrupt then
         mq.cmdf('/medley queue "%s" -interrupt', name)
     else
         mq.cmdf('/medley queue "%s"', name)
     end
+    if not doWait then return 'CAST_SUCCESS' end
     local timeout = os.clock() + 30
     while os.clock() < timeout do
         mq.delay(100)

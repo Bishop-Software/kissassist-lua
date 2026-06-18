@@ -1355,8 +1355,10 @@ function Combat.fight(fromWhere)
         -- Initiate attack (mac:1097-1127)
         if not _state.combat.attacking then
             if _state.combat.meleeOn then
-                if (mq.TLO.Me.Casting.ID() or 0) ~= 0
-                        or mq.TLO.Window('CastingWindow').Open() then
+                -- Bards: Casting.ID stays non-zero while songs play (same gate as cast.lua:201).
+                if not _state.session.iAmABard
+                        and ((mq.TLO.Me.Casting.ID() or 0) ~= 0
+                             or mq.TLO.Window('CastingWindow').Open()) then
                     goto skip_first_engage
                 end
                 _state.combat.attacking = true
