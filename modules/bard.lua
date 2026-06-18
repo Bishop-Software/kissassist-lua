@@ -46,9 +46,9 @@ function Bard.init(state, utils, cast)
     ---@diagnostic disable-next-line: undefined-field
     Medley = mq.TLO.Medley
 
-    -- [General] — medley on/off toggles
+    -- Medley on/off toggles (sections match config layout)
     _state.bard.twistOn      = Config.get('General', 'TwistOn',      '0') == '1'
-    _state.bard.meleeTwistOn = tonumber(Config.get('General', 'MeleeTwistOn', '0')) or 0
+    _state.bard.meleeTwistOn = tonumber(Config.get('Melee',   'MeleeTwistOn', '0')) or 0
     _state.bard.twistHold    = Config.get('General', 'TwistHold',    '0') == '1'
     _state.bard.pullTwistOn  = Config.get('Pull',    'PullTwistOn',  '0') == '1'
 
