@@ -125,7 +125,6 @@ function Bard.doBardStuff()
 
     -- Class guard (mac:6230)
     if not s.session.iAmABard then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
 
     -- Both medley modes disabled (mac:6231): stop any lingering medley and exit
     if not s.bard.twistOn and s.bard.meleeTwistOn == 0 then
