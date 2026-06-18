@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Mez = {}
-local _state, _utils, _cast, _bard
+local _state, _utils, _cast
 
 local MEZ_CLASSES = { BRD = true, ENC = true, NEC = true }
 
@@ -10,7 +10,6 @@ function Mez.init(state, utils, cast, bard)
     _state = state
     _utils = utils
     _cast  = cast
-    _bard  = bard
 
     local class = (mq.TLO.Me.Class.ShortName() or ''):upper()
     _state.session.iAmAMezClass = MEZ_CLASSES[class] == true
@@ -134,10 +133,8 @@ local function mezMobsAE(aeTargetID)
 
     if isBard then
         local tid = (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() or aeTargetID
-        if _bard then _bard.pauseMedley() end
-        if _state.terminate then if _bard then _bard.resumeMedley() end; return end
+        if _state.terminate then return end
         _cast.castWhat(spell, tid, 'Mez', 0, 0)
-        if _bard then _bard.resumeMedley() end
         if _state.terminate then return end
         printf('\ay[Mez] AE Mezzing (Bard) -> %s', spell)
         local dur = (mq.TLO.Spell(spell).Duration() and
@@ -181,10 +178,8 @@ local function mezMobs(mobID, slotIndex)
 
     local mobName = (mq.TLO.Spawn('id ' .. tostring(mobID)).CleanName() or tostring(mobID))
     printf('\ay[Mez] Mezzing %s (ID:%d) -> %s', mobName, mobID, spell)
-    if _bard then _bard.pauseMedley() end
-    if _state.terminate then if _bard then _bard.resumeMedley() end; return end
+    if _state.terminate then return end
     _cast.castWhat(spell, mobID, 'Mez', 0, 0)
-    if _bard then _bard.resumeMedley() end
     if _state.terminate then return end
 
     -- Set per-slot timer to spell duration (mac:7492-style)
