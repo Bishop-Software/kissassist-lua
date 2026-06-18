@@ -734,7 +734,7 @@ end
 
 -- Load and validate required plugins.
 local REQUIRED_PLUGINS = {
-    'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez', 'MQ2AutoLoot',
+    'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez',
 }
 
 function Config.checkPlugins()

@@ -163,10 +163,6 @@ end
 local function drawControls()
     local s = _state
 
-    checkbox('Loot', s.loot.on ~= 0, function(v)
-        mq.cmd(v and '/kalooton' or '/kalootoff')
-    end)
-
     -- Camp & Movement
     ImGui.Spacing()
     ImGui.Separator()
