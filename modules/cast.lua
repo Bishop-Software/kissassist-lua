@@ -10,6 +10,12 @@ local Cast = {}
 local Config = require('modules.config')
 local state, utils, _bard, _cond
 
+-- sentFrom values that require immediate interrupt + blocking wait in queueCast.
+local BARD_URGENT = {
+    SingleHeal=true, GroupHeal=true, Cure=true,
+    MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
+}
+
 function Cast.init(s, u)
     state = s
     utils = u
@@ -147,7 +153,13 @@ local function castSpell(spellName, sentFrom)
         return 'CAST_NO_RESULT'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: route through MQ2Medley queue instead of pause/cast/resume.
+    -- Urgent sentFroms interrupt the current song and block until fired.
+    -- DPS rotation is fire-and-forget so the combat loop is not blocked.
+    if state.session.iAmABard and _bard then
+        local urgent = BARD_URGENT[sentFrom] or false
+        return _bard.queueCast(spellName, urgent, urgent)
+    end
 
     -- Gem guard
     if not mq.TLO.Me.Gem(spellName)() then
@@ -281,8 +293,6 @@ local function castSpell(spellName, sentFrom)
         end
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
-
     -- Restore sit state if we were sitting and combat hasn't started
     if wasSitting and not mq.TLO.Me.Sitting() and not state.combat.combatStart then
         mq.cmd('/sit')
@@ -304,7 +314,23 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: instant AAs fire via /alt act if ready; cast-time AAs queue through MQ2Medley.
+    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
+    if state.session.iAmABard and _bard then
+        local aaID_     = mq.TLO.Me.AltAbility(whatAA).ID() or 0
+        local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
+        if castTime_ == 0 then
+            if mq.TLO.Me.AltAbilityReady(whatAA)() then
+                mq.cmdf('/alt act %d', aaID_)
+                utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
+                return 'CAST_SUCCESS'
+            end
+            return 'CAST_RECOVER'
+        else
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(whatAA, urgent, urgent)
+        end
+    end
 
     local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
     local castTime = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
@@ -354,7 +380,6 @@ local function castAA(whatAA, sentFrom)
         end
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastAA result: %s', castResult)
     return castResult
 end
@@ -454,7 +479,25 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: instant clickies fire via /useitem if ready; cast-time clickies queue through MQ2Medley.
+    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
+    if state.session.iAmABard and _bard then
+        ---@diagnostic disable-next-line: undefined-field
+        local _ctObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
+        local ct = (_ctObj and _ctObj.TotalSeconds and _ctObj.TotalSeconds()) or 0
+        if ct == 0 then
+            if mq.TLO.Me.ItemReady('=' .. whatItem)() then
+                mq.cmdf('/useitem "%s"', whatItem)
+                utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
+                return 'CAST_SUCCESS'
+            end
+            return 'CAST_RECOVER'
+        else
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(whatItem, urgent, urgent)
+        end
+    end
+
     ---@diagnostic disable-next-line: undefined-field
     local _castTimeObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
     local castTime = (_castTimeObj and _castTimeObj.TotalSeconds and _castTimeObj.TotalSeconds()) or 0
@@ -489,8 +532,6 @@ local function castItem(whatItem, sentFrom)
         end
     else
         -- castTime=0 because FindItem can't see equipped items (e.g. charm slot clickies).
-        -- pauseMedley() above already stopped any active medley, so Casting.ID is a
-        -- reliable cast-in-progress signal here regardless of class.
         -- Poll up to 500ms for the cast to start (EQ client needs a frame or two after /useitem).
         local castDetected = false
         local detectEnd = os.clock() + 0.5
@@ -527,7 +568,6 @@ local function castItem(whatItem, sentFrom)
         castResult = 'CAST_SUCCESS'
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastItem result: %s', castResult)
     return castResult
 end
@@ -889,6 +929,15 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         end
     end
 
+    -- Bards: force dispatch to castAA/castItem even when ability is on cooldown.
+    -- The bard paths check readiness internally; returning CAST_SUCCESS always ensures
+    -- the slot timer is set so combatCast doesn't retry on every tick.
+    if isBard and rtc == 0 then
+        if hasAA and not hasItem then rtc = 2
+        elseif hasItem then rtc = 1
+        end
+    end
+
     if rtc == 0 then
         utils.debug('cast', 'CastWhat: %s CAST_RECOVER', castWhat)
         return 'CAST_RECOVER'
@@ -936,10 +985,10 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
 
     local castResult = 'CAST_NO_RESULT'
 
-    if rtc == 1 and mq.TLO.Me.ItemReady('=' .. castWhat)() and hasItem then
+    if rtc == 1 and (isBard or mq.TLO.Me.ItemReady('=' .. castWhat)()) and hasItem then
         castResult = castItem(castWhat, sentFrom)
 
-    elseif rtc == 2 and mq.TLO.Me.AltAbilityReady(castWhat)() and not hasItem then
+    elseif rtc == 2 and (isBard or mq.TLO.Me.AltAbilityReady(castWhat)()) and not hasItem then
         castResult = castAA(castWhat, sentFrom)
 
     elseif rtc == 3 and mq.TLO.Me.CombatAbilityReady(castWhat)() then
@@ -1049,7 +1098,8 @@ end
 -- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
 local function mashButtons()
     if not state.combat.dpsOn then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+    -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
+    if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     local meState = mq.TLO.Me.State() or ''
     if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
 
@@ -1064,7 +1114,7 @@ local function mashButtons()
 
     local mashArr = state.arrays.mashArray
     for i = 1, #mashArr do
-        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+        if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
         local entry = mashArr[i]
         if not entry or entry == 'null' then return end
         local name = entry:match('^([^|]+)') or entry
@@ -1140,10 +1190,16 @@ local function setSlotTimer(spellName, tType, daMod)
         return Helpers.applyDAMod(baseDur, daMod)
     end
 
-    -- Item: use item spell duration (mac:1781-1782)
+    -- Item: use buff duration; fall back to clicky reuse time for instant clickies (mac:1781-1782)
     local item = mq.TLO.FindItem('=' .. spellName)
     if item and (item.ID() or 0) ~= 0 then
         local dur = applyMod(item.Spell.Duration.TotalSeconds() or 0)
+        if dur == 0 then
+            -- Instant clicky with no buff — gate by remaining reuse time so slot isn't polled every tick.
+            -- TimerReady() returns tenths of a second remaining until the item is usable.
+            local reuse = (item.TimerReady() or 0) / 10
+            dur = applyMod(reuse)
+        end
         return dur > 0 and os.clock() + dur or 0
     end
     -- AA: use AA spell duration, then trigger duration (mac:1817-1830)
@@ -1166,7 +1222,8 @@ end
 -- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+    -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
+    if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1

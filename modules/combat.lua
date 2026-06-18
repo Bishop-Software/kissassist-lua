@@ -446,12 +446,30 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.losBeforeCombat = Config.get('General', 'LOSBeforeCombat', '0') == '1'
 
     -- DPS array: state.debuff.* is now loaded by Debuff.init()
+    -- |mash-tagged entries go to mashArray (fired every tick via mashButtons).
+    -- |ambush-tagged entries go to beforeArray (fired pre-combat via beforeAttack).
+    -- |weave-tagged entries are skipped (weave not yet ported).
+    -- Raw strings are used for tag detection so |cond suffixes are preserved.
     local rawDps = Config.get('DPS', 'DPS', nil)
     if type(rawDps) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(rawDps)) do
-            if slot and slot.name and slot.name ~= '' then
-                _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+        local mashIdx   = 1
+        local ambushIdx = 1
+        local parsed    = Config.parseCondArray(rawDps)
+        for i, rawEntry in ipairs(rawDps) do
+            if not rawEntry or rawEntry == '' then goto next_dps_entry end
+            if rawEntry:find('|mash', 1, true) then
+                _state.arrays.mashArray[mashIdx] = rawEntry:gsub('|mash', '', 1)
+                mashIdx = mashIdx + 1
+            elseif rawEntry:find('|ambush', 1, true) then
+                _state.arrays.beforeArray[ambushIdx] = rawEntry:gsub('|ambush', '', 1)
+                ambushIdx = ambushIdx + 1
+            elseif not rawEntry:find('|weave', 1, true) then
+                local slot = parsed[i]
+                if slot and slot.name and slot.name ~= '' then
+                    _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
+                end
             end
+            ::next_dps_entry::
         end
     end
 
@@ -1337,8 +1355,10 @@ function Combat.fight(fromWhere)
         -- Initiate attack (mac:1097-1127)
         if not _state.combat.attacking then
             if _state.combat.meleeOn then
-                if (mq.TLO.Me.Casting.ID() or 0) ~= 0
-                        or mq.TLO.Window('CastingWindow').Open() then
+                -- Bards: Casting.ID stays non-zero while songs play (same gate as cast.lua:201).
+                if not _state.session.iAmABard
+                        and ((mq.TLO.Me.Casting.ID() or 0) ~= 0
+                             or mq.TLO.Window('CastingWindow').Open()) then
                     goto skip_first_engage
                 end
                 _state.combat.attacking = true
@@ -1416,9 +1436,11 @@ function Combat.fight(fromWhere)
             if _mez then _mez.check('Combat') end
             if _mez then _mez.aeCheck() end
 
-            -- Pause all commands while player or script is casting
-            if (mq.TLO.Me.Casting.ID() or 0) ~= 0
-                    or mq.TLO.Window('CastingWindow').Open() then
+            -- Pause all commands while player or script is casting.
+            -- Bards: Casting.ID stays non-zero while songs play — skip gate for bards.
+            if not _state.session.iAmABard
+                    and ((mq.TLO.Me.Casting.ID() or 0) ~= 0
+                         or mq.TLO.Window('CastingWindow').Open()) then
                 mq.delay(50)
                 goto continue_fight
             end

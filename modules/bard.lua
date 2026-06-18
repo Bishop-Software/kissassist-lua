@@ -15,10 +15,10 @@ local Medley
 -- Local helpers
 -- ---------------------------------------------------------------------------
 
--- Stop the active medley and wait for any song to cease.
+-- Stop the active medley (or any queued song) and wait for any song to cease.
 -- Replaces Sub CastBardCheck (mac:6050-6060) and inline /stopsong patterns.
 local function stopMedley()
-    if Medley.Active() then
+    if Medley.Active() or mq.TLO.Me.BardSongPlaying() then
         mq.cmd('/medley stop')
         mq.delay(500, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
     end
@@ -46,9 +46,9 @@ function Bard.init(state, utils, cast)
     ---@diagnostic disable-next-line: undefined-field
     Medley = mq.TLO.Medley
 
-    -- [General] — medley on/off toggles
+    -- Medley on/off toggles (sections match config layout)
     _state.bard.twistOn      = Config.get('General', 'TwistOn',      '0') == '1'
-    _state.bard.meleeTwistOn = tonumber(Config.get('General', 'MeleeTwistOn', '0')) or 0
+    _state.bard.meleeTwistOn = tonumber(Config.get('Melee',   'MeleeTwistOn', '0')) or 0
     _state.bard.twistHold    = Config.get('General', 'TwistHold',    '0') == '1'
     _state.bard.pullTwistOn  = Config.get('Pull',    'PullTwistOn',  '0') == '1'
 
@@ -125,7 +125,6 @@ function Bard.doBardStuff()
 
     -- Class guard (mac:6230)
     if not s.session.iAmABard then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
 
     -- Both medley modes disabled (mac:6231): stop any lingering medley and exit
     if not s.bard.twistOn and s.bard.meleeTwistOn == 0 then
@@ -164,9 +163,10 @@ function Bard.doBardStuff()
         s.bard.manualStop = false  -- combat overrides manual stop
         if s.bard.meleeTwistOn ~= 0 and not s.bard.dpsTwisting then
             local activeSet = Medley.Medley() or ''
-            if activeSet ~= s.bard.meleeMedley then
+            if not Medley.Active() or activeSet ~= s.bard.meleeMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.meleeMedley)
+                mq.delay(500, function() return Medley.Active() or false end)
             end
             s.bard.dpsTwisting = true
             s.bard.twisting    = false
@@ -177,9 +177,11 @@ function Bard.doBardStuff()
         if s.bard.manualStop then return end
         if s.bard.twistOn and not s.bard.twisting then
             local activeSet = Medley.Medley() or ''
-            if activeSet ~= s.bard.oocMedley then
+            -- Start if wrong set OR correct set but medley not running.
+            if not Medley.Active() or activeSet ~= s.bard.oocMedley then
                 stopMedley()
                 mq.cmdf('/medley %s', s.bard.oocMedley)
+                mq.delay(500, function() return Medley.Active() or false end)
             end
             s.bard.dpsTwisting = false
             s.bard.twisting    = true
@@ -203,6 +205,27 @@ end
 
 -- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
 Bard.stopMedley = stopMedley
+
+-- Issue a /medley queue cast.
+-- doInterrupt=true: adds -interrupt so MQ2Medley stops the current song immediately.
+-- doWait=true: polls Medley.TTQE until 0 (ability fired) or 30s timeout — use for
+--   urgent casts (mez, heal) where the caller must know the cast completed.
+-- doWait=false (default): fire-and-forget — returns immediately, MQ2Medley fires the
+--   ability at the next natural song slot. Use for DPS rotation.
+function Bard.queueCast(name, doInterrupt, doWait)
+    if doInterrupt then
+        mq.cmdf('/medley queue "%s" -interrupt', name)
+    else
+        mq.cmdf('/medley queue "%s"', name)
+    end
+    if not doWait then return 'CAST_SUCCESS' end
+    local timeout = os.clock() + 30
+    while os.clock() < timeout do
+        mq.delay(100)
+        if (Medley.TTQE() or 0) == 0 then return 'CAST_SUCCESS' end
+    end
+    return 'CAST_TIMEOUT'
+end
 
 local _medleyWasPaused = false
 
