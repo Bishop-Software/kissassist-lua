@@ -318,6 +318,7 @@ local function castAA(whatAA, sentFrom)
     if state.session.iAmABard and _bard then
         local aaID_    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
         local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
+        printf('\ag[dbg] castAA bard: %s aaID=%d castTime=%d', whatAA, aaID_, castTime_)
         if castTime_ == 0 then
             mq.cmdf('/alt act %d', aaID_)
             utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
@@ -480,6 +481,7 @@ local function castItem(whatItem, sentFrom)
         ---@diagnostic disable-next-line: undefined-field
         local _ctObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
         local ct = (_ctObj and _ctObj.TotalSeconds and _ctObj.TotalSeconds()) or 0
+        printf('\ag[dbg] castItem bard: %s ct=%d', whatItem, ct)
         if ct == 0 then
             mq.cmdf('/useitem "%s"', whatItem)
             utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
@@ -1205,6 +1207,9 @@ function Cast.combatCast()
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
     local dpsArr      = state.combat.dpsArray
+    if state.session.iAmABard then
+        printf('\ag[dbg] combatCast: dpsArr=%d dpsStart=%d targetID=%d', #dpsArr, dpsStart, state.combat.myTargetID)
+    end
 
     -- If nothing to cast in DPS slots, still run mash
     if dpsStart > #dpsArr then
@@ -1352,8 +1357,14 @@ function Cast.combatCast()
         end
 
         -- Cast and handle result
+        if state.session.iAmABard then
+            printf('\ag[dbg] combatCast[%d] calling castWhat: %s', i, spellName)
+        end
         local result = Cast.castWhat(spellName, castTargetID, 'dps')
         utils.debug('cast', 'combatCast [%d] %s → %s', i, spellName, result or 'nil')
+        if state.session.iAmABard then
+            printf('\ag[dbg] combatCast[%d] result: %s', i, result or 'nil')
+        end
 
         -- Restore melee if we dropped attack for a self/MA spell
         if state.combat.meleeOn and not mq.TLO.Me.Combat()

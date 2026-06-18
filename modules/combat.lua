@@ -1436,9 +1436,11 @@ function Combat.fight(fromWhere)
             if _mez then _mez.check('Combat') end
             if _mez then _mez.aeCheck() end
 
-            -- Pause all commands while player or script is casting
-            if (mq.TLO.Me.Casting.ID() or 0) ~= 0
-                    or mq.TLO.Window('CastingWindow').Open() then
+            -- Pause all commands while player or script is casting.
+            -- Bards: Casting.ID stays non-zero while songs play — skip gate for bards.
+            if not _state.session.iAmABard
+                    and ((mq.TLO.Me.Casting.ID() or 0) ~= 0
+                         or mq.TLO.Window('CastingWindow').Open()) then
                 mq.delay(50)
                 goto continue_fight
             end
