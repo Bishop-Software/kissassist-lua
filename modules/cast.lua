@@ -147,7 +147,15 @@ local function castSpell(spellName, sentFrom)
         return 'CAST_NO_RESULT'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: route through MQ2Medley queue instead of pause/cast/resume.
+    -- Urgent sentFroms interrupt the current song immediately.
+    if state.session.iAmABard and _bard then
+        local URGENT = {
+            SingleHeal=true, GroupHeal=true, Cure=true,
+            MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
+        }
+        return _bard.queueCast(spellName, URGENT[sentFrom] or false)
+    end
 
     -- Gem guard
     if not mq.TLO.Me.Gem(spellName)() then
@@ -281,8 +289,6 @@ local function castSpell(spellName, sentFrom)
         end
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
-
     -- Restore sit state if we were sitting and combat hasn't started
     if wasSitting and not mq.TLO.Me.Sitting() and not state.combat.combatStart then
         mq.cmd('/sit')
@@ -304,7 +310,18 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: instant AAs fire natively (no medley disruption); cast-time AAs queue.
+    if state.session.iAmABard and _bard then
+        local aaID_    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
+        local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
+        if castTime_ == 0 then
+            mq.cmdf('/alt act %d', aaID_)
+            utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
+            return 'CAST_SUCCESS'
+        else
+            return _bard.queueCast(whatAA, false)
+        end
+    end
 
     local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
     local castTime = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
@@ -354,7 +371,6 @@ local function castAA(whatAA, sentFrom)
         end
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastAA result: %s', castResult)
     return castResult
 end
@@ -454,7 +470,20 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    if state.session.iAmABard and _bard then _bard.pauseMedley() end
+    -- Bard: instant clickies fire natively; cast-time clickies queue.
+    if state.session.iAmABard and _bard then
+        ---@diagnostic disable-next-line: undefined-field
+        local _ctObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
+        local ct = (_ctObj and _ctObj.TotalSeconds and _ctObj.TotalSeconds()) or 0
+        if ct == 0 then
+            mq.cmdf('/useitem "%s"', whatItem)
+            utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
+            return 'CAST_SUCCESS'
+        else
+            return _bard.queueCast(whatItem, false)
+        end
+    end
+
     ---@diagnostic disable-next-line: undefined-field
     local _castTimeObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
     local castTime = (_castTimeObj and _castTimeObj.TotalSeconds and _castTimeObj.TotalSeconds()) or 0
@@ -489,8 +518,6 @@ local function castItem(whatItem, sentFrom)
         end
     else
         -- castTime=0 because FindItem can't see equipped items (e.g. charm slot clickies).
-        -- pauseMedley() above already stopped any active medley, so Casting.ID is a
-        -- reliable cast-in-progress signal here regardless of class.
         -- Poll up to 500ms for the cast to start (EQ client needs a frame or two after /useitem).
         local castDetected = false
         local detectEnd = os.clock() + 0.5
@@ -527,7 +554,6 @@ local function castItem(whatItem, sentFrom)
         castResult = 'CAST_SUCCESS'
     end
 
-    if state.session.iAmABard and _bard then _bard.resumeMedley() end
     utils.debug('cast', 'CastItem result: %s', castResult)
     return castResult
 end
@@ -1167,6 +1193,12 @@ end
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+
+    -- Bard: MQ2Medley owns the combat rotation. Only run instant-ability mash.
+    if state.session.iAmABard then
+        mashButtons()
+        return
+    end
 
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1

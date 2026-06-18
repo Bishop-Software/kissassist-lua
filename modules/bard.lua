@@ -204,6 +204,22 @@ end
 -- Expose stopMedley so pull.lua can call Bard.stopMedley() directly.
 Bard.stopMedley = stopMedley
 
+-- Issue a /medley queue cast and poll Medley.TTQE until complete.
+-- doInterrupt=true adds -interrupt flag so MQ2Medley stops the current song immediately.
+function Bard.queueCast(name, doInterrupt)
+    if doInterrupt then
+        mq.cmdf('/medley queue "%s" -interrupt', name)
+    else
+        mq.cmdf('/medley queue "%s"', name)
+    end
+    local timeout = os.clock() + 30
+    while os.clock() < timeout do
+        mq.delay(100)
+        if (Medley.TTQE() or 0) == 0 then return 'CAST_SUCCESS' end
+    end
+    return 'CAST_TIMEOUT'
+end
+
 local _medleyWasPaused = false
 
 -- Pause the active medley before an item/AA cast; stop is the only real pause MQ2Medley supports.
