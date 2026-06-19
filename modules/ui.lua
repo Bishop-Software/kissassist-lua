@@ -26,7 +26,6 @@ local CondBuilder = require('modules.condbuilder')
 local UI = {}
 local _state, _cond
 local _open = true
-local COL    = 130  -- column width for checkbox SameLine and button widths
 local _savedFullW, _savedFullH = 0, 0  -- window size saved before entering mini mode
 local _pendingW,   _pendingH   = 0, 0  -- next-frame SetNextWindowSize values (0 = no pending)
 local MINI_W, MINI_H           = 465, 0
@@ -162,17 +161,6 @@ end
 
 local function drawControls()
     local s = _state
-
-    -- Camp & Movement
-    ImGui.Spacing()
-    ImGui.Separator()
-    ImGui.Text('Camp / Movement')
-    if ImGui.Button('Make Camp Here', COL, 0) then mq.cmd('/makecamphere') end
-    ImGui.SameLine()
-    if ImGui.Button('Camp Off',       COL, 0) then mq.cmd('/campoff')      end
-    if ImGui.Button('Chase Me',       COL, 0) then mq.cmd('/chaseme')      end
-    ImGui.SameLine()
-    if ImGui.Button('Stay Here',      COL, 0) then mq.cmd('/stayhere')     end
 
     local campSet = s.movement.campX ~= 0 or s.movement.campY ~= 0
     if not campSet then ImGui.BeginDisabled() end
@@ -1939,10 +1927,6 @@ local function drawBurn()
         Config.save()
     end)
 
-    if not s.combat.combatStart then ImGui.BeginDisabled() end
-    if ImGui.Button('Burn Now') then mq.cmd('/burn') end
-    if not s.combat.combatStart then ImGui.EndDisabled() end
-
     ImGui.Spacing()
     local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
     local burnNamedIdx = (s.combat.burnAllNamed or 0) + 1
@@ -2406,6 +2390,25 @@ local function drawAfkTools()
 end
 
 -- ---------------------------------------------------------------------------
+-- Camp buttons — shown in both full and mini mode, below the status area
+-- ---------------------------------------------------------------------------
+
+local function drawCampButtons()
+    local bw = math.floor((ImGui.GetContentRegionAvail() - 16) / 5)
+    if ImGui.Button('Camp Here', bw, 0) then mq.cmd('/makecamphere') end
+    ImGui.SameLine()
+    if ImGui.Button('Camp Off',  bw, 0) then mq.cmd('/campoff')      end
+    ImGui.SameLine()
+    if ImGui.Button('Chase Me',  bw, 0) then mq.cmd('/chaseme')      end
+    ImGui.SameLine()
+    if ImGui.Button('Stay Here', bw, 0) then mq.cmd('/stayhere')     end
+    ImGui.SameLine()
+    if not _state.combat.combatStart then ImGui.BeginDisabled() end
+    if ImGui.Button('Burn Now',  -1, 0) then mq.cmd('/burn')         end
+    if not _state.combat.combatStart then ImGui.EndDisabled() end
+end
+
+-- ---------------------------------------------------------------------------
 -- Draw callback — registered with mq.imgui.init
 -- ---------------------------------------------------------------------------
 
@@ -2442,6 +2445,8 @@ local function draw()
         ImGui.SetCursorPosY(savedY)
 
         drawStatus()
+        ImGui.Separator()
+        drawCampButtons()
         if miniMode then
             ImGui.End()
             return
