@@ -90,6 +90,15 @@ end
 -- Forward declaration — castMemSpell is defined later in this file.
 local castMemSpell
 
+-- True only when the character actually has heal spells configured. Guards the
+-- heal-driven DPS abort/interrupt: with HealsOn set but an empty heal array,
+-- singleHealPoint(MA) defaults to 99 (healing.lua:95-96), so DPS would abort
+-- every time the MA dropped below 70% to make room for a heal that never exists.
+local function haveHeals()
+    return (state.heal.healsOn or 0) > 0
+        and (#(state.heal.healsArray or {}) > 0 or #(state.heal.groupHealArray or {}) > 0)
+end
+
 -- ─── CastingInterruptOn ───────────────────────────────────────────────────────
 
 -- Mirrors mac:2895 CastingInterruptOn bitmask check.
@@ -106,7 +115,7 @@ local function shouldInterrupt(sentFrom)
         return false
     end
     -- Heal needed (bit value 4)
-    if bit32.band(cio, 4) ~= 0 and (state.heal.healsOn or 0) > 0 then
+    if bit32.band(cio, 4) ~= 0 and haveHeals() then
         local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
         if cls ~= 'nec' and cls ~= 'mag' then
             local maName   = state.session.mainAssist or ''
@@ -237,7 +246,7 @@ local function castSpell(spellName, sentFrom)
                     return 'CAST_CANCELLED'
                 end
                 local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
-                if (state.heal.healsOn or 0) > 0 and cls ~= 'nec' and cls ~= 'mag' then
+                if haveHeals() and cls ~= 'nec' and cls ~= 'mag' then
                     local maName = state.session.mainAssist or ''
                     local maHP   = (maName ~= '' and mq.TLO.Spawn(maName).PctHPs()) or 100
                     local intAt  = math.min(state.heal.singleHealPointMA or 70, 70)
@@ -1431,6 +1440,15 @@ function Cast.combatCast()
             end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
+        elseif result == 'CAST_INTERRUPTED' or result == 'CAST_CANCELLED'
+                or result == 'CAST_FIZZLE' then
+            -- Interrupted/fizzled/cancelled casts do NOT start the gem's recast timer,
+            -- so the SpellReady gate above stays open and the rotation would re-cast this
+            -- same slot on every pass (begin->interrupt spam). Apply a short backoff so
+            -- the rotation moves on instead of hammering a spell that can't complete.
+            if not isCmd then
+                state.combat.slotTimers[i] = os.clock() + (state.combat.dpsInterval or 2)
+            end
         end
 
         -- After-cast target-switch check (mac:1860-1867; Step 13.4)
