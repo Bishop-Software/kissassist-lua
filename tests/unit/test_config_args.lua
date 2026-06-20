@@ -15,7 +15,6 @@ local function newState()
             iniSet        = false,
             forceAlias    = true,
             loadFromIni   = false,
-            parseDPSTimer = 0,
         },
         debug = {
             general=false, all=false,   buffs=false,  cast=false,
@@ -160,20 +159,6 @@ function M.run(TH, _MockMQ)
         local s = newState()
         Config.parseArgs(s, {'autoload'})
         TH.assert_true(s.session.loadFromIni, 'autoload: loadFromIni=true')
-    end
-
-    -- 'parse' keyword with explicit seconds ------------------------------
-    do
-        local s = newState()
-        Config.parseArgs(s, {'parse', '120'})
-        TH.assert_eq(s.session.parseDPSTimer, 120, 'parse 120: parseDPSTimer')
-    end
-
-    -- 'parse' keyword without value → defaults to 60 --------------------
-    do
-        local s = newState()
-        Config.parseArgs(s, {'parse'})
-        TH.assert_eq(s.session.parseDPSTimer, 60, 'parse (no value): default 60')
     end
 
     -- Combined args: role + ma keyword + assistat keyword + debug --------
