@@ -1,12 +1,13 @@
 -- Macro Condition Builder - adapted from aquietone/condition-builder (MIT)
 -- Original: https://github.com/aquietone/condition-builder
--- Simplified for KissAssist: operator buttons, examples, live output preview.
--- Exposes CondBuilder.open(slot, text, onAccept) and CondBuilder.draw().
+-- Simplified for KissAssist: operator buttons, live output preview.
+-- Exposes CondBuilder.init(cond), CondBuilder.open(slot, text, onAccept) and CondBuilder.draw().
 
 local mq    = require('mq')
 local ImGui = require('ImGui')
 
 local CondBuilder = {}
+local _cond  -- modules/cond.lua, wired via CondBuilder.init
 
 -- ---------------------------------------------------------------------------
 -- Module state
@@ -17,35 +18,41 @@ local _slot       = nil
 local _onAccept   = nil
 local _expression = ''
 
+-- Live-preview gating. The output box (mq.parse) and the result line both
+-- re-parse the expression; doing that every frame spams MQ parser errors for
+-- half-typed/invalid input. We recompute only once the expression has settled
+-- (_lastEditAt debounce) and only when it actually changed (_shownExpr), so a
+-- given expression is parsed exactly once. The Refresh button forces a re-eval.
+local _lastEditAt = 0
+local _shownExpr  = nil
+local _outStr     = ''
+local _result     = nil
+
 -- ---------------------------------------------------------------------------
--- Operator buttons and example expressions
+-- Operator buttons
 -- ---------------------------------------------------------------------------
 
 local buttons = {
     '${', '}', '[', ']', '(', ')', '.', '!', '&&', '||', '==', '!=', 'Equal', 'NotEqual', 'NULL'
 }
 
-local examples = {
-    '${Target.Named}',
-    '${Me.PctHPs} > 70 && ${Me.PctMana} < 60',
-    '${SpawnCount[pc radius 60]} > 3',
-    '${Target.CleanName.Equal[Fippy Darkpaw]}',
-    '${Select[${Target.Class.ShortName},CLR,DRU,SHM]}',
-    '(${Me.XTarget} > 2 || ${Target.Named}) && ${BurnAllNamed}',
-    '!${Me.Buff[Illusion Benefit Greater Jann].ID}',
-    '${SpawnCount[${Me.Name}`s pet]} > 0',
-    '${Me.XTarget} > 0',
-}
-
 -- ---------------------------------------------------------------------------
 -- Public API
 -- ---------------------------------------------------------------------------
+
+function CondBuilder.init(cond)
+    _cond = cond
+end
 
 function CondBuilder.open(slot, currentText, onAccept)
     _slot       = slot
     _expression = currentText or ''
     _onAccept   = onAccept
     _isOpen     = true
+    _lastEditAt = os.clock()  -- debounce the initial expression too
+    _shownExpr  = nil
+    _outStr     = ''
+    _result     = nil
 end
 
 function CondBuilder.draw()
@@ -64,35 +71,68 @@ function CondBuilder.draw()
         -- Expression input
         ImGui.SetNextItemWidth(-1)
         local newVal, changed = ImGui.InputText('##cbexpr', _expression, 0)
-        if changed then _expression = newVal end
+        if changed then
+            _expression = newVal
+            _lastEditAt = os.clock()  -- debounce: defer eval until typing settles
+        end
 
         -- Operator buttons
         ImGui.Separator()
         for i, button in ipairs(buttons) do
             if ImGui.Button(button) then
                 _expression = _expression .. button
+                _lastEditAt = os.clock()  -- debounce, same as typing
             end
             if i % 9 ~= 0 then ImGui.SameLine() end
         end
 
-        -- Examples picker
-        ImGui.Separator()
-        if ImGui.BeginCombo('Examples', '') then
-            for _, example in ipairs(examples) do
-                if ImGui.Selectable(example) then
-                    _expression = example
-                end
+        -- Recompute only once the expression has settled (debounce) and only
+        -- when it actually changed (_shownExpr) — so a given expression is parsed
+        -- exactly once instead of re-spamming MQ parser errors on a timer. The
+        -- Refresh button (below) forces a re-eval to pick up live state changes.
+        local now = os.clock()
+        if _expression == '' then
+            _outStr, _result, _shownExpr = '', nil, ''
+        elseif _expression ~= _shownExpr and (now - _lastEditAt) > 0.4 then
+            _shownExpr = _expression
+            -- ${Cond[N]} is not an MQ TLO, so resolve nested condition refs the
+            -- same way Cond.evalStr does before handing the rest to mq.parse —
+            -- otherwise they show up as unparsed NULL. (mac: Cond is KA-internal)
+            local resolved = _expression
+            if _cond then
+                resolved = resolved:gsub('%${Cond%[(%d+)%]}', function(n)
+                    return _cond.eval(tonumber(n)) and 'TRUE' or 'FALSE'
+                end)
             end
-            ImGui.EndCombo()
+            _outStr = mq.parse(resolved) or ''
+            _result = _cond and _cond.evalPreview(_expression) or nil
         end
 
         -- Live output preview
         ImGui.Separator()
         ImGui.Text('Output')
+        ImGui.SameLine()
+        -- The preview is parsed once and frozen (re-parsing an invalid expression
+        -- re-spams MQ parser errors). Refresh forces a re-eval for live state.
+        if ImGui.SmallButton('Refresh##cbrefresh') then
+            if _cond then _cond.clearPreviewCache() end
+            _shownExpr = nil
+        end
         if ImGui.BeginChild('##cbout', -1, ImGui.GetTextLineHeightWithSpacing() * 3, ImGuiChildFlags.Borders, 0) then
-            ImGui.TextWrapped(mq.parse(_expression))
+            ImGui.TextWrapped(_outStr or '')
         end
         ImGui.EndChild()
+
+        -- Authoritative result — same evaluator the runtime/Now column uses.
+        if _result ~= nil then
+            ImGui.Text('Result')
+            ImGui.SameLine()
+            if _result then
+                ImGui.TextColored(0, 1, 0, 1, 'TRUE')
+            else
+                ImGui.TextColored(1, 0, 0, 1, 'FALSE')
+            end
+        end
 
         -- Apply / Cancel
         ImGui.Separator()

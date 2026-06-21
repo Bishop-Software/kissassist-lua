@@ -74,6 +74,29 @@ function Cond.evalStr(expr)
     return result ~= ''
 end
 
+-- Memoized variant of evalStr for live UI previews (the Conditions "Now" column
+-- and the Condition Builder). Re-parsing every frame spams the MQ logs with
+-- parser errors for invalid expressions (e.g. "No such 'character' member 'Pc'"),
+-- and MQ returns the same NULL for an invalid member as for a legitimately-empty
+-- TLO — so there's no way to detect the error and keep refreshing safely. We
+-- therefore parse each distinct expression exactly once and freeze the result;
+-- the Conditions panel / builder offer a Refresh button to force a re-eval.
+local _previewCache, _previewCount = {}, 0
+function Cond.clearPreviewCache()
+    _previewCache, _previewCount = {}, 0
+end
+function Cond.evalPreview(expr)
+    if not expr or expr == '' then return true end
+    local cached = _previewCache[expr]
+    if cached ~= nil then return cached end
+    -- Bound the cache: editing churns through many transient strings.
+    if _previewCount > 256 then _previewCache, _previewCount = {}, 0 end
+    _previewCount = _previewCount + 1
+    local result = Cond.evalStr(expr)
+    _previewCache[expr] = result
+    return result
+end
+
 -- Evaluate condition slot n.
 -- Returns true when: conditions are globally off, n is 0, slot is empty, or expression is truthy.
 -- The TARGETCHECK sentinel runs a live target-validity check instead of expression eval.

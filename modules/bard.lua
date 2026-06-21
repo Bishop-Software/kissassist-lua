@@ -68,7 +68,7 @@ function Bard.init(state, utils, cast)
             if not expr or expr == '' or expr == '1' then return '' end
             local exprs = _state.cond and _state.cond.expressions or {}
             for n, e in ipairs(exprs) do
-                if e == expr then return string.format('cond%03d', n) end
+                if e == expr then return string.format('cond%d', n) end
             end
             return ''  -- unknown expression: treat as no-condition in UI
         end

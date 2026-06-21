@@ -29,7 +29,7 @@ local function beforeAttack(_tarID, condCheck)
         if _cond then
             local cp = entry:find('|cond', 1, true)
             if cp then
-                local condNo = tonumber(entry:sub(cp + 5, cp + 7)) or 0
+                local condNo = tonumber(entry:lower():match('|cond(%d+)')) or 0
                 if condNo > 0 and not _cond.eval(condNo) then goto next_before end
             end
         end
@@ -1117,7 +1117,7 @@ local function aeCheck()
         local condNo  = 0
         local condPos = raw:lower():find('|cond%d')
         if condPos then
-            condNo = tonumber(raw:sub(condPos + 5, condPos + 7)) or 0
+            condNo = tonumber(raw:lower():match('|cond(%d+)')) or 0
             raw    = raw:sub(1, condPos - 1)
         end
 
