@@ -1419,6 +1419,13 @@ function Combat.fight(fromWhere)
 
             if _state.terminate then break end
 
+            -- Died mid-fight (or now hovering as a corpse): stop the loop so we
+            -- don't spam casts/attacks while dead ("too distracted to cast").
+            if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+                Combat.combatReset(0, fromWhere .. '_died')
+                break
+            end
+
             -- Manual target mode: if player switches in-game target to a different
             -- NPC mid-fight, break out so checkForCombat picks up the new target.
             if _state.combat.manualTargetMode then

@@ -511,7 +511,7 @@ function Buffs.checkBuffs(forceGroup)
 
     -- Guards (mac:4171)
     if not _state.buffs.buffsOn then return end
-    if _state.misc.iAmDead then return end
+    if _state.session.iAmDead then return end
     if mq.TLO.Me.Hovering() then return end
     -- Bards are always "casting" a song; mac:4171 has no casting guard in CheckBuffs.
     if not _state.session.iAmABard then
@@ -650,7 +650,7 @@ function Buffs.checkBuffs(forceGroup)
 
         -- Combat / invis / readBuffs timer bail (mac:4308-4309)
         if _state.combat.combatStart or (aggroID ~= '' and aggroID ~= '0') then return end
-        if _state.misc.iAmDead or mq.TLO.Me.Invis() then return end
+        if _state.session.iAmDead or mq.TLO.Me.Invis() then return end
         if _state.timers.readBuffs > os.clock() then return end
 
         local condNo = slot.condNo or 0

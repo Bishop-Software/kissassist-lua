@@ -1246,6 +1246,8 @@ end
 -- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
+    -- Don't attempt to cast while dead or hovering as a corpse ("too distracted").
+    if state.session.iAmDead or mq.TLO.Me.Hovering() then return end
     -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
     if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
 
