@@ -18,7 +18,7 @@ local ROLES = {
 -- Step 1.4a: Parse CLI args into State.
 -- Mirrors PParse() from kissassist.mac.
 -- Arg forms:  role [MAname] [assistAt%]  |  ma <name>  |  assistat <n>  |  debug/debugall
---             ini <file>  |  forcealias  |  autoload  |  parse <seconds>
+--             ini <file>  |  forcealias  |  autoload
 function Config.parseArgs(state, args)
     local i = 1
     while i <= #args do
@@ -41,9 +41,6 @@ function Config.parseArgs(state, args)
         elseif a == 'assistat' and args[i+1] then
             state.session.assistAt = tonumber(args[i+1]) or 95
             i = i + 1
-        elseif a == 'parse' then
-            state.session.parseDPSTimer = args[i+1] and (tonumber(args[i+1]) or 60) or 60
-            if args[i+1] then i = i + 1 end
         elseif ROLES[a] then
             state.session.role = a
         else

@@ -39,7 +39,6 @@ local State = {
         mercAssisting   = false,
         chaseAssist     = false,
         pullPath        = 'null',
-        parseDPSTimer   = 0,
         heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
     },
 
