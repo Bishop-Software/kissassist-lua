@@ -1419,6 +1419,13 @@ function Combat.fight(fromWhere)
 
             if _state.terminate then break end
 
+            -- Died mid-fight (or now hovering as a corpse): stop the loop so we
+            -- don't spam casts/attacks while dead ("too distracted to cast").
+            if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+                Combat.combatReset(0, fromWhere .. '_died')
+                break
+            end
+
             -- Manual target mode: if player switches in-game target to a different
             -- NPC mid-fight, break out so checkForCombat picks up the new target.
             if _state.combat.manualTargetMode then
@@ -2000,9 +2007,10 @@ function Combat.checkForAdds(calledFrom)
     if _state.session.iAmDead then return end
     if _state.pull.chainPull == 2 or _state.dps.paused then return end
 
-    -- Re-acquire a valid living target within camp radius before declaring adds (mac:2346)
+    -- Re-acquire a valid living target within camp radius before declaring adds (mac:2346).
+    -- Manual target mode owns selection — don't force a re-lock onto the tracked mob.
     local myID = _state.combat.myTargetID
-    if (mq.TLO.Target.ID() or 0) == 0 and myID ~= 0 then
+    if (mq.TLO.Target.ID() or 0) == 0 and myID ~= 0 and not _state.combat.manualTargetMode then
         local sp = mq.TLO.Spawn('id ' .. myID)
         if sp and (sp.ID() or 0) ~= 0 then
             local spDist = dist2D(_state.movement.campY, _state.movement.campX,
@@ -2050,7 +2058,8 @@ function Combat.checkForAdds(calledFrom)
     local isTankRole = role == 'tank'    or role == 'pullertank'
                     or role == 'pettank' or role == 'pullerpettank'
                     or role == 'hunter' or role == 'hunterpettank'
-    if (mq.TLO.Target.ID() or 0) == 0 and isTankRole and aggroID ~= 0 then
+    if (mq.TLO.Target.ID() or 0) == 0 and isTankRole and aggroID ~= 0
+       and not _state.combat.manualTargetMode then
         mq.cmd('/squelch /target id ' .. aggroID)
     end
 
@@ -2062,7 +2071,11 @@ function Combat.checkForAdds(calledFrom)
             _state.combat.lastTargetID = myID
             _state.combat.myTargetID   = 0
         end
-        mq.cmd('/squelch /target clear')
+        -- Manual target mode: keep the dead/gone cleanup above (so after-death
+        -- auto-pick still fires) but don't clear a target the player is holding.
+        if not _state.combat.manualTargetMode then
+            mq.cmd('/squelch /target clear')
+        end
         return
     end
 

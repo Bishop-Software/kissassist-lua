@@ -243,13 +243,13 @@ local function drawMelee()
         Config.save()
     end)
 
-    checkbox('Target Switch', s.combat.targetSwitchingOn, function(v)
+    checkbox('Auto-Acquire Targets', s.combat.targetSwitchingOn, function(v)
         s.combat.targetSwitchingOn = v
         Config.set('Melee', 'TargetSwitchingOn', v and '1' or '0')
         Config.save()
     end)
 
-    checkbox('Manual Target', s.combat.manualTargetMode, function(_)
+    checkbox('Manual Target Swapping', s.combat.manualTargetMode, function(_)
         mq.cmd('/katargetmode')
     end)
 

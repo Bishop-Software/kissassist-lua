@@ -1102,6 +1102,21 @@ end
 
 -- ─── Mash Buttons ─────────────────────────────────────────────────────────────
 
+-- Manual target mode: the player owns target selection. Sync myTargetID to the
+-- live NPC they currently have targeted so DPS/mash/debuff/melee follow the
+-- player's pick instead of re-locking onto the script's tracked mob. Returns true
+-- when manual mode is active, so callers can skip their own re-lock.
+local function syncManualTarget()
+    if not state.combat.manualTargetMode then return false end
+    local tID   = mq.TLO.Target.ID() or 0
+    local tType = (mq.TLO.Target.Type() or ''):lower()
+    if tID ~= 0 and tType ~= 'corpse' and tType ~= 'pc' and tType ~= 'mercenary' then
+        state.combat.myTargetID   = tID
+        state.combat.myTargetName = mq.TLO.Target.CleanName() or ''
+    end
+    return true
+end
+
 -- Mirrors MashButtons (kissassist.mac:1973).
 -- Iterates MashArray and fires any ready instant-cast AA/disc/item/skill each tick.
 -- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
@@ -1112,7 +1127,7 @@ local function mashButtons()
     local meState = mq.TLO.Me.State() or ''
     if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
 
-    if (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID then
+    if not syncManualTarget() and (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID then
         mq.cmdf('/squelch /target id %d', state.combat.myTargetID)
         local t = os.clock() + 0.5
         while os.clock() < t do
@@ -1231,8 +1246,14 @@ end
 -- Deferred: WeaveArray.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
+    -- Don't attempt to cast while dead or hovering as a corpse ("too distracted").
+    if state.session.iAmDead or mq.TLO.Me.Hovering() then return end
     -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
     if not state.session.iAmABard and (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+
+    -- Manual target mode: adopt the player's current target before the DPS loop
+    -- and mashButtons run, so casting follows the player's pick (no snap-back).
+    syncManualTarget()
 
     local debuffCount = state.debuff.count or 0
     local dpsStart    = debuffCount + 1
