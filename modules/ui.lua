@@ -24,7 +24,7 @@ local Config      = require('modules.config')
 local CondBuilder = require('modules.condbuilder')
 
 local UI = {}
-local _state, _cond
+local _state
 local _open = true
 local _savedFullW, _savedFullH = 0, 0  -- window size saved before entering mini mode
 local _pendingW,   _pendingH   = 0, 0  -- next-frame SetNextWindowSize values (0 = no pending)
@@ -374,7 +374,7 @@ local function drawHealThresholds()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -416,7 +416,7 @@ local function drawHealThresholds()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##hcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -805,7 +805,7 @@ local function drawSongSet(songs, setName)
     -- Build condition labels from KConditions array (same pattern as Buffs/Heals tabs).
     local condLabels = { '(none)' }
     for j = 1, (_state.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -847,7 +847,7 @@ local function drawSongSet(songs, setName)
             local newCondIdx, cc = ImGui.Combo(('##scond_%s_%d'):format(setName, i), condNo + 1, condLabels)
             ImGui.PopItemWidth()
             if cc then
-                entry.cond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+                entry.cond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
                 changed    = true
             end
 
@@ -988,10 +988,9 @@ local function drawConditions()
     -- Conditions are stored as an indexed array under the 'Cond' key.
     local condArr = Config.get('KConditions', 'Cond', nil) or {}
 
-    if ImGui.BeginTable('##condtbl', 5, 0) then
+    if ImGui.BeginTable('##condtbl', 4, 0) then
         ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Label',      ImGuiTableColumnFlags.WidthFixed,   68)
-        ImGui.TableSetupColumn('Now',        ImGuiTableColumnFlags.WidthFixed,   28)
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   28)
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
@@ -1010,19 +1009,10 @@ local function drawConditions()
                 Config.save()
             end
             ImGui.TableSetColumnIndex(1)
-            ImGui.Text(string.format('Cond %03d', i))
+            -- Match the INI/pickle key the expression is stored under (Cond1,
+            -- Cond10, Cond100 — unpadded, per config.lua's `ra` reader).
+            ImGui.Text(string.format('Cond%d', i))
             ImGui.TableSetColumnIndex(2)
-            if current ~= '' and _cond then
-                local ok = _cond.evalStr(current)
-                if ok then
-                    ImGui.TextColored(0, 1, 0, 1, 'T')
-                else
-                    ImGui.TextColored(1, 0, 0, 1, 'F')
-                end
-            else
-                ImGui.TextDisabled('-')
-            end
-            ImGui.TableSetColumnIndex(3)
             if ImGui.Button('[...]##condbuild' .. i) then
                 CondBuilder.open(i, s.cond.expressions[i] or '', function(slotIdx, newValue)
                     s.cond.expressions[slotIdx] = newValue ~= '' and newValue or nil
@@ -1031,7 +1021,7 @@ local function drawConditions()
                     Config.save()
                 end)
             end
-            ImGui.TableSetColumnIndex(4)
+            ImGui.TableSetColumnIndex(3)
             if ImGui.Button('[-]##condrem' .. i) then
                 s.cond.expressions[i] = nil
                 if i == s.cond.size and s.cond.size > 1 then
@@ -1135,7 +1125,7 @@ local function drawCures()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1181,7 +1171,7 @@ local function drawCures()
             ImGui.TableNextColumn()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx, cc = ImGui.Combo('##ccond' .. i, condNo + 1, condLabels)
-            local newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            local newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
 
             if sc or tc or (selfEnabled and soc) or cc then
                 local finalDtype    = tc    and newDtype    or dtype
@@ -1319,7 +1309,7 @@ local function drawBuffs()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1352,7 +1342,7 @@ local function drawBuffs()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1563,7 +1553,7 @@ local function drawAggro()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1619,7 +1609,7 @@ local function drawAggro()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##acond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1711,7 +1701,7 @@ local function drawDebuffs()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1746,7 +1736,7 @@ local function drawDebuffs()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##dbcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1816,7 +1806,7 @@ local function drawDPS()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -1868,7 +1858,7 @@ local function drawDPS()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##dcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -1958,7 +1948,7 @@ local function drawBurn()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -2010,7 +2000,7 @@ local function drawBurn()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -2113,7 +2103,7 @@ local function drawAE()
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
-        condLabels[j + 1] = string.format('cond%03d', j)
+        condLabels[j + 1] = string.format('Cond%d', j)
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
@@ -2161,7 +2151,7 @@ local function drawAE()
             local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##aecond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%03d', newCondIdx - 1)
+            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -2576,7 +2566,7 @@ end
 
 function UI.init(state, cond)
     _state = state
-    _cond  = cond
+    CondBuilder.init(cond)
     _state.ui.miniMode = Config.get('UI', 'MiniMode', '0') == '1'
     mq.imgui.init('KissAssist Lua', draw)
     mq.bind('/kaui', function(arg)

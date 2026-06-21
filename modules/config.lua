@@ -627,7 +627,8 @@ end
 local function extractCond(entry)
     local pos = entry:lower():find('|cond')
     if not pos then return entry, 0 end
-    local condNo = tonumber(entry:sub(pos + 5, pos + 7)) or 0
+    -- Accept both padded (cond001) and unpadded (cond1) references.
+    local condNo = tonumber(entry:lower():match('|cond(%d+)')) or 0
     return entry:sub(1, pos - 1), condNo
 end
 

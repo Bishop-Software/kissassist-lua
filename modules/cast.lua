@@ -1149,7 +1149,7 @@ local function mashButtons()
         if _cond then
             local cp = entry:find('|cond', 1, true)
             if cp then
-                local condNo = tonumber(entry:sub(cp + 5, cp + 7)) or 0
+                local condNo = tonumber(entry:lower():match('|cond(%d+)')) or 0
                 if condNo > 0 and not _cond.eval(condNo) then goto next_mash end
             end
         end
