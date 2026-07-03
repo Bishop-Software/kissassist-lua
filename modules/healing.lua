@@ -288,7 +288,7 @@ function Heal.checkHealth(sentFrom)
         ---@diagnostic disable-next-line: undefined-field
         local avgHPs = mq.TLO.Group.AvgHPs() or 100
         ---@diagnostic disable-next-line: undefined-field
-        local injured90 = mq.TLO.Group.Injured(90) or 0
+        local injured90 = mq.TLO.Group.Injured(90)() or 0
         if avgHPs < 100 and (mq.TLO.Group.Members() or 0) > 0 and injured90 > 1 then
             Heal.doGroupHealStuff()
         end
@@ -321,7 +321,7 @@ function Heal.doGroupHealStuff()
 
         if os.clock() >= _state.heal.groupHealTimers[i] then
             ---@diagnostic disable-next-line: undefined-field
-            local injured = mq.TLO.Group.Injured(pct) or 0
+            local injured = mq.TLO.Group.Injured(pct)() or 0
             if injured > 1 then
                 _utils.debug('heals', string.format('doGroupHealStuff: %s pct=%d injured=%d', spell, pct, injured))
                 _cast.castWhat(spell, mq.TLO.Me.ID(), 'GroupHeal')

@@ -1746,7 +1746,7 @@ function Combat.aggroCheck()
         -- Skip active self-disc (mac:2410)
         if (mq.TLO.Me.CombatAbility(spellName).ID() or 0) ~= 0 then
             local asSp = mq.TLO.Spell(spellName)
-            if asSp and (asSp.Duration() or 0) > 0
+            if asSp and (asSp.Duration.TotalSeconds() or 0) > 0
                and ((asSp.TargetType() or ''):lower() == 'self')
                and (mq.TLO.Me.ActiveDisc.ID() or 0) ~= 0 then
                 goto next_aggro
