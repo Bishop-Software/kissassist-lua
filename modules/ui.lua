@@ -34,6 +34,18 @@ local MINI_W, MINI_H           = 465, 0
 -- Status panel
 -- ---------------------------------------------------------------------------
 
+-- True only while actually away from camp (not merely because ReturnToCamp is
+-- enabled). Mirrors Movement.doWeMove gating: same zone, camp set, and beyond
+-- camp radius. Movement settles within campRadius, so inside it we're "home".
+local function isReturningToCamp(s)
+    local mv = s.movement
+    if mv.campX == 0 and mv.campY == 0 then return false end
+    if mq.TLO.Zone.ID() ~= mv.campZone then return false end
+    local dy = (mq.TLO.Me.Y() or 0) - mv.campY
+    local dx = (mq.TLO.Me.X() or 0) - mv.campX
+    return math.sqrt(dy * dy + dx * dx) > (mv.campRadius or 50)
+end
+
 local function drawStatus()
     local s = _state
     local C2, C3 = 160, 320  -- fixed column offsets (px from window left edge)
@@ -46,7 +58,7 @@ local function drawStatus()
         combatLabel, cr, cg, cb = 'FIGHTING',  1.0, 0.4, 0.4
     elseif s.pull.pulling then
         combatLabel, cr, cg, cb = 'PULLING',   1.0, 0.9, 0.1
-    elseif s.movement.returnToCamp then
+    elseif s.movement.returnToCamp and isReturningToCamp(s) then
         combatLabel, cr, cg, cb = 'RETURNING', 1.0, 0.7, 0.2
     elseif s.heal.medding then
         combatLabel, cr, cg, cb = 'MEDDING',   0.4, 0.8, 1.0
@@ -2214,8 +2226,8 @@ local function drawCC()
             ImGui.Spacing()
             intInput('Mez Radius##mez', s.mez.radius,   1, 500, 'Mez', 'MezRadius',   function(v) s.mez.radius   = v end)
             intInput('Stop HP%##mez',   s.mez.stopHPs,  1, 100, 'Mez', 'MezStopHPs',  function(v) s.mez.stopHPs  = v end)
-            intInput('Min Level##mez',  s.mez.minLevel, 1, 125, 'Mez', 'MezMinLevel', function(v) s.mez.minLevel = v end)
-            intInput('Max Level##mez',  s.mez.maxLevel, 1, 125, 'Mez', 'MezMaxLevel', function(v) s.mez.maxLevel = v end)
+            intInput('Min Level##mez',  s.mez.minLevel, 1, 999, 'Mez', 'MezMinLevel', function(v) s.mez.minLevel = v end)
+            intInput('Max Level##mez',  s.mez.maxLevel, 1, 999, 'Mez', 'MezMaxLevel', function(v) s.mez.maxLevel = v end)
 
             ImGui.Spacing()
             ImGui.Separator()
@@ -2311,8 +2323,8 @@ local function drawCC()
 
                 ImGui.Spacing()
                 intInput('Charm Radius##charm', s.charm.radius,   1, 500, 'Charm', 'CharmRadius',   function(v) s.charm.radius   = v end)
-                intInput('Min Level##charm',    s.charm.minLevel, 1, 125, 'Charm', 'CharmMinLevel', function(v) s.charm.minLevel = v end)
-                intInput('Max Level##charm',    s.charm.maxLevel, 0, 125, 'Charm', 'CharmMaxLevel', function(v) s.charm.maxLevel = v end)
+                intInput('Min Level##charm',    s.charm.minLevel, 1, 999, 'Charm', 'CharmMinLevel', function(v) s.charm.minLevel = v end)
+                intInput('Max Level##charm',    s.charm.maxLevel, 0, 999, 'Charm', 'CharmMaxLevel', function(v) s.charm.maxLevel = v end)
 
                 ImGui.Spacing()
                 ImGui.Separator()

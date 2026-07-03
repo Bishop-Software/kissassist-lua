@@ -405,7 +405,7 @@ local function castDisc(whatDisc, sentFrom)
     end
 
     -- Only cast if: no duration, OR (self-target + no active disc), OR non-self target, OR has DurationWindow
-    local hasDuration = (mq.TLO.Spell(whatDisc).Duration() or 0) > 0
+    local hasDuration = (mq.TLO.Spell(whatDisc).Duration.TotalSeconds() or 0) > 0
     local targetType  = mq.TLO.Spell(whatDisc).TargetType() or ''
     local isSelf      = targetType == 'Self'
     local activeDisc  = (mq.TLO.Me.ActiveDisc.ID() or 0) ~= 0
@@ -416,6 +416,28 @@ local function castDisc(whatDisc, sentFrom)
                      or durWindow
     if not shouldCast then
         utils.debug('cast', 'CastDisc skip — active self-disc: %s', whatDisc)
+        return 'CAST_SUCCESS'
+    end
+
+    -- Bard: fire the disc once if ready, then return. Bards sing continuously, so the
+    -- retry loop below would re-issue /disc while a song is mid-cast and spam
+    -- "You can't use that command while casting". Pause the medley, fire once, resume —
+    -- mirrors the instant-ability bard handling in castAA/castItem and the .mac's CastBardCheck.
+    if state.session.iAmABard and _bard then
+        if mq.TLO.Me.CombatAbilityReady(whatDisc)() then
+            _bard.pauseMedley()
+            ---@diagnostic disable-next-line: undefined-field
+            if (mq.TLO.MacroQuest.Build() or 0) == 4 then
+                mq.cmdf('/disc "%s"', whatDisc)
+            else
+                local ranked = mq.TLO.Me.CombatAbility(whatDisc)() or whatDisc
+                local discID = mq.TLO.Me.CombatAbility(ranked).ID() or 0
+                mq.cmdf('/disc %d', discID)
+            end
+            utils.debug('cast', 'CastDisc (bard): /disc %s', whatDisc)
+            mq.delay(100)
+            _bard.resumeMedley()
+        end
         return 'CAST_SUCCESS'
     end
 
@@ -488,23 +510,18 @@ local function castItem(whatItem, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard: instant clickies fire via /useitem if ready; cast-time clickies queue through MQ2Medley.
-    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
+    -- Bard: interleave the clicky into the medley via /medley queue instead of stopping the
+    -- song rotation. MQ2Medley supports queuing items (see cmd-medley.md) and fires them on the
+    -- target without the stop/reload gap that /medley stop + /useitem incurs. Queue every clicky
+    -- (not just cast-time ones): equipped clickies read CastTime as 0 because FindItem can't see
+    -- them, and a direct /useitem on those collides with the active song. Always return
+    -- CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
     if state.session.iAmABard and _bard then
-        ---@diagnostic disable-next-line: undefined-field
-        local _ctObj = mq.TLO.FindItem('=' .. whatItem).Clicky.CastTime
-        local ct = (_ctObj and _ctObj.TotalSeconds and _ctObj.TotalSeconds()) or 0
-        if ct == 0 then
-            if mq.TLO.Me.ItemReady('=' .. whatItem)() then
-                mq.cmdf('/useitem "%s"', whatItem)
-                utils.debug('cast', 'CastItem (bard instant): /useitem "%s"', whatItem)
-                return 'CAST_SUCCESS'
-            end
-            return 'CAST_RECOVER'
-        else
-            local urgent = BARD_URGENT[sentFrom] or false
-            return _bard.queueCast(whatItem, urgent, urgent)
-        end
+        if not mq.TLO.Me.ItemReady('=' .. whatItem)() then return 'CAST_RECOVER' end
+        local tID    = mq.TLO.Target.ID() or 0
+        local urgent = BARD_URGENT[sentFrom] or false
+        utils.debug('cast', 'CastItem (bard queue): "%s" -targetid|%d', whatItem, tID)
+        return _bard.queueCast(whatItem, urgent, urgent, tID)
     end
 
     ---@diagnostic disable-next-line: undefined-field

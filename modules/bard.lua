@@ -212,12 +212,15 @@ Bard.stopMedley = stopMedley
 --   urgent casts (mez, heal) where the caller must know the cast completed.
 -- doWait=false (default): fire-and-forget — returns immediately, MQ2Medley fires the
 --   ability at the next natural song slot. Use for DPS rotation.
-function Bard.queueCast(name, doInterrupt, doWait)
-    if doInterrupt then
-        mq.cmdf('/medley queue "%s" -interrupt', name)
-    else
-        mq.cmdf('/medley queue "%s"', name)
+function Bard.queueCast(name, doInterrupt, doWait, targetID)
+    -- /medley queue "<song/item/aa>" [-targetid|<id>] [-interrupt] (see cmd-medley.md).
+    -- Queuing interleaves the cast into the song rotation with no stop/reload gap.
+    local cmd = string.format('/medley queue "%s"', name)
+    if targetID and targetID > 0 then
+        cmd = cmd .. string.format(' -targetid|%d', targetID)
     end
+    if doInterrupt then cmd = cmd .. ' -interrupt' end
+    mq.cmd(cmd)
     if not doWait then return 'CAST_SUCCESS' end
     local timeout = os.clock() + 30
     while os.clock() < timeout do
@@ -229,12 +232,21 @@ end
 
 local _medleyWasPaused = false
 
--- Pause the active medley before an item/AA cast; stop is the only real pause MQ2Medley supports.
+-- Pause the active medley before an item/AA/disc cast; stop is the only real pause MQ2Medley
+-- supports. /medley stop halts the rotation but the song already mid-cast keeps going, leaving
+-- Me.Casting.ID set — which silently blocks a following /useitem or /cast. Mirror CastBardCheck
+-- (mac:3048-3052): /stopsong and wait until the cast actually clears before returning.
 function Bard.pauseMedley()
     if Medley.Active() then
         mq.cmd('/medley stop')
         _medleyWasPaused = true
-        mq.delay(300, function() return not (mq.TLO.Me.BardSongPlaying() or false) end)
+    end
+    -- Clear any in-progress song cast so the caller's ability isn't blocked.
+    local timeout = os.clock() + 1.5
+    while (mq.TLO.Me.BardSongPlaying() or (mq.TLO.Me.Casting.ID() or 0) ~= 0)
+            and os.clock() < timeout do
+        if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then mq.cmd('/stopsong') end
+        mq.delay(50)
     end
 end
 

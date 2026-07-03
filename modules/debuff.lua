@@ -127,18 +127,20 @@ function Debuff.cast(targetID, fwait)
         local ready = mq.TLO.Me.SpellReady(rankName)()
                    or mq.TLO.Me.AltAbilityReady(spellName)()
                    or mq.TLO.Me.CombatAbilityReady(rankName)()
+                   or mq.TLO.Me.ItemReady('=' .. spellName)()
         if not ready then
             if fwait then
                 local waitUntil = os.clock() + 2
                 while os.clock() < waitUntil do
                     mq.doevents()
-                    if _healing and (_state.heals.on or 0) ~= 0 then
+                    if _healing and (_state.heal.healsOn or 0) ~= 0 then
                         _healing.checkHealth('DebuffCast')
                     end
                     mq.delay(100)
                     if mq.TLO.Me.SpellReady(rankName)()
                        or mq.TLO.Me.AltAbilityReady(spellName)()
-                       or mq.TLO.Me.CombatAbilityReady(rankName)() then
+                       or mq.TLO.Me.CombatAbilityReady(rankName)()
+                       or mq.TLO.Me.ItemReady('=' .. spellName)() then
                         ready = true
                         break
                     end
@@ -160,8 +162,17 @@ function Debuff.cast(targetID, fwait)
             if not existing:find('|' .. tidStr, 1, true) then
                 _state.debuff.lists[i] = existing .. '|' .. tidStr
             end
-            local duration = mq.TLO.Spell(spellName).Duration() or 30
-            _state.debuff.timers[i] = os.clock() + duration
+            -- Duration source varies by ability type (mac:7961-7967): items use their clicky
+            -- spell's duration, AAs use the AA spell's, everything else the spell itself.
+            local duration
+            if (mq.TLO.FindItem('=' .. spellName).ID() or 0) ~= 0 then
+                duration = mq.TLO.FindItem('=' .. spellName).Spell.Duration.TotalSeconds()
+            elseif (mq.TLO.Me.AltAbility(spellName).ID() or 0) ~= 0 then
+                duration = mq.TLO.Me.AltAbility(spellName).Spell.Duration.TotalSeconds()
+            else
+                duration = mq.TLO.Spell(spellName).Duration.TotalSeconds()
+            end
+            _state.debuff.timers[i] = os.clock() + (duration or 30)
             printf('** Debuff %s on %s', spellName, sp.CleanName() or '')
         elseif result == 'CAST_IMMUNE' or result == 'CAST_TAKEHOLD' then
             -- Suppress retries for a long window (mac:7748-7750)
