@@ -75,6 +75,18 @@ local function castSkill(spellName, sentFrom)
         utils.debug('cast', 'CastSkill cancelled — invisible')
         return 'CAST_CANCELLED'
     end
+    -- Bard: /doability collides with the mid-cast song. Skills can't be queued
+    -- through MQ2Medley (not songs/AAs/items), so pause the medley, fire once, and
+    -- resume — same approach as castDisc.
+    if state.session.iAmABard and _bard then
+        if not mq.TLO.Me.AbilityReady(spellName)() then return 'CAST_RECOVER' end
+        _bard.pauseMedley()
+        mq.cmdf('/doability "%s"', spellName)
+        mq.delay(100)
+        _bard.resumeMedley()
+        utils.debug('cast', 'CastSkill (bard): /doability %s', spellName)
+        return 'CAST_SUCCESS'
+    end
     utils.debug('cast', 'CastSkill: %s', spellName)
     mq.cmdf('/doability "%s"', spellName)
     local timeout = os.clock() + 1.0  -- 20 ticks × 50ms
@@ -323,22 +335,16 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard: instant AAs fire via /alt act if ready; cast-time AAs queue through MQ2Medley.
-    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
+    -- Bard: queue ALL AAs (instant and cast-time) through MQ2Medley. A raw /alt act
+    -- for an instant AA collides with the mid-cast song ("You can't use that command
+    -- while casting") every tick; queuing interleaves it into the song rotation
+    -- cleanly. Gate on readiness so a cooling-down AA isn't queued, and let combatCast
+    -- set a slot timer on the returned CAST_SUCCESS so it isn't re-queued per tick.
     if state.session.iAmABard and _bard then
-        local aaID_     = mq.TLO.Me.AltAbility(whatAA).ID() or 0
-        local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
-        if castTime_ == 0 then
-            if mq.TLO.Me.AltAbilityReady(whatAA)() then
-                mq.cmdf('/alt act %d', aaID_)
-                utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
-                return 'CAST_SUCCESS'
-            end
-            return 'CAST_RECOVER'
-        else
-            local urgent = BARD_URGENT[sentFrom] or false
-            return _bard.queueCast(whatAA, urgent, urgent)
-        end
+        if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
+        local urgent = BARD_URGENT[sentFrom] or false
+        utils.debug('cast', 'CastAA (bard queue): %s', whatAA)
+        return _bard.queueCast(whatAA, urgent, urgent)
     end
 
     local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
