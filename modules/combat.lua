@@ -1323,7 +1323,7 @@ function Combat.fight(fromWhere)
         -- CombatStart: announce first attack (mac:1081-1093)
         if not _state.combat.combatStart then
             _utils.debug('combat', 'fight: CombatStart set, Attacking=%s', tostring(_state.combat.attacking))
-            _state.session.mercAssisting = false
+            _state.merc.assisting        = 0  -- reset so merc re-assists this fight (mac:1084)
             _state.combat.combatStart    = true
             local tgtName = mq.TLO.Spawn('id ' .. myID).CleanName() or '?'
             mq.cmd('/echo  ATTACKING -> ' .. tgtName .. ' <-')
@@ -1472,6 +1472,10 @@ function Combat.fight(fromWhere)
                 if _cast.doBurn then _cast.doBurn() end
                 _state.combat.burnID = 0
             end
+
+            -- Merc re-assist during the fight, not just on engage (mac:1605). Ranged
+            -- assists that skip the melee-engage merc call still get checked here.
+            if _merc then _merc.check() end
 
             -- AE rotation: threshold-triggered AE/multi-target spells (mac:12473-12560)
             aeCheck()
