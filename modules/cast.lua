@@ -16,6 +16,17 @@ local BARD_URGENT = {
     MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
 }
 
+-- sentFrom values for out-of-combat buff/support casts. Bards must NOT queue these:
+-- the MQ2Medley once-queue only fires while a medley is actively cycling, so a queued
+-- buff can sit unfired (or land late) while checkBuffs re-queues it every loop ("Adding
+-- to once queue" spam with nothing landing). Instead pause the medley, cast directly,
+-- and let castWhat's resumeMedley restart it — works whether or not a medley is running.
+local BARD_DIRECT_CAST = {
+    Buffs=true, ['buffs-nomem']=true, BuffOnce=true, CheckAura=true,
+    Regenother=true, CheckEndurance=true, CastMount=true, CastMana=true,
+    Mana=true, Pet=true, ['Pet-nomem']=true,
+}
+
 function Cast.init(s, u)
     state = s
     utils = u
@@ -177,9 +188,15 @@ local function castSpell(spellName, sentFrom)
     -- Bard: route through MQ2Medley queue instead of pause/cast/resume.
     -- Urgent sentFroms interrupt the current song and block until fired.
     -- DPS rotation is fire-and-forget so the combat loop is not blocked.
+    -- Buff/support casts pause the medley and fall through to a direct /cast so
+    -- they actually land (the once-queue only fires while a medley is cycling).
     if state.session.iAmABard and _bard then
-        local urgent = BARD_URGENT[sentFrom] or false
-        return _bard.queueCast(spellName, urgent, urgent)
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()
+        else
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(spellName, urgent, urgent)
+        end
     end
 
     -- Gem guard
@@ -341,10 +358,14 @@ local function castAA(whatAA, sentFrom)
     -- cleanly. Gate on readiness so a cooling-down AA isn't queued, and let combatCast
     -- set a slot timer on the returned CAST_SUCCESS so it isn't re-queued per tick.
     if state.session.iAmABard and _bard then
-        if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
-        local urgent = BARD_URGENT[sentFrom] or false
-        utils.debug('cast', 'CastAA (bard queue): %s', whatAA)
-        return _bard.queueCast(whatAA, urgent, urgent)
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()  -- fall through to direct /alt act; castWhat resumes
+        else
+            if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
+            local urgent = BARD_URGENT[sentFrom] or false
+            utils.debug('cast', 'CastAA (bard queue): %s', whatAA)
+            return _bard.queueCast(whatAA, urgent, urgent)
+        end
     end
 
     local aaID    = mq.TLO.Me.AltAbility(whatAA).ID() or 0
@@ -524,10 +545,14 @@ local function castItem(whatItem, sentFrom)
     -- CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
     if state.session.iAmABard and _bard then
         if not mq.TLO.Me.ItemReady('=' .. whatItem)() then return 'CAST_RECOVER' end
-        local tID    = mq.TLO.Target.ID() or 0
-        local urgent = BARD_URGENT[sentFrom] or false
-        utils.debug('cast', 'CastItem (bard queue): "%s" -targetid|%d', whatItem, tID)
-        return _bard.queueCast(whatItem, urgent, urgent, tID)
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()  -- fall through to direct /useitem; castWhat resumes
+        else
+            local tID    = mq.TLO.Target.ID() or 0
+            local urgent = BARD_URGENT[sentFrom] or false
+            utils.debug('cast', 'CastItem (bard queue): "%s" -targetid|%d', whatItem, tID)
+            return _bard.queueCast(whatItem, urgent, urgent, tID)
+        end
     end
 
     ---@diagnostic disable-next-line: undefined-field
