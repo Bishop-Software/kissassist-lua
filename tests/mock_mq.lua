@@ -59,6 +59,11 @@ function MockMQ.cmd(str)
     _calls[#_calls + 1] = str
 end
 
+-- mq.cmdf stub — formats then records, so cmdCalled/cmdMatched see the final string.
+function MockMQ.cmdf(fmt, ...)
+    _calls[#_calls + 1] = string.format(fmt, ...)
+end
+
 -- Returns true if the given cmd string was called (exact match).
 function MockMQ.cmdCalled(str)
     for _, c in ipairs(_calls) do

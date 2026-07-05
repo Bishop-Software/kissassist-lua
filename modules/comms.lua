@@ -172,14 +172,20 @@ function Comms.broadcastBuffState()
     _utils.debug('comms', 'broadcastBuffState: id=%s buffs=%d', tostring(mq.TLO.Me.ID()), count)
 end
 
--- Group-visible announcement: /dgtell all if DanNet+peers, else /echo (mac:Sub BroadCast)
-function Comms.announce(msg)
+-- Group-visible announcement mirroring .mac Sub BroadCast (mac:12820).
+-- EQBC is deprecated in the Lua port (see events.lua) — cross-char comms go over
+-- DanNet + Lua actors — so this uses /dgtell all when DanNet has peers, else a
+-- local /echo. `color` is an MQ colour letter (o=orange, g=green, w=white, ...);
+-- default 'w'. `\a<letter>` is the MQ colour escape (\a is the bell byte 0x07).
+function Comms.announce(msg, color)
+    color = color or 'w'
+
     local peerCount = _state.session.danNetOn
                       and mq.TLO.Plugin('MQ2DanNet')()
                       and (mq.TLO.DanNet.PeerCount() or 0)
                       or 0
     if peerCount > 0 then
-        mq.cmdf('/dgtell all %s', msg)
+        mq.cmdf('/dgtell all \a%s %s \aw', color, msg)
     else
         mq.cmd('/echo ' .. msg)
     end
