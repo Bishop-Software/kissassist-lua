@@ -1170,6 +1170,15 @@ local function mashButtons()
                 if condNo > 0 and not _cond.eval(condNo) then goto next_mash end
             end
         end
+        -- Bard: never issue raw /useitem|/alt act|/disc|/doability here — a song is
+        -- almost always mid-cast, so the client rejects them with "You can't use that
+        -- command while casting" every tick. Route through castWhat, which queues
+        -- items/AAs/spells via MQ2Medley and pause/resumes discs (same as the DPS
+        -- rotation). The bard-exempt casting gate above lets us reach this point.
+        if state.session.iAmABard and _bard then
+            Cast.castWhat(name, mq.TLO.Target.ID() or 0, 'mash')
+            goto next_mash
+        end
         if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
             mq.cmd('/useitem "' .. name .. '"')
             mq.delay(100)
