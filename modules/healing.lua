@@ -74,7 +74,16 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     if type(healsRaw) == 'table' then
         for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
             if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
-                _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
+                -- Rez spells live in the Heals array tagged with a rez type in the 3rd
+                -- field (e.g. 'Gift of Resurrection|0|rez'). The .mac hoists these out of
+                -- Heals into a dedicated AutoRez array at load (mac:6087-6111); mirror that
+                -- so rezWithCheck can find them and the heal rotation ignores them.
+                local rezType = (slot.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
+                if rezType:find('rez', 1, true) then
+                    _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = slot
+                else
+                    _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
+                end
             end
         end
     end
@@ -177,6 +186,9 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
         if spell ~= '' and threshold > 0 and hpPct <= threshold then
             _utils.debug('heals', string.format('singleHeal: %s (%d%%) -> %s', name, hpPct, spell))
             _cast.castWhat(spell, targetID, sentFrom)
+            if _state.cast.castReturn == 'CAST_SUCCESS' then
+                printf('\ag** %s on >> %s <<', spell, name or '')
+            end
             return
         end
         ::next_sh::
@@ -326,6 +338,7 @@ function Heal.doGroupHealStuff()
                 _utils.debug('heals', string.format('doGroupHealStuff: %s pct=%d injured=%d', spell, pct, injured))
                 _cast.castWhat(spell, mq.TLO.Me.ID(), 'GroupHeal')
                 if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    printf('\ag** %s on >> Group <<', spell)
                     local dur = mq.TLO.Spell(spell).MyDuration.TotalSeconds() or 0
                     _state.heal.groupHealTimers[i] = os.clock() + dur
                     _state.heal.healAgain = true
