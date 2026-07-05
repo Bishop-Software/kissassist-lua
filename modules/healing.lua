@@ -74,7 +74,16 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     if type(healsRaw) == 'table' then
         for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
             if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
-                _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
+                -- Rez spells live in the Heals array tagged with a rez type in the 3rd
+                -- field (e.g. 'Gift of Resurrection|0|rez'). The .mac hoists these out of
+                -- Heals into a dedicated AutoRez array at load (mac:6087-6111); mirror that
+                -- so rezWithCheck can find them and the heal rotation ignores them.
+                local rezType = (slot.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
+                if rezType:find('rez', 1, true) then
+                    _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = slot
+                else
+                    _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
+                end
             end
         end
     end
@@ -177,6 +186,9 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
         if spell ~= '' and threshold > 0 and hpPct <= threshold then
             _utils.debug('heals', string.format('singleHeal: %s (%d%%) -> %s', name, hpPct, spell))
             _cast.castWhat(spell, targetID, sentFrom)
+            if _state.cast.castReturn == 'CAST_SUCCESS' then
+                printf('\ag** %s on >> %s <<', spell, name or '')
+            end
             return
         end
         ::next_sh::
@@ -326,6 +338,7 @@ function Heal.doGroupHealStuff()
                 _utils.debug('heals', string.format('doGroupHealStuff: %s pct=%d injured=%d', spell, pct, injured))
                 _cast.castWhat(spell, mq.TLO.Me.ID(), 'GroupHeal')
                 if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    printf('\ag** %s on >> Group <<', spell)
                     local dur = mq.TLO.Spell(spell).MyDuration.TotalSeconds() or 0
                     _state.heal.groupHealTimers[i] = os.clock() + dur
                     _state.heal.healAgain = true
@@ -636,8 +649,8 @@ function Heal.checkCures()
             _cast.castWhat(spellName, targetID, 'Cure')
             if _state.cast.castReturn == 'CAST_SUCCESS' then
                 ---@diagnostic disable-next-line: undefined-field
-                mq.cmdf('/%s o "CURING: >> %s << with %s"',
-                    _state.session.broadcastSay, spawn.CleanName() or '', spellName)
+                _comms.announce(string.format('CURING: >> %s << with %s',
+                    spawn.CleanName() or '', spellName), 'o')
                 cureCast = true
                 -- Re-check heals after a cure (mac:12761-12764)
                 if _state.heal.healsOn > 0 then
@@ -700,7 +713,7 @@ function Heal.rezCheck()
         end
         _cast.castWhat(spell, corpseID, 'RezCheck')
         if _state.cast.castReturn == 'CAST_SUCCESS' then
-            mq.cmdf('/%s o "%s"', _state.session.broadcastSay, broadcastMsg)
+            _comms.announce(broadcastMsg, 'o')
             _state.heal.oocRezTimers[corpseID] = os.clock() + timerSecs
             mq.cmd('/squelch /target clear')
             return true
@@ -770,10 +783,10 @@ function Heal.rezCheck()
                 if _state.cast.castReturn == 'CAST_SUCCESS' then
                     local isCallOfWild = spell:find('Call of', 1, true)
                     if _state.combat.combatStart then
-                        mq.cmdf('/%s o "BATTLE REZZED =>> %s <<="', _state.session.broadcastSay, memberName)
+                        _comms.announce(string.format('BATTLE REZZED =>> %s <<=', memberName), 'o')
                         _state.heal.battleRezTimers[i] = os.clock() + (isCallOfWild and 360 or 180)
                     else
-                        mq.cmdf('/%s o "REZZED =>> %s <<="', _state.session.broadcastSay, memberName)
+                        _comms.announce(string.format('REZZED =>> %s <<=', memberName), 'o')
                         _state.heal.battleRezTimers[i] = os.clock() + (isCallOfWild and 360 or 60)
                     end
                     mq.cmd('/squelch /target clear')
@@ -831,8 +844,8 @@ function Heal.rezCheck()
                         _cast.castWhat(spell, corpseID, 'RezCheckA')
                         if _state.cast.castReturn == 'CAST_SUCCESS' then
                             tries = tries + 1
-                            mq.cmdf('/%s o "Rezzing =>> %s for the %d Time<<="',
-                                _state.session.broadcastSay, rezName, tries)
+                            _comms.announce(string.format('Rezzing =>> %s for the %d Time<<=',
+                                rezName, tries), 'o')
                             _state.heal.oocRezTimers[corpseID] = os.clock() + 180
                             -- Update corpseRezCheck string (mac:7055-7059)
                             if tryStr then

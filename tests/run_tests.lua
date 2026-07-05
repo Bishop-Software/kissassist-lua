@@ -73,6 +73,18 @@ local unitTests = {
         useMock      = false,
         clearModules = {},
     },
+    {
+        name         = 'test_healing_rez',
+        path         = 'tests.unit.test_healing_rez',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
+        name         = 'test_comms_announce',
+        path         = 'tests.unit.test_comms_announce',
+        useMock      = true,
+        clearModules = { 'modules.comms' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
