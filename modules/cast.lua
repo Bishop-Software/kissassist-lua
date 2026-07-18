@@ -16,6 +16,17 @@ local BARD_URGENT = {
     MezMobs=true, Mez=true, BreakMez=true, CharmMobs=true,
 }
 
+-- sentFrom values for out-of-combat buff/support casts. Bards must NOT queue these:
+-- the MQ2Medley once-queue only fires while a medley is actively cycling, so a queued
+-- buff can sit unfired (or land late) while checkBuffs re-queues it every loop ("Adding
+-- to once queue" spam with nothing landing). Instead pause the medley, cast directly,
+-- and let castWhat's resumeMedley restart it — works whether or not a medley is running.
+local BARD_DIRECT_CAST = {
+    Buffs=true, ['buffs-nomem']=true, BuffOnce=true, CheckAura=true,
+    Regenother=true, CheckEndurance=true, CastMount=true, CastMana=true,
+    Mana=true, Pet=true, ['Pet-nomem']=true,
+}
+
 function Cast.init(s, u)
     state = s
     utils = u
@@ -74,6 +85,18 @@ local function castSkill(spellName, sentFrom)
     if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' then
         utils.debug('cast', 'CastSkill cancelled — invisible')
         return 'CAST_CANCELLED'
+    end
+    -- Bard: /doability collides with the mid-cast song. Skills can't be queued
+    -- through MQ2Medley (not songs/AAs/items), so pause the medley, fire once, and
+    -- resume — same approach as castDisc.
+    if state.session.iAmABard and _bard then
+        if not mq.TLO.Me.AbilityReady(spellName)() then return 'CAST_RECOVER' end
+        _bard.pauseMedley()
+        mq.cmdf('/doability "%s"', spellName)
+        mq.delay(100)
+        _bard.resumeMedley()
+        utils.debug('cast', 'CastSkill (bard): /doability %s', spellName)
+        return 'CAST_SUCCESS'
     end
     utils.debug('cast', 'CastSkill: %s', spellName)
     mq.cmdf('/doability "%s"', spellName)
@@ -165,9 +188,15 @@ local function castSpell(spellName, sentFrom)
     -- Bard: route through MQ2Medley queue instead of pause/cast/resume.
     -- Urgent sentFroms interrupt the current song and block until fired.
     -- DPS rotation is fire-and-forget so the combat loop is not blocked.
+    -- Buff/support casts pause the medley and fall through to a direct /cast so
+    -- they actually land (the once-queue only fires while a medley is cycling).
     if state.session.iAmABard and _bard then
-        local urgent = BARD_URGENT[sentFrom] or false
-        return _bard.queueCast(spellName, urgent, urgent)
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()
+        else
+            local urgent = BARD_URGENT[sentFrom] or false
+            return _bard.queueCast(spellName, urgent, urgent)
+        end
     end
 
     -- Gem guard
@@ -323,20 +352,18 @@ local function castAA(whatAA, sentFrom)
         return 'CAST_CANCELLED'
     end
 
-    -- Bard: instant AAs fire via /alt act if ready; cast-time AAs queue through MQ2Medley.
-    -- Always return CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
+    -- Bard: queue ALL AAs (instant and cast-time) through MQ2Medley. A raw /alt act
+    -- for an instant AA collides with the mid-cast song ("You can't use that command
+    -- while casting") every tick; queuing interleaves it into the song rotation
+    -- cleanly. Gate on readiness so a cooling-down AA isn't queued, and let combatCast
+    -- set a slot timer on the returned CAST_SUCCESS so it isn't re-queued per tick.
     if state.session.iAmABard and _bard then
-        local aaID_     = mq.TLO.Me.AltAbility(whatAA).ID() or 0
-        local castTime_ = mq.TLO.Me.AltAbility(whatAA).Spell.CastTime() or 0
-        if castTime_ == 0 then
-            if mq.TLO.Me.AltAbilityReady(whatAA)() then
-                mq.cmdf('/alt act %d', aaID_)
-                utils.debug('cast', 'CastAA (bard instant): /alt act %d (%s)', aaID_, whatAA)
-                return 'CAST_SUCCESS'
-            end
-            return 'CAST_RECOVER'
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()  -- fall through to direct /alt act; castWhat resumes
         else
+            if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
             local urgent = BARD_URGENT[sentFrom] or false
+            utils.debug('cast', 'CastAA (bard queue): %s', whatAA)
             return _bard.queueCast(whatAA, urgent, urgent)
         end
     end
@@ -518,10 +545,14 @@ local function castItem(whatItem, sentFrom)
     -- CAST_SUCCESS so combatCast sets a slot timer and avoids per-tick spam.
     if state.session.iAmABard and _bard then
         if not mq.TLO.Me.ItemReady('=' .. whatItem)() then return 'CAST_RECOVER' end
-        local tID    = mq.TLO.Target.ID() or 0
-        local urgent = BARD_URGENT[sentFrom] or false
-        utils.debug('cast', 'CastItem (bard queue): "%s" -targetid|%d', whatItem, tID)
-        return _bard.queueCast(whatItem, urgent, urgent, tID)
+        if BARD_DIRECT_CAST[sentFrom] then
+            _bard.pauseMedley()  -- fall through to direct /useitem; castWhat resumes
+        else
+            local tID    = mq.TLO.Target.ID() or 0
+            local urgent = BARD_URGENT[sentFrom] or false
+            utils.debug('cast', 'CastItem (bard queue): "%s" -targetid|%d', whatItem, tID)
+            return _bard.queueCast(whatItem, urgent, urgent, tID)
+        end
     end
 
     ---@diagnostic disable-next-line: undefined-field
@@ -1169,6 +1200,15 @@ local function mashButtons()
                 local condNo = tonumber(entry:lower():match('|cond(%d+)')) or 0
                 if condNo > 0 and not _cond.eval(condNo) then goto next_mash end
             end
+        end
+        -- Bard: never issue raw /useitem|/alt act|/disc|/doability here — a song is
+        -- almost always mid-cast, so the client rejects them with "You can't use that
+        -- command while casting" every tick. Route through castWhat, which queues
+        -- items/AAs/spells via MQ2Medley and pause/resumes discs (same as the DPS
+        -- rotation). The bard-exempt casting gate above lets us reach this point.
+        if state.session.iAmABard and _bard then
+            Cast.castWhat(name, mq.TLO.Target.ID() or 0, 'mash')
+            goto next_mash
         end
         if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 and mq.TLO.Me.ItemReady(name)() then
             mq.cmd('/useitem "' .. name .. '"')

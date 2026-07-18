@@ -17,7 +17,7 @@ function Merc.init(state, utils)
     if member1() and member1.Owner.Name() == (mq.TLO.Me.CleanName() or '') then
         _state.merc.myMerc = member1.Name() or ''
     end
-    if (mq.TLO.Mercenary.State() or '') == 'Active' then
+    if (mq.TLO.Mercenary.State() or '') == 'ACTIVE' then
         _state.merc.inGroup = true
     end
 end
@@ -28,7 +28,7 @@ function Merc.check()
 
     -- Track inGroup before the merc.on gate so the UI checkbox can appear
     -- even when the merc system starts disabled (mac:8573)
-    if mercState == 'Active' then _state.merc.inGroup = true end
+    if mercState == 'ACTIVE' then _state.merc.inGroup = true end
 
     if _state.merc.on == 0 then return end
 
@@ -54,7 +54,7 @@ function Merc.check()
         -- Not yet assisting: engage when target HP is at or below threshold (mac:8577)
         local mobPct = myTargetID ~= 0 and (mq.TLO.Spawn('id ' .. myTargetID).PctHPs() or 100) or 100
         if mobPct <= _state.merc.assistAt
-           and mercState == 'Active'
+           and mercState == 'ACTIVE'
            and (_state.combat.combatStart or (isPuller and (_state.pull.mob or 0) ~= 0)) then
             mq.cmd('/mercassist')
             _utils.debug('merc', 'MercsDoWhat1: assisting on %d', myTargetID)
@@ -62,7 +62,7 @@ function Merc.check()
         end
     elseif myTargetID ~= 0 and _state.merc.assisting ~= myTargetID then
         -- Target changed: re-direct merc (mac:8582-8585)
-        if mercState == 'Active' then
+        if mercState == 'ACTIVE' then
             mq.cmd('/mercassist')
             _utils.debug('merc', 'MercsDoWhat2: re-assisting on %d', myTargetID)
             _state.merc.assisting = myTargetID
