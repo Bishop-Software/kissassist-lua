@@ -120,7 +120,6 @@ local State = {
         castReturn       = 'CAST_CANCELLED',
         castResult       = '',
         castCheck        = '',
-        checkResisted    = false,
         failCounter      = 0,
         failMax          = 3,
         gemSlots         = 8,

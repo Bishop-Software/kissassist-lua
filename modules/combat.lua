@@ -1290,7 +1290,12 @@ function Combat.fight(fromWhere)
     local combatRadius = _state.combat.meleeDistance
     if maxRange > combatRadius then combatRadius = maxRange + 5 end
 
-    -- Deferred: CheckCures/CheckHealth (M5), DoWeChase (M7), MezCheck (M4.x), DPS meter (M9)
+    -- Deferred: CheckCures/CheckHealth (M5), DoWeChase (M7), DPS meter (M9)
+
+    -- Mez runs before the engage block (BeforeAttack/melee/discs) so a fresh pull
+    -- doesn't wake adds before they can be locked down (mac:1069-1071).
+    if _mez and _state.mez.on ~= 0 then _mez.check(fromWhere) end
+    if _mez then _mez.aeCheck() end
 
     -- Initial pet engagement check (mac:1078)
     sp = mq.TLO.Spawn('id ' .. myID)
