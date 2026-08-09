@@ -38,11 +38,9 @@ local function onInterrupted()
     state.cast.castReturn = 'CAST_INTERRUPTED'
 end
 
--- CAST_RESISTED: only act when cast.lua has armed checkResisted;
--- CAST_IMMUNE takes priority (never downgrade from IMMUNE to RESISTED).
+-- CAST_RESISTED: CAST_IMMUNE takes priority (never downgrade from IMMUNE to RESISTED).
 local function onResisted(_, name)
     utils.debug('cast', 'CAST_RESISTED: ' .. tostring(name))
-    if not state.cast.checkResisted then return end
     printf('\aw%s was Resisted \ag', tostring(name))
     if state.cast.castReturn ~= 'CAST_IMMUNE' then
         state.cast.castReturn = 'CAST_RESISTED'

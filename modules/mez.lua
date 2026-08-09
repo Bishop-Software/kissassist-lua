@@ -152,12 +152,21 @@ local function mezMobsAE(aeTargetID)
         printf('\ay[Mez] AE Mezzing (Enc) -> %s', spell)
         while not mq.TLO.Me.SpellReady(spell)() and not _state.terminate do mq.delay(200) end
         if _state.terminate then if wasChasing then _state.session.chaseAssist = true end; return end
-        _cast.castWhat(spell, aeTargetID, 'Mez', 0, 0)
-        local dur = (mq.TLO.Spell(spell).Duration() and
-                     mq.TLO.Spell(spell).Duration.TotalSeconds() or 0)
-        _state.timers.mezAE = mq.gettime() + (dur > 0 and dur * 1000 or 30000)
-        -- Reset all per-slot mez timers after AE (mac:7484-7486)
-        for i = 1, 30 do _state.timers['mezTimer' .. i] = 0 end
+        local result = _cast.castWhat(spell, aeTargetID, 'Mez', 0, 0)
+
+        -- SUCCESS/RESISTED/IMMUNE all count as "landed on the group" for AE purposes
+        -- (mac:7472) — only a hard failure (fizzle/interrupt/etc) falls back to the
+        -- short GemTimer-based retry instead of the full spell-duration cooldown.
+        if result == 'CAST_SUCCESS' or result == 'CAST_RESISTED' or result == 'CAST_IMMUNE' then
+            local dur = (mq.TLO.Spell(spell).Duration() and
+                         mq.TLO.Spell(spell).Duration.TotalSeconds() or 0)
+            _state.timers.mezAE = mq.gettime() + (dur > 0 and dur * 1000 or 30000)
+            -- Reset all per-slot mez timers after AE (mac:7484-7486)
+            for i = 1, 30 do _state.timers['mezTimer' .. i] = 0 end
+        else
+            local gemT = mq.TLO.Me.GemTimer(spell)() or 0
+            _state.timers.mezAE = mq.gettime() + (gemT * 1000)
+        end
         if wasChasing then _state.session.chaseAssist = true end
     end
 end
@@ -179,13 +188,41 @@ local function mezMobs(mobID, slotIndex)
     local mobName = (mq.TLO.Spawn('id ' .. tostring(mobID)).CleanName() or tostring(mobID))
     printf('\ay[Mez] Mezzing %s (ID:%d) -> %s', mobName, mobID, spell)
     if _state.terminate then return end
-    _cast.castWhat(spell, mobID, 'Mez', 0, 0)
-    if _state.terminate then return end
 
-    -- Set per-slot timer to spell duration (mac:7492-style)
-    local dur = (mq.TLO.Spell(spell).Duration() and
-                 mq.TLO.Spell(spell).Duration.TotalSeconds() or 60)
-    _state.timers['mezTimer' .. slotIndex] = mq.gettime() + (dur * 1000)
+    -- Retry once on resist, mirroring MezMobs' CAST_RESISTED handling (mac:7533-7548).
+    -- Only a landed cast (CAST_SUCCESS) arms the per-slot timer — a resisted-twice or
+    -- otherwise-failed cast leaves the timer alone so the mob is retried next pass.
+    for tryNum = 1, 2 do
+        local result = _cast.castWhat(spell, mobID, 'Mez', 0, 0)
+        if _state.terminate then return end
+
+        if result == 'CAST_SUCCESS' then
+            local dur = (mq.TLO.Spell(spell).Duration() and
+                         mq.TLO.Spell(spell).Duration.TotalSeconds() or 60)
+            _state.timers['mezTimer' .. slotIndex] = mq.gettime() + (dur * 1000 * 0.90)
+            return
+        elseif result == 'CAST_IMMUNE' then
+            local ids = _state.mez.immuneIDs or ''
+            if not ids:find('|' .. tostring(mobID), 1, true) then
+                _state.mez.immuneIDs = ids .. '|' .. tostring(mobID)
+            end
+            printf('\ay[Mez] Immune -> %s (ID:%d)', mobName, mobID)
+            return
+        elseif result == 'CAST_RESISTED' and tryNum < 2 then
+            printf('\ay[Mez] Resisted -> %s (ID:%d), retrying', mobName, mobID)
+            if _state.mez.mezDebuffOnResist and _state.mez.mezDebuffSpell ~= '' then
+                mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() or _state.terminate end)
+                if _state.terminate then return end
+                _cast.castWhat(_state.mez.mezDebuffSpell, mobID, 'MezDebuff', 0, 0)
+                mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() or _state.terminate end)
+                if _state.terminate then return end
+            end
+            -- loop retries
+        else
+            -- fizzle/interrupted/resisted-twice/cancelled — leave timer alone, retry next pass
+            return
+        end
+    end
 end
 
 -- Core mez loop. Port of Sub MezCheck / DoMezStuff (kissassist.mac:8074 / 7256).

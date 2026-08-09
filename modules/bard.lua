@@ -142,8 +142,15 @@ function Bard.doBardStuff()
         end
     end
 
-    -- Invis/hold path (mac:6248-6253): leave active medley alone; queue GoM if pending
+    -- Invis/hold path (mac:6248-6253): CastBardCheck stops the active twist so
+    -- songs don't break invis. MQ2Medley runs autonomously once started, so the
+    -- equivalent here is to stop it outright rather than leave it running.
     if mq.TLO.Me.Invis() or s.bard.twistHold then
+        if Medley.Active() then
+            stopMedley()
+            s.bard.twisting    = false
+            s.bard.dpsTwisting = false
+        end
         if s.bard.gomActive then
             mq.cmdf('/medley queue %s', s.bard.gomMedley)
             s.bard.gomActive = false
