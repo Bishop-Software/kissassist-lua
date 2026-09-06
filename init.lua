@@ -122,7 +122,7 @@ Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
-UI.init(State, Cond)
+UI.init(State)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 

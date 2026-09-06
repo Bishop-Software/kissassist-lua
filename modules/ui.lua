@@ -21,7 +21,6 @@ local MEZ_MODE_LABELS   = { 'Off', 'Single + AE', 'Single only', 'AE only' }
 
 
 local Config      = require('modules.config')
-local CondBuilder = require('modules.condbuilder')
 
 local UI = {}
 local _state
@@ -1000,10 +999,9 @@ local function drawConditions()
     -- Conditions are stored as an indexed array under the 'Cond' key.
     local condArr = Config.get('KConditions', 'Cond', nil) or {}
 
-    if ImGui.BeginTable('##condtbl', 4, 0) then
+    if ImGui.BeginTable('##condtbl', 3, 0) then
         ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
         ImGui.TableSetupColumn('Label',      ImGuiTableColumnFlags.WidthFixed,   68)
-        ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   28)
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
@@ -1025,15 +1023,6 @@ local function drawConditions()
             -- Cond10, Cond100 — unpadded, per config.lua's `ra` reader).
             ImGui.Text(string.format('Cond%d', i))
             ImGui.TableSetColumnIndex(2)
-            if ImGui.Button('[...]##condbuild' .. i) then
-                CondBuilder.open(i, s.cond.expressions[i] or '', function(slotIdx, newValue)
-                    s.cond.expressions[slotIdx] = newValue ~= '' and newValue or nil
-                    condArr[slotIdx] = newValue ~= '' and newValue or 'null'
-                    Config.set('KConditions', 'Cond', condArr)
-                    Config.save()
-                end)
-            end
-            ImGui.TableSetColumnIndex(3)
             if ImGui.Button('[-]##condrem' .. i) then
                 s.cond.expressions[i] = nil
                 if i == s.cond.size and s.cond.size > 1 then
@@ -2569,16 +2558,14 @@ local function draw()
         end
     end
     ImGui.End()
-    CondBuilder.draw()
 end
 
 -- ---------------------------------------------------------------------------
 -- Init
 -- ---------------------------------------------------------------------------
 
-function UI.init(state, cond)
+function UI.init(state)
     _state = state
-    CondBuilder.init(cond)
     _state.ui.miniMode = Config.get('UI', 'MiniMode', '0') == '1'
     mq.imgui.init('KissAssist Lua', draw)
     mq.bind('/kaui', function(arg)
