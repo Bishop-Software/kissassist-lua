@@ -545,7 +545,7 @@ function Config.defaultCfg()
             LoadSpellSet = '0', SpellSetName = '',
         },
         Melee = {
-            AssistAt = '95', MeleeOn = '1', FaceMobOn = '0', MeleeDistance = '20',
+            AssistAt = '95', MeleeOn = '1', FaceMobOn = '1', MeleeDistance = '20',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
             TargetSwitchingOn = '0', ManualTargetMode = '0', AutoHide = '0', MeleeTwistOn = '0',
         },
