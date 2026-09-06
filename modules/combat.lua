@@ -1467,7 +1467,7 @@ function Combat.fight(fromWhere)
                         local fsp = mq.TLO.Spawn('id ' .. myID)
                         local mobY = fsp and fsp.Y() or 0
                         local mobX = fsp and fsp.X() or 0
-                        mq.cmdf('/squelch /face loc %f,%f %s', mobY, mobX, faceMode)
+                        mq.cmdf('/squelch /face %s loc %f,%f', faceMode, mobY, mobX)
                     end
                 end
             end

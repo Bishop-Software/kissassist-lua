@@ -122,7 +122,7 @@ Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
-UI.init(State, Cond)
+UI.init(State)
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
@@ -180,7 +180,13 @@ while not State.terminate do
     -- Phase 3.5: charm
     if State.session.iAmACharmClass and State.charm.on then Charm.check('MainLoop') end
     -- Phase 4: movement
-    if not State.combat.combatStart and State.movement.returnToCamp then
+    -- mac:386 gates this on Me.CombatState (lingers while any mob is aggroed/engaged);
+    -- combatStart alone flips false the instant a kill lands via combatReset, even
+    -- while other mobs are still aggroed at camp, so also require no live aggro mob
+    -- to avoid yo-yo'ing back to camp between kills mid-fight.
+    if not State.combat.combatStart and State.movement.returnToCamp
+            and State.combat.mobCount == 0
+            and (State.combat.aggroTargetID == '' or State.combat.aggroTargetID == 0) then
         Movement.doWeMove(0, 'mainloop')
     end
     if State.session.chaseAssist then Movement.doWeChase() end
