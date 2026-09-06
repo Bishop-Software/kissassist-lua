@@ -86,7 +86,7 @@ function M.run(TH, MockMQ)
     -- Non-rez heals kept in healsArray, rez entries excluded ----------------------
     local heals = state.heal.healsArray
     TH.assert_eq(#heals, 2, 'healsArray keeps only the 2 non-rez entries')
-    TH.assert_eq(heals[1] and heals[1].name, 'Lay on Hands|20', 'heals[1] = Lay on Hands')
+    TH.assert_eq(heals[1] and heals[1].name, 'Lay on Hands|20|Me', 'heals[1] = Lay on Hands')
     TH.assert_eq(heals[2] and heals[2].name, "Marr's Gift|100|Me", 'heals[2] = Marr\'s Gift')
 
     -- No rez spell leaked into the heal rotation ---------------------------------
