@@ -193,7 +193,7 @@ function Charm.check(sentFrom)
     -- Gem check: if it is a book spell and not currently memmed, mem it then return
     -- (mac: /MemSpell ${MiscGem} "${CharmSpell}" ... /return)
     if not isAA and not mq.TLO.Me.Gem(spell)() then
-        local miscGem = tonumber(Config.get('SpellSets', 'MiscGem', '0')) or 0
+        local miscGem = tonumber(Config.get('Spells', 'MiscGem', '0')) or 0
         if miscGem > 0 then
             mq.cmdf('/MemSpell %d "%s"', miscGem, spell)
             mq.delay(15000, function()
@@ -237,8 +237,8 @@ function Charm.check(sentFrom)
             goto continue_charm
         end
 
-        -- MA's current target with no charm pet — let group kill it
-        if mobID == _state.combat.myTargetID and maAlive and _state.charm.petId == 0 then
+        -- MA's current target with no charm pet — let group kill it (mac: CharmKeep==0 && !CharmPet)
+        if mobID == _state.combat.myTargetID and maAlive and not keep and _state.charm.petId == 0 then
             clearSlot(entry, i)
             goto continue_charm
         end
@@ -429,9 +429,10 @@ function Charm.cast(mobId, timerIdx)
             break
 
         elseif result == 'CAST_RESISTED' and charmFail < 2 then
-            -- One retry: optionally apply a magic debuff first (mac: MezDebuffOnResist guard)
+            -- One retry: optionally apply a magic debuff first, unless already tashed
+            -- (mac: MezDebuffOnResist && !Target.Tashed.ID guard)
             _comms.announce(string.format('[Kiss] CHARM Resisted -> %s <- ID:%d', mobName, mobId))
-            if _state.mez and _state.mez.mezDebuffOnResist then
+            if _state.mez and _state.mez.mezDebuffOnResist and (mq.TLO.Target.Tashed.ID() or 0) == 0 then
                 local debuffSpell = _state.mez.mezDebuffSpell or ''
                 if debuffSpell ~= '' then
                     -- Wait for any GCD before casting debuff
