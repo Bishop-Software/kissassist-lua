@@ -3,6 +3,7 @@ KissAssist_*.ini
 Loot.ini
 *.ini.bak
 *.mac
+*.inc
 
 # MacroQuest files
 *.log
