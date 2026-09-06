@@ -31,7 +31,7 @@ function Cast.init(s, u)
     state = s
     utils = u
     state.cast.checkStuckGem       = Config.get('Spells', 'CheckStuckGem', '1') == '1'
-    state.cast.castingInterruptOn  = tonumber(Config.get('Spells', 'CastingInterruptOn', '0')) or 0
+    state.cast.castingInterruptOn  = tonumber(Config.get('Spells', 'CastingInterruptOn', '62')) or 62
     local lss = tonumber(Config.get('Spells', 'LoadSpellSet', '0')) or 0
     state.cast.loadSpellSet = lss
     state.cast.spellSetName = Config.get('Spells', 'SpellSetName', '') or ''

@@ -284,8 +284,12 @@ function Config.migrateIni(state)
         if v then gemsArr[i] = v end
     end
     -- [Spells] — gem layout, cast settings, spell set config (INI [Spells] + [SpellS])
+    -- mac:14643-14645 — a legacy CastingInterruptOn=1 expands to bitmask 62
+    -- (buffs+heals+dps+mez+cure) rather than being used as a raw bitmask.
+    local castingInterruptOn = r('Spells','CastingInterruptOn')
+    if tonumber(castingInterruptOn) == 1 then castingInterruptOn = '62' end
     cfg.Spells = {
-        CastingInterruptOn = r('Spells','CastingInterruptOn'),
+        CastingInterruptOn = castingInterruptOn,
         CheckStuckGem      = r('Spells','CheckStuckGem'),
         Gems               = gemsArr,
         MiscGem            = r('SpellS','MiscGem'),
@@ -539,7 +543,7 @@ function Config.defaultCfg()
             MountOn          = '0',
         },
         Spells = {
-            CastingInterruptOn = '0', CheckStuckGem = '0',
+            CastingInterruptOn = '62', CheckStuckGem = '0',
             Gems = {},
             MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
             LoadSpellSet = '0', SpellSetName = '',
