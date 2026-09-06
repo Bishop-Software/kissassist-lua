@@ -30,7 +30,7 @@ end
 -- Main AFK safety monitor — mirrors Sub AFKTools (mac:11665).
 function Afk.check()
     -- Skip while in active combat with heals running (mac:11672)
-    if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= 0 then return end
+    if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= '' then return end
 
     -- Stranger detection (AFKToolsOn == 1 or 2) (mac:11673-11693)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
