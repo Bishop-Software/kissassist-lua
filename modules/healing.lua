@@ -759,8 +759,9 @@ function Heal.rezCheck()
 
             ---@diagnostic disable-next-line: undefined-field
             local otherZone = m and m.OtherZone() or false
-            -- Skip if Call of Wild rez and member is in another zone (mac:6920)
-            if spell:find('Call of', 1, true) and otherZone then goto next_gm end
+            -- Skip a Call-of-style rez when the member is in the SAME zone — those
+            -- AAs are reserved for cross-zone rez (mac:6920).
+            if spell:find('Call of', 1, true) and not otherZone then goto next_gm end
 
             do
                 local corpseID = mq.TLO.Spawn(memberName .. ' pccorpse').ID() or 0
