@@ -1519,8 +1519,8 @@ function Combat.fight(fromWhere)
             -- GroupEscape: evac if MA dies mid-combat (mac:1589 CheckBeforeCast)
             groupEscape()
 
-            -- Non-chainpull DPS path (mac:1178-1200)
-            if not (isPuller and _state.pull.chainPull) then
+            -- Non-chainpull DPS path (mac:1178-1200): only a plain puller that is chain-pulling skips it
+            if not (role == 'puller' and _state.pull.chainPull ~= 0) then
                 sp = mq.TLO.Spawn('id ' .. myID)
                 local curType = (sp and sp.Type() or ''):lower()
                 -- Dead/paused: exit combat (mac:1185-1187)

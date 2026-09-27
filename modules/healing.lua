@@ -201,7 +201,8 @@ function Heal.checkHealth(sentFrom)
     if _state.heal.healsOn == 0 then return end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
-    if _state.heal.medding and not _state.heal.medCombat then return end
+    -- mac:6369 skips only when medding WITH MedCombat; a stale medding flag must not block combat heals.
+    if _state.heal.medding and _state.heal.medCombat then return end
 
     _utils.debug('heals', 'checkHealth enter ' .. sentFrom)
 
