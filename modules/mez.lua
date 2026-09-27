@@ -150,7 +150,20 @@ local function mezMobsAE(aeTargetID)
         end
         if _state.terminate then if wasChasing then _state.session.chaseAssist = true end; return end
         printf('\ay[Mez] AE Mezzing (Enc) -> %s', spell)
-        while not mq.TLO.Me.SpellReady(spell)() and not _state.terminate do mq.delay(200) end
+        -- Wait only for something that can become ready: an AA, or a spell already in a gem.
+        -- An unmemmed book spell falls through so castWhat can mem it.
+        local function aeReady()
+            return mq.TLO.Me.SpellReady(spell)() or mq.TLO.Me.AltAbilityReady(spell)()
+        end
+        if hasAA or mq.TLO.Me.Gem(spell)() then
+            local deadline = mq.gettime() + 5000
+            while not aeReady() and not _state.terminate and mq.gettime() < deadline do mq.delay(200) end
+            if not _state.terminate and not aeReady() then
+                _state.timers.mezAE = mq.gettime() + 2000
+                if wasChasing then _state.session.chaseAssist = true end
+                return
+            end
+        end
         if _state.terminate then if wasChasing then _state.session.chaseAssist = true end; return end
         local result = _cast.castWhat(spell, aeTargetID, 'Mez', 0, 0)
 

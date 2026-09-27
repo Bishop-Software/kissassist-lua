@@ -174,12 +174,12 @@ local function onTargetMode()
            state.combat.manualTargetMode and 'ON' or 'OFF')
 end
 
-local function onKissCast(castWhat, whatID, forceInterrupt)
+local function onKissCast(castWhat, whatID, _forceInterrupt)
     if not castWhat or castWhat == '' then
         printf('\ay/kisscast <spellname>')
         return
     end
-    _cast.castWhat(castWhat, tonumber(whatID) or 0, forceInterrupt)
+    _cast.castWhat(castWhat, tonumber(whatID) or 0, 'KissCast')
 end
 
 local function onPetOn()

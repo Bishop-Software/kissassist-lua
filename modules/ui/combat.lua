@@ -105,7 +105,7 @@ function CombatUI.drawMelee()
 end
 
 -- ---------------------------------------------------------------------------
--- Shared split/join for DPS + Burn (identical wire format)
+-- DPS entry split/join
 -- ---------------------------------------------------------------------------
 
 local function splitDPS(raw)
@@ -545,6 +545,15 @@ end
 -- Burn rotation panel
 -- ---------------------------------------------------------------------------
 
+-- .mac Burn layout: SpellName|Target[|condNNN] (mac:11788-11816)
+local BURN_TARGETS = { 'Mob', 'Me', 'MA', 'Pet' }
+
+local function joinBurn(spell, target, condNo)
+    local result = spell .. '|' .. (target ~= '' and target or 'Mob')
+    if condNo > 0 then result = result .. '|' .. string.format('cond%d', condNo) end
+    return result
+end
+
 function CombatUI.drawBurn()
     local s = _state
 
@@ -580,11 +589,13 @@ function CombatUI.drawBurn()
     local burnRaw  = Config.get('Burn', 'Burn',     nil) or {}
     local burnSize = tonumber(Config.get('Burn', 'BurnSize', '15')) or 15
 
+    -- Cast.doBurn consumes raw entry strings (same as Combat.init), not parsed slot tables.
     local function syncBurnArray()
         s.combat.burnArray = {}
-        for _, slot in ipairs(Config.parseCondArray(burnRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                s.combat.burnArray[#s.combat.burnArray + 1] = slot
+        for i = 1, burnSize do
+            local v = burnRaw[i]
+            if v and v ~= '' and v:lower() ~= 'null' then
+                s.combat.burnArray[#s.combat.burnArray + 1] = v
             end
         end
     end
@@ -595,11 +606,9 @@ function CombatUI.drawBurn()
     end
 
     local tblFlags = bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.SizingFixedFit)
-    if ImGui.BeginTable('burn_tbl', 6, tblFlags) then
+    if ImGui.BeginTable('burn_tbl', 4, tblFlags) then
         ImGui.TableSetupColumn('Spell',  ImGuiTableColumnFlags.WidthStretch, 0)
-        ImGui.TableSetupColumn('HP%',    ImGuiTableColumnFlags.WidthFixed,    90)
         ImGui.TableSetupColumn('Target', ImGuiTableColumnFlags.WidthFixed,    75)
-        ImGui.TableSetupColumn('DAMod',  ImGuiTableColumnFlags.WidthFixed,    90)
         ImGui.TableSetupColumn('Cond',   ImGuiTableColumnFlags.WidthFixed,   160)
         ImGui.TableSetupColumn('',       ImGuiTableColumnFlags.WidthFixed,    32)
         ImGui.TableHeadersRow()
@@ -607,9 +616,10 @@ function CombatUI.drawBurn()
         for i = 1, burnSize do
             local raw     = burnRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
-            local spell, thresh, target, damod, cond = splitDPS(isEmpty and '' or raw)
-            local newSpell, newThresh, newTarget, newDamod, newCond = spell, thresh, target, damod, cond
-            local sc, tc, tac, dc, cc = false, false, false, false, false
+            local spell, target, condNo = '', 'Mob', 0
+            if not isEmpty then spell, target, condNo = Config.parseBurnEntry(raw) end
+            local newSpell, newTarget, newCondNo = spell, target, condNo
+            local sc, tac, cc = false, false, false
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -618,32 +628,20 @@ function CombatUI.drawBurn()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local threshNum = tonumber(thresh) or 0
-            local newThreshNum
-            newThreshNum, tc = ImGui.InputInt('##bthresh' .. i, threshNum)
-            if tc then newThresh = tostring(math.max(0, math.min(200, newThreshNum))) end
-            ImGui.PopItemWidth()
-
-            ImGui.TableNextColumn()
-            ImGui.PushItemWidth(-1)
             local targetIdx = 1
-            for k, v in ipairs(ATGT_VALUES) do if v == target then targetIdx = k; break end end
+            for k, v in ipairs(BURN_TARGETS) do
+                if v:lower() == target:lower() then targetIdx = k; break end
+            end
             local newTargetIdx
-            newTargetIdx, tac = ImGui.Combo('##btgt' .. i, targetIdx, ATGT_LABELS)
-            if tac then newTarget = ATGT_VALUES[newTargetIdx] end
+            newTargetIdx, tac = ImGui.Combo('##btgt' .. i, targetIdx, BURN_TARGETS)
+            if tac then newTarget = BURN_TARGETS[newTargetIdx] or 'Mob' end
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            newDamod, dc = ImGui.InputText('##bdamod' .. i, damod, 0)
-            ImGui.PopItemWidth()
-
-            ImGui.TableNextColumn()
-            ImGui.PushItemWidth(-1)
-            local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
             local newCondIdx
             newCondIdx, cc = ImGui.Combo('##bcond' .. i, condNo + 1, condLabels)
-            newCond = newCondIdx == 1 and '' or string.format('cond%d', newCondIdx - 1)
+            if cc then newCondNo = newCondIdx - 1 end
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
@@ -660,15 +658,9 @@ function CombatUI.drawBurn()
                 syncBurnArray()
             end
 
-            if sc or tc or tac or dc or cc then
+            if sc or tac or cc then
                 local spellVal = sc and newSpell or spell
-                burnRaw[i] = spellVal ~= '' and joinDPS(
-                    spellVal,
-                    tc  and newThresh  or thresh,
-                    tac and newTarget  or target,
-                    dc  and newDamod   or damod,
-                    cc  and newCond    or cond
-                ) or 'null'
+                burnRaw[i] = spellVal ~= '' and joinBurn(spellVal, newTarget, newCondNo) or 'null'
                 Config.set('Burn', 'Burn', burnRaw)
                 Config.save()
                 syncBurnArray()
