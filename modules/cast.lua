@@ -1579,15 +1579,11 @@ function Cast.doBurn()
     for i, entry in ipairs(state.combat.burnArray) do
         if mq.TLO.Me.Hovering() then break end
 
-        local parts = {}
-        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-        local spellName  = parts[1] or 'null'
-        local targetType = parts[2] or 'Mob'
-        local condNo3    = tonumber(parts[3]) or 0  -- >0: skip entry if false; <0: abort burn if false
+        local spellName, targetType, condNo = Config.parseBurnEntry(entry)
 
-        if spellName == 'null' or spellName == '' then goto next_burn end
+        if spellName:lower() == 'null' or spellName == '' then goto next_burn end
 
-        -- Resolve target ID (mac:11799-11812)
+        -- Resolve target ID (mac:11799-11812); Mob, abort, and anything else → current target
         local tType = targetType:lower()
         local burnTargetID
         if tType == 'me' then
@@ -1600,14 +1596,8 @@ function Cast.doBurn()
             burnTargetID = state.combat.myTargetID
         end
 
-        if condNo3 ~= 0 and _cond then
-            if not _cond.eval(math.abs(condNo3)) then
-                if condNo3 < 0 then return end  -- abortFlag: abort entire burn
-                goto next_burn                  -- normal skip
-            end
-        end
-
-        local result = Cast.castWhat(spellName, burnTargetID, 'burn')
+        -- castWhat evaluates condNo and returns CAST_COND_FAILED when it's false
+        local result = Cast.castWhat(spellName, burnTargetID, 'burn', condNo)
 
         if result == 'CAST_SUCCESS' then
             printf('Casting >> BURN%d:%s', i, spellName)

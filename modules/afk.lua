@@ -2,15 +2,14 @@ local mq = require('mq')
 
 local Afk = {}
 
-local _state, _utils, _combat, _comms, _config
+local _state, _combat, _comms, _config
 
 local function posseLoaded()
     return mq.TLO.Plugin('MQ2Posse').IsLoaded() == true
 end
 
-function Afk.init(state, utils, combat, comms, config)
+function Afk.init(state, _utils, combat, comms, config)
     _state  = state
-    _utils  = utils
     _combat = combat
     _comms  = comms
     _config = config
@@ -23,7 +22,7 @@ function Afk.init(state, utils, combat, comms, config)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
         mq.cmdf('/posse radius %d', _state.afk.pcRadius)
     elseif (_state.afk.on == 1 or _state.afk.on == 2) and not posseLoaded() then
-        _utils.debug('AFKTools: stranger detection enabled but MQ2Posse not loaded — stranger check disabled')
+        printf('\ayAFKTools: stranger detection enabled but MQ2Posse not loaded — stranger check disabled')
     end
 end
 
@@ -37,7 +36,7 @@ function Afk.check()
         local holding = false
         while (mq.TLO.Posse.Strangers() or 0) >= 1 do ---@diagnostic disable-line: undefined-field
             if not holding then
-                _utils.debug('[AHTools] Macro on hold due to player activity in camp radius.')
+                printf('\ay[AHTools] Macro on hold due to player activity in camp radius.')
                 _comms.announce('**PCS DETECTED IN CAMP RADIUS**')
                 mq.cmd('/beep')
                 holding = true
@@ -63,7 +62,7 @@ function Afk.check()
                 local holding = false
                 while (mq.TLO.SpawnCount('GM')() or 0) >= 1 do
                     if not holding then
-                        _utils.debug('[AHTools] Macro on hold due to GM Presence')
+                        printf('\ay[AHTools] Macro on hold due to GM Presence')
                         _comms.announce('** GM DETECTED **')
                         mq.cmd('/beep')
                         holding = true
@@ -72,13 +71,13 @@ function Afk.check()
                     mq.doevents()
                 end
             elseif action == 2 then
-                _utils.debug('[AHTools] Ending Macro due to GM Presence')
+                printf('\ar[AHTools] Ending Macro due to GM Presence')
                 _state.terminate = true
             elseif action == 3 then
-                _utils.debug('[AHTools] Unloading MQ2 due to GM Presence')
+                printf('\ar[AHTools] Unloading MQ2 due to GM Presence')
                 mq.cmd('/unload')
             elseif action == 4 then
-                _utils.debug('[AHTools] Quitting out of EQ due to GM Presence')
+                printf('\ar[AHTools] Quitting out of EQ due to GM Presence')
                 mq.cmd('/quit')
             end
         end

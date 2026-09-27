@@ -652,6 +652,21 @@ function Config.parseCondArray(arr)
     return out
 end
 
+-- Parse a [Burn] entry in .mac format: SpellName|Target[|abort][|condNNN] (mac:11788-11816).
+-- Target is Mob/Me/MA/Pet/abort. Entries written by older UI builds used the DPS layout
+-- (SpellName|HP%|Target|...), so a numeric second field is skipped to recover the target.
+-- Returns spell, target, condNo (0 = no condition).
+function Config.parseBurnEntry(raw)
+    local condNo  = tonumber(raw:lower():match('|cond(%d+)')) or 0
+    local condPos = raw:lower():find('|cond%d')
+    local body    = condPos and raw:sub(1, condPos - 1) or raw
+    local parts = {}
+    for p in (body .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+    local target = parts[2] or ''
+    if tonumber(target) then target = parts[3] or '' end
+    return parts[1] or '', target, condNo
+end
+
 -- Read a value from the loaded config. Returns default if section/key absent.
 -- All values are stored as strings (matching INI); callers convert types as needed.
 function Config.get(section, key, default)
