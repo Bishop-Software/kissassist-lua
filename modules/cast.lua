@@ -1312,12 +1312,10 @@ function Cast.combatCast()
     -- and mashButtons run, so casting follows the player's pick (no snap-back).
     syncManualTarget()
 
-    local debuffCount = state.debuff.count or 0
-    local dpsStart    = debuffCount + 1
-    local dpsArr      = state.combat.dpsArray
+    local dpsArr = state.combat.dpsArray
 
     -- If nothing to cast in DPS slots, still run mash
-    if dpsStart > #dpsArr then
+    if #dpsArr == 0 then
         mashButtons()
         return
     end
@@ -1326,7 +1324,7 @@ function Cast.combatCast()
     if (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() ~= myID then
         if myID == 0 then return end
     end
-    for i = dpsStart, #dpsArr do
+    for i = 1, #dpsArr do
         -- Drain all pending events before each entry (mirrors inner EventFlag while loop)
         repeat
             state.combat.eventFlag = false
