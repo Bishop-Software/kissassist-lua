@@ -195,7 +195,7 @@ function Pull.pullValidate(mobID, flag)
     -- Eye of Zomm / Tallon: reject if a matching PC name exists in zone.
     if name:find('Eye of', 1, true) then
         local suffix = name:sub(8)  -- everything after "Eye of "
-        if suffix ~= '' and (mq.TLO.SpawnCount('pc ' .. suffix)() or 0) > 0 then
+        if suffix ~= '' and (mq.TLO.SpawnCount('pc name ' .. suffix)() or 0) > 0 then
             _utils.debug('pull', 'pullValidate: %s is Eye of Zomm/Tallon', name)
             return false
         end
@@ -654,14 +654,23 @@ local function pullWithPet(mobID)
     if mq.TLO.Target.ID() then mq.cmd('/face fast nolook') end
     if (mq.TLO.Me.Pet.Stance() or '') ~= 'FOLLOW' then mq.cmd('/pet follow') end
     printf('\awPulling with PET now!')
-    mq.cmd('/pet attack')
-    local tries = 0
-    while tries < 20 and s.pull.aggroTargetID == '' do
-        mq.doevents()
-        mq.delay(100)
+    -- Re-send the pet each 2s window it isn't moving; give up after 6 idle windows (mac:10323-10346)
+    local petMoving    = false
+    local triedSending = 0
+    while s.pull.aggroTargetID == '' do
+        if not petMoving then mq.cmd('/pet attack') end
+        mq.delay(2000, function() mq.doevents(); return s.pull.aggroTargetID ~= '' end)
+        if s.pull.aggroTargetID ~= '' then break end
+        if mq.TLO.Me.Pet.Moving() then
+            petMoving    = true
+            triedSending = 0
+        else
+            petMoving    = false
+            triedSending = triedSending + 1
+        end
         local sp = mq.TLO.Spawn('id ' .. mobID)
-        if not sp() or (sp.Type() or '') == 'corpse' then break end
-        tries = tries + 1
+        if not sp() or (sp.Type() or ''):lower() == 'corpse' then break end
+        if triedSending > 5 then break end
     end
     if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
     mq.cmd('/pet back off')

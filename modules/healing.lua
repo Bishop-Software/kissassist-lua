@@ -9,7 +9,8 @@ local _state, _utils, _cast, _cond, _movement, _comms
 -- Checked in order; first entry whose spell is memmed AND whose maxLevel >= target level is used.
 -- Summon Remains AA handled separately (requires coffins > 3).
 local SUMMON_CORPSE_SPELLS = {
-    { spell = "Death's Proclamation",       maxLevel = 999 },
+    { spell = "Tormentor's Proclamation",   maxLevel = 999 },
+    { spell = "Death's Proclamation",       maxLevel = 125 },
     { spell = "Thanatos' Proclamation",     maxLevel = 120 },
     { spell = "Duskreaper's Proclamation",  maxLevel = 115 },
     { spell = "Shadereaper's Proclamation", maxLevel = 110 },
