@@ -640,6 +640,8 @@ function Buffs.checkBuffs(forceGroup)
             local bookID = mq.TLO.Me.Book(bookSlot).ID()
             if bookID and bookID ~= 0 then
                 bookSpellTT = mq.TLO.Spell(bookID).TargetType() or '0'
+                -- mac:4297 (rev 040): unknown book TT is treated as single
+                if bookSpellTT:lower() == 'unknown' then bookSpellTT = 'single' end
             end
         end
 

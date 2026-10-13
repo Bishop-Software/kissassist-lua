@@ -329,7 +329,7 @@ local function validateTarget(spawnID)
     -- "Eye of" charm-NPC: don't attack "eye of <name>" when that PC is present
     if mobName:lower():find('eye of ', 1, true) then
         local stripped = mobName:sub(8)
-        if (mq.TLO.SpawnCount('pc ' .. stripped)() or 0) > 0 then return false end
+        if (mq.TLO.SpawnCount('pc name ' .. stripped)() or 0) > 0 then return false end
     end
 
     -- PC-owned pet
