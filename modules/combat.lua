@@ -405,6 +405,20 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
     _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',           '1') == '1'
     _state.combat.useMQ2Melee       = Config.get('Melee', 'UseMQ2Melee',       '0') == '1'
+    -- MQ2Melee must actually be loaded, otherwise nothing turns auto-attack on (mac:16348-16366).
+    -- Unlike the mac we don't load it ourselves: MQ2Melee interrupts MQ2Medley songs on bards.
+    if _state.combat.useMQ2Melee then
+        if mq.TLO.Plugin('MQ2Melee').IsLoaded() then
+            mq.cmd('/squelch /melee aggro=0')
+            mq.cmd('/squelch /melee melee=1')
+            mq.cmd('/squelch /melee petassist=0')
+            mq.cmd('/squelch /melee on')
+            mq.cmd('/squelch /melee stickmode=0')
+        else
+            printf('\ayMQ2Melee plugin is not loaded. Setting UseMQ2Melee off for this session.')
+            _state.combat.useMQ2Melee = false
+        end
+    end
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'
 
@@ -533,6 +547,32 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
         _state.debuff.count,
         tostring(_state.combat.aggroOn),
         _state.movement.campRadius)
+
+    -- XTSlot/XTSlot2: first two Auto Hater XTarget slots (mac:16211-16239). mobRadar's
+    -- XTSlot post-check depends on this to see haters beyond MeleeDistance.
+    _state.combat.xTSlot, _state.combat.xTSlot2 = 0, 0
+    for n = 1, _state.combat.xSlotTotal do
+        if (mq.TLO.Me.XTarget(n).TargetType() or '') == 'Auto Hater' then
+            if _state.combat.xTSlot == 0 then
+                _state.combat.xTSlot = n
+            elseif _state.combat.xTSlot2 == 0 then
+                _state.combat.xTSlot2 = n
+                break
+            end
+        end
+    end
+    if _state.combat.xTSlot == 0 then
+        printf('\arYou need at least 1 slot in your Extended Target Window set to Auto Hater.')
+    elseif _state.pull.chainPull > 0 and _state.combat.xTSlot2 == 0 then
+        printf('\arChain pulling needs at least 2 Extended Target slots set to Auto Hater.')
+    end
+end
+
+-- NPCs in LOS within radius of me, excluding alert-3 (already-checked non-mezzed) mobs.
+-- This is the mac's MobRadar 'los' count (mac:7150); unlike the XTarget scan below it
+-- also sees mem-blurred mezzed mobs that have dropped off XTarget.
+local function campNpcCount(radius)
+    return mq.TLO.SpawnCount('npc targetable los radius ' .. radius .. ' zradius 50 noalert 3')() or 0
 end
 
 -- Mirrors MobRadar (kissassist.mac:7143).
@@ -896,7 +936,7 @@ function Combat.getCombatTarget()
             end
         end
 
-    elseif aggroID == 0 and mobCount > 0 and _state.mez.mobFlag then
+    elseif aggroID == 0 and _state.mez.mobFlag and (mobCount > 0 or campNpcCount(md) > 0) then
         -- MezMobFlag: scan for mem-blurred mobs inside camp radius
         local blurSp = mq.TLO.NearestSpawn(1, 'npc targetable los radius ' .. md .. ' zradius 50 noalert 3')
         local blurID = blurSp and blurSp.ID() or 0
@@ -1579,8 +1619,10 @@ function Combat.fight(fromWhere)
                 -- Melee re-attack or autofire re-engage (mac:1218-1248)
                 if _state.combat.autoFireOn ~= 1 then
                     if _state.combat.attacking and _state.combat.meleeOn then
-                        local tgtPct  = sp and sp.PctHPs() or 100
-                        local tgtDist = sp and sp.Distance() or 999
+                        -- Uses the live Target like the mac: after mezzing an add (still at
+                        -- 100%) this stays false, so we don't swing at the mob we just mezzed.
+                        local tgtPct  = mq.TLO.Target.PctHPs() or 100
+                        local tgtDist = mq.TLO.Target.Distance() or 999
                         if tgtPct <= _state.combat.assistAt and tgtDist < combatRadius then
                             -- Re-target if we drifted (mac:1222-1224)
                             if not _state.combat.targetSwitchingOn
@@ -1591,15 +1633,21 @@ function Combat.fight(fromWhere)
                                     return (mq.TLO.Target.ID() or 0) == myID
                                 end)
                             end
-                            -- Maintain stick mid-fight (mac:1218-1224)
-                            if not _state.combat.useMQ2Melee and _movement then
-                                _movement.checkStick(0, 0)
+                            -- Re-engage, or keep the stick (mac:1225-1230)
+                            if _movement then
+                                if not mq.TLO.Me.Combat() then
+                                    if mq.TLO.Me.Sitting() then mq.cmd('/stand') end
+                                    _movement.checkStick(0, 1)
+                                elseif not _state.combat.useMQ2Melee and not mq.TLO.Stick.Active() then
+                                    _movement.checkStick(1, 0)
+                                end
                             end
-                        end
-                        -- Keep attack on while standing (mac:1237); MQ2Melee handles this itself
-                        if not _state.combat.useMQ2Melee and (mq.TLO.Target.ID() or 0) ~= 0 then
-                            local meState = (mq.TLO.Me.State() or ''):lower()
-                            if meState == 'stand' or meState == 'mount' then
+                        elseif not mq.TLO.Me.Combat() and _state.session.iAmMA
+                               and not _state.combat.useMQ2Melee
+                               and (mq.TLO.Target.ID() or 0) ~= 0 then
+                            -- MA only: keep attack on while standing (mac:1231-1237)
+                            local meState = (mq.TLO.Me.State() or ''):upper()
+                            if meState == 'STAND' or meState == 'MOUNT' then
                                 mq.cmd('/squelch /attack on')
                             end
                         end
@@ -2166,7 +2214,14 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
         if mq.TLO.Me.Hovering() then return end
         if _state.session.iAmDead and aggroID == 0 then return end
-        if mobCount == 0 and aggroID == 0 then return end
+        if mobCount == 0 and aggroID == 0 then
+            -- Tank: after a kill, mezzed adds that were mem-blurred off XTarget are still
+            -- in camp. Let getCombatTarget's MezMobFlag scan find them (mac:493, mac:899).
+            if not (_state.session.iAmMA and _state.mez.mobFlag
+                    and campNpcCount(_state.combat.meleeDistance) > 0) then
+                return
+            end
+        end
         if not _state.combat.dpsOn and not _state.combat.meleeOn then return end
 
         -- Bard DPS twist (deferred — bard module)

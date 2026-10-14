@@ -516,9 +516,14 @@ function Movement.checkStick(flag, useAttack)
 
     -- Attack: enable auto-attack if not already in combat
     if (useAttack or 0) ~= 0 then
+        if comb.useMQ2Melee then
+            mq.cmd('/squelch /killthis')  -- mac:1925-1927
+            return
+        end
         if not mq.TLO.Me.Combat() and (mq.TLO.Target.ID() or 0) ~= 0 then
-            local st = mq.TLO.Me.State() or ''
-            if st == 'stand' or st == 'mount' then
+            -- Me.State() is upper-case ("STAND"/"MOUNT")
+            local st = (mq.TLO.Me.State() or ''):upper()
+            if st == 'STAND' or st == 'MOUNT' then
                 mq.cmd('/squelch /attack on')
             end
         end
