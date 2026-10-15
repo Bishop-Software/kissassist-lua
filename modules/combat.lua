@@ -8,6 +8,36 @@ local _nearspawnFallback = false  -- set by mobRadar when NearestSpawn fallback 
 
 local dist2D = Helpers.dist2D
 
+-- Combat-local helpers. They need mq/State, so they live here rather than in
+-- modules/helpers.lua (which stays mq-free for unit tests).
+
+-- True when a spawn object doesn't exist (ID 0) or is a corpse.
+local function spawnGone(sp)
+    return (sp.ID() or 0) == 0 or (sp.Type() or ''):lower() == 'corpse'
+end
+
+-- True when the spawn with this ID is gone or dead.
+local function isDeadOrGone(id)
+    return spawnGone(mq.TLO.Spawn('id ' .. tostring(id or 0)))
+end
+
+-- /squelch /target the spawn and wait (default 1s) until it is the current target.
+local function targetAndWait(id, ms)
+    mq.cmd('/squelch /target id ' .. id)
+    mq.delay(ms or 1000, function() return (mq.TLO.Target.ID() or 0) == id end)
+end
+
+-- 2D distance from the camp anchor to (y, x).
+local function distFromCamp(y, x)
+    local mv = _state.movement
+    return dist2D(mv.campY, mv.campX, y, x)
+end
+
+-- The main assist's spawn, looked up by exact name.
+local function getMASpawn()
+    return mq.TLO.Spawn('=' .. (_state.session.mainAssist or ''))
+end
+
 -- Mirrors Sub BeforeAttack (kissassist.mac:2022).
 -- Fires pre-combat abilities from beforeArray before first melee swing.
 -- condCheck: 1=all entries, 2=only entries that have |cond flag set.
@@ -243,8 +273,7 @@ local function groupEscape()
     local inCombat = mq.TLO.Me.CombatState() == 'COMBAT'
     local hasAggro = (tonumber(_state.combat.aggroTargetID) or 0) ~= 0
     if not (inCombat or hasAggro) then return end
-    local maSpawn = mq.TLO.Spawn('=' .. (_state.session.mainAssist or ''))
-    if (maSpawn.ID() or 0) ~= 0 and (maSpawn.Type() or ''):lower() ~= 'corpse' then return end
+    if not spawnGone(getMASpawn()) then return end
     mq.cmd('/echo + The MA is dead, activating Group Escape!')
     local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
     if cls == 'dru' then
@@ -320,7 +349,7 @@ local function validateTarget(spawnID)
         if tankRoles[_state.session.role] then
             local mobY = sp and sp.Y() or 0
             local mobX = sp and sp.X() or 0
-            if dist2D(_state.movement.campY, _state.movement.campX, mobY, mobX) > meleeDistCheck then
+            if distFromCamp(mobY, mobX) > meleeDistCheck then
                 return false
             end
         end
@@ -350,7 +379,7 @@ local function validateTarget(spawnID)
             return false
         else
             if (mq.TLO.Spawn('id ' .. mobID .. ' group').ID() or 0) ~= 0 then return false end
-            if mobID == (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) then return false end
+            if mobID == (getMASpawn().ID() or 0) then return false end
         end
     end
 
@@ -688,8 +717,7 @@ function Combat.assist(_fromWhere)
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
     if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
-        local msp = mq.TLO.Spawn('id ' .. _state.combat.myTargetID)
-        if msp and (msp.ID() or 0) ~= 0 and (msp.Type() or ''):lower() ~= 'corpse' then return end
+        if not isDeadOrGone(_state.combat.myTargetID) then return end
     end
 
     mq.doevents()
@@ -698,7 +726,7 @@ function Combat.assist(_fromWhere)
     local mobCount = _state.combat.mobCount
     local aggroID  = tonumber(_state.combat.aggroTargetID) or 0
     local ma       = _state.session.mainAssist
-    local maSpawn  = mq.TLO.Spawn('=' .. ma)
+    local maSpawn  = getMASpawn()
     local maID     = maSpawn and maSpawn.ID() or 0
     local maDist   = maSpawn and maSpawn.Distance() or 999
 
@@ -790,8 +818,7 @@ function Combat.getCombatTarget()
     if mq.TLO.Me.Hovering() then return end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
     if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
-        local msp = mq.TLO.Spawn('id ' .. _state.combat.myTargetID)
-        if msp and (msp.ID() or 0) ~= 0 and (msp.Type() or ''):lower() ~= 'corpse' then return end
+        if not isDeadOrGone(_state.combat.myTargetID) then return end
     end
 
     mq.doevents()
@@ -799,9 +826,7 @@ function Combat.getCombatTarget()
     -- Stale aggroTargetID2 check
     local aggroID2 = tonumber(_state.combat.aggroTargetID2) or 0
     if aggroID2 ~= 0 then
-        local sp2    = mq.TLO.Spawn('id ' .. aggroID2)
-        local sp2typ = sp2 and sp2.Type() or ''
-        if not sp2 or (sp2.ID() or 0) == 0 or sp2typ:lower() == 'corpse' then
+        if isDeadOrGone(aggroID2) then
             _state.combat.aggroTargetID2 = '0'
             aggroID2 = 0
         end
@@ -811,8 +836,7 @@ function Combat.getCombatTarget()
 
     local mobCount  = _state.combat.mobCount
     local aggroID   = tonumber(_state.combat.aggroTargetID) or 0
-    local ma        = _state.session.mainAssist
-    local maSpawn   = mq.TLO.Spawn('=' .. ma)
+    local maSpawn   = getMASpawn()
     local maID      = maSpawn and maSpawn.ID() or 0
     local iAmMA     = _state.session.iAmMA
     local isOfftank = _state.session.role == 'offtank'
@@ -833,16 +857,14 @@ function Combat.getCombatTarget()
        and (xSlot2 == 0 or (mq.TLO.Me.XTarget(xSlot2).ID() or 0) == 0)
        and aggroID ~= 0 then
         -- Single mob
-        mq.cmd('/squelch /target id ' .. aggroID)
-        mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == aggroID end)
+        targetAndWait(aggroID)
 
     elseif (mobCount >= 2 or (xSlot2 ~= 0 and (mq.TLO.Me.XTarget(xSlot2).ID() or 0) ~= 0))
            and aggroID ~= 0 then
         -- Multiple mobs — priority: named > alert-4 > closest/hurt/level
         local namedID = mq.TLO.Spawn('xtarhater named').ID() or 0
         if namedID ~= 0 then
-            mq.cmd('/squelch /target id ' .. namedID)
-            mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == namedID end)
+            targetAndWait(namedID)
 
         elseif (mq.TLO.Alert(4).Size() or 0) > 0 then
             local a4sp   = mq.TLO.Spawn('xtarhater alert 4')
@@ -852,8 +874,7 @@ function Combat.getCombatTarget()
                 local nearA4 = mq.TLO.NearestSpawn(1, 'xtarhater alert 4')
                 local nearID = nearA4 and nearA4.ID() or 0
                 if nearID ~= 0 then
-                    mq.cmd('/squelch /target id ' .. nearID)
-                    mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == nearID end)
+                    targetAndWait(nearID)
                 end
             end
 
@@ -920,16 +941,14 @@ function Combat.getCombatTarget()
                         local tX  = tSp and tSp.X() or 0
                         if (mq.TLO.Target.ID() or 0) ~= tempID
                            and dist2D(campY, campX, tY, tX) <= md then
-                            mq.cmd('/squelch /target id ' .. tempID)
-                            mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == tempID end)
+                            targetAndWait(tempID)
                         end
                     else
                         tempID = applyPriority(false)
                         local tSp = mq.TLO.Spawn('id ' .. tempID)
                         if (mq.TLO.Target.ID() or 0) ~= tempID
                            and (tSp and tSp.Distance() or 999) <= md then
-                            mq.cmd('/squelch /target id ' .. tempID)
-                            mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == tempID end)
+                            targetAndWait(tempID)
                         end
                     end
                 end
@@ -943,7 +962,7 @@ function Combat.getCombatTarget()
         if blurID ~= 0 then
             local bY = blurSp.Y() or 0
             local bX = blurSp.X() or 0
-            if dist2D(_state.movement.campY, _state.movement.campX, bY, bX) < md then
+            if distFromCamp(bY, bX) < md then
                 mq.cmd('/squelch /target id ' .. blurID)
                 _state.mez.mobFlag = false
                 mq.delay(1500, function()
@@ -1013,9 +1032,7 @@ function Combat.combatTargetCheck(setTarget)
     -- Clear myTargetID if current target is dead or gone
     local myID = _state.combat.myTargetID
     if myID ~= 0 then
-        local sp     = mq.TLO.Spawn('id ' .. myID)
-        local spType = sp and sp.Type() or ''
-        if (sp and sp.ID() or 0) == 0 or spType:lower() == 'corpse' then
+        if isDeadOrGone(myID) then
             _state.combat.lastTargetID = myID
             _state.combat.myTargetID   = 0
             return
@@ -1028,7 +1045,7 @@ function Combat.combatTargetCheck(setTarget)
 
     local cMyTargetID = _state.combat.myTargetID
     local ma          = _state.session.mainAssist
-    local maSpawn     = mq.TLO.Spawn('=' .. ma)
+    local maSpawn     = getMASpawn()
     local maID        = maSpawn and maSpawn.ID() or 0
     local groupMAID   = mq.TLO.Group.MainAssist.ID() or 0
 
@@ -1106,8 +1123,7 @@ function Combat.combatTargetCheck(setTarget)
            and not mq.TLO.Group.Member(ma).Index()
            and not _state.session.iAmMA then
             if (mq.TLO.Spawn('id ' .. newID).Type() or ''):lower() ~= 'pc' then
-                mq.cmd('/squelch /target id ' .. newID)
-                mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == newID end)
+                targetAndWait(newID)
                 local xSlot = _state.combat.xTSlot
                 if xSlot > 0 then
                     local xtID = mq.TLO.Me.XTarget(xSlot).ID() or 0
@@ -1118,8 +1134,7 @@ function Combat.combatTargetCheck(setTarget)
                 petSwitch()
             end
         elseif setTarget ~= 0 then
-            mq.cmd('/squelch /target id ' .. newID)
-            mq.delay(1000, function() return (mq.TLO.Target.ID() or 0) == newID end)
+            targetAndWait(newID)
             petSwitch()
         end
         _state.combat.myTargetName = mq.TLO.Spawn('id ' .. newID).CleanName() or ''
@@ -1184,7 +1199,7 @@ local function aeCheck()
         if tgt == 'ME' then
             targetID = mq.TLO.Me.ID()
         elseif tgt == 'MA' then
-            targetID = mq.TLO.Spawn('=' .. s.session.mainAssist).ID()
+            targetID = getMASpawn().ID()
         elseif tgt == 'PET' then
             targetID = mq.TLO.Me.Pet.ID()
         else  -- Mob / Single
@@ -1259,7 +1274,7 @@ local function checkGoM()
         if tgt == 'ME' then
             targetID = mq.TLO.Me.ID()
         elseif tgt == 'MA' then
-            targetID = mq.TLO.Spawn('=' .. s.session.mainAssist).ID()
+            targetID = getMASpawn().ID()
         else  -- Mob
             targetID = s.combat.myTargetID ~= 0 and s.combat.myTargetID or nil
             if targetID then
@@ -1306,7 +1321,7 @@ function Combat.fight(fromWhere)
 
     -- Mezzed target: non-MA won't attack below assistAt% to avoid breaking mez (mac:1047-1053)
     if mq.TLO.Target.Mezzed.ID() then
-        if (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) ~= 0
+        if (getMASpawn().ID() or 0) ~= 0
            and not _state.session.iAmMA then
             local pct = mq.TLO.Spawn('id ' .. myID).PctHPs() or 100
             if pct <= _state.combat.assistAt then
@@ -1319,8 +1334,7 @@ function Combat.fight(fromWhere)
     -- Puller: don't engage while actively pulling and outside camp radius (mac:1039)
     local isPuller = role == 'puller' or role == 'pullertank' or role == 'pullerpettank'
     if isPuller and _state.pull.pulling then
-        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
-                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        local campDist = distFromCamp(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
         if campDist >= _state.movement.campRadius then return end
     end
 
@@ -1350,11 +1364,11 @@ function Combat.fight(fromWhere)
     local mobDist = sp and sp.Distance()  or 999
     local spType  = sp and sp.Type()      or ''
 
-    local maSpawn  = mq.TLO.Spawn('=' .. _state.session.mainAssist)
+    local maSpawn  = getMASpawn()
     local maY, maX = (maSpawn and maSpawn.Y() or 0), (maSpawn and maSpawn.X() or 0)
     local tgtY = sp and sp.Y() or 0
     local tgtX = sp and sp.X() or 0
-    local campToMA = dist2D(_state.movement.campY, _state.movement.campX, maY, maX)
+    local campToMA = distFromCamp(maY, maX)
     local maToTgt  = dist2D(maY, maX, tgtY, tgtX)
     local cr       = _state.movement.campRadius
     local inRange  = mobDist < combatRadius
@@ -1530,7 +1544,7 @@ function Combat.fight(fromWhere)
 
             -- Offtank auto-promote: MA is gone, assume MA role (mac:1143)
             if _state.session.role == 'offtank'
-               and (mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0) == 0 then
+               and (getMASpawn().ID() or 0) == 0 then
                 mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
             end
             -- Re-stick if mob moved beyond MaxRangeTo and stick dropped (mac:1150); MQ2Melee repositions itself
@@ -1561,10 +1575,8 @@ function Combat.fight(fromWhere)
 
             -- Non-chainpull DPS path (mac:1178-1200): only a plain puller that is chain-pulling skips it
             if not (role == 'puller' and _state.pull.chainPull ~= 0) then
-                sp = mq.TLO.Spawn('id ' .. myID)
-                local curType = (sp and sp.Type() or ''):lower()
                 -- Dead/paused: exit combat (mac:1185-1187)
-                if curType == 'corpse' or (sp and sp.ID() or 0) == 0 or _state.dps.paused then
+                if isDeadOrGone(myID) or _state.dps.paused then
                     Combat.combatReset(0, fromWhere .. '_inner')
                     break
                 end
@@ -1628,10 +1640,7 @@ function Combat.fight(fromWhere)
                             if not _state.combat.targetSwitchingOn
                                and not _state.combat.manualTargetMode
                                and (mq.TLO.Target.ID() or 0) ~= myID then
-                                mq.cmd('/squelch /target id ' .. myID)
-                                mq.delay(500, function()
-                                    return (mq.TLO.Target.ID() or 0) == myID
-                                end)
+                                targetAndWait(myID, 500)
                             end
                             -- Re-engage, or keep the stick (mac:1225-1230)
                             if _movement then
@@ -1771,8 +1780,7 @@ end
 function Combat.aggroCheck()
     local myID = _state.combat.myTargetID
     if myID == 0 then return end
-    local sp = mq.TLO.Spawn('id ' .. myID)
-    if not sp or (sp.Type() or ''):lower() == 'corpse' or (sp.ID() or 0) == 0 then return end
+    if isDeadOrGone(myID) then return end
 
     -- MA with target-switching: sync target first (mac:2383)
     if _state.session.iAmMA and _state.combat.targetSwitchingOn
@@ -1841,7 +1849,7 @@ function Combat.aggroCheck()
         if tl == 'me' then
             aggroTID = mq.TLO.Me.ID() or 0
         elseif tl == 'ma' then
-            aggroTID = mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0
+            aggroTID = getMASpawn().ID() or 0
         elseif tl == 'pet' then
             aggroTID = mq.TLO.Me.Pet.ID() or 0
         elseif tl == 'inc' then
@@ -1907,10 +1915,7 @@ function Combat.combatReset(sFlag, calledFrom)
         for j = 1, xTotal do
             local entry = _state.arrays.mezArray[j]
             if entry and entry[1] ~= 'NULL' then
-                local sp = mq.TLO.Spawn('id ' .. entry[1])
-                if entry[1] == tostring(myTID)
-                   or not sp or (sp.ID() or 0) == 0
-                   or (sp.Type() or ''):lower() == 'corpse' then
+                if entry[1] == tostring(myTID) or isDeadOrGone(entry[1]) then
                     _state.arrays.mezArray[j] = {'NULL','NULL','NULL'}
                 end
             end
@@ -1919,8 +1924,7 @@ function Combat.combatReset(sFlag, calledFrom)
         if immuneIDs ~= '' then
             local kept = {}
             for id in immuneIDs:gmatch('|([^|]+)') do
-                local sp = mq.TLO.Spawn('id ' .. id)
-                if sp and (sp.ID() or 0) ~= 0 and (sp.Type() or ''):lower() ~= 'corpse' then
+                if not isDeadOrGone(id) then
                     kept[#kept+1] = id
                 end
             end
@@ -1934,8 +1938,7 @@ function Combat.combatReset(sFlag, calledFrom)
     if ignoreIDs ~= 'null' and ignoreIDs ~= '' then
         local kept = {}
         for id in ignoreIDs:gmatch('|([^|]+)') do
-            local sp = mq.TLO.Spawn('id ' .. id)
-            if sp and (sp.ID() or 0) ~= 0 and (sp.Type() or ''):lower() ~= 'corpse' then
+            if not isDeadOrGone(id) then
                 kept[#kept+1] = id
             end
         end
@@ -1990,8 +1993,7 @@ function Combat.combatReset(sFlag, calledFrom)
     -- Clear burn state if burn target died (mac:2283–2287)
     local burnID = _state.combat.burnID
     if burnID ~= 0 then
-        local bSp = mq.TLO.Spawn('id ' .. burnID)
-        if not bSp or (bSp.ID() or 0) == 0 or (bSp.Type() or ''):lower() == 'corpse' then
+        if isDeadOrGone(burnID) then
             _state.combat.burnCalled = false
             _state.combat.burnID     = 0
             mq.cmd('/echo Burn Target is Dead. Pausing Burn.')
@@ -2056,8 +2058,7 @@ function Combat.checkForAdds(calledFrom)
     local isPuller = role == 'puller' or role == 'pullertank' or role == 'pullerpettank'
 
     if isPuller then
-        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
-                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        local campDist = distFromCamp(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
         if campDist >= _state.movement.campRadius then return end
     end
 
@@ -2070,8 +2071,7 @@ function Combat.checkForAdds(calledFrom)
     if (mq.TLO.Target.ID() or 0) == 0 and myID ~= 0 and not _state.combat.manualTargetMode then
         local sp = mq.TLO.Spawn('id ' .. myID)
         if sp and (sp.ID() or 0) ~= 0 then
-            local spDist = dist2D(_state.movement.campY, _state.movement.campX,
-                                   sp.Y() or 0, sp.X() or 0)
+            local spDist = distFromCamp(sp.Y() or 0, sp.X() or 0)
             if spDist < _state.movement.campRadius then
                 mq.cmd('/squelch /target id ' .. myID)
                 return
@@ -2084,7 +2084,7 @@ function Combat.checkForAdds(calledFrom)
         local aggrSp   = mq.TLO.Spawn('id ' .. aggroID)
         local aggrY    = aggrSp and aggrSp.Y() or 0
         local aggrX    = aggrSp and aggrSp.X() or 0
-        local aggrDist = dist2D(_state.movement.campY, _state.movement.campX, aggrY, aggrX)
+        local aggrDist = distFromCamp(aggrY, aggrX)
         local addExpiry = _state.timers.addSpam or 0
         if aggrDist <= _state.movement.campRadius and os.clock() >= addExpiry then
             mq.cmd('/popup Add(s) in camp detected')
@@ -2106,8 +2106,7 @@ function Combat.checkForAdds(calledFrom)
 
     -- Puller still returning toward camp — don't stall (mac:2358)
     if isPuller and _state.pull.pulled then
-        local campDist = dist2D(_state.movement.campY, _state.movement.campX,
-                                mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        local campDist = distFromCamp(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
         if campDist >= 15 then return end
     end
 
@@ -2123,8 +2122,7 @@ function Combat.checkForAdds(calledFrom)
     -- Stale myTargetID cleanup: if current target is not an NPC, clear it (mac:2360)
     local tgtType = (mq.TLO.Target.Type() or ''):lower()
     if tgtType ~= 'npc' and myID ~= 0 then
-        local sp = mq.TLO.Spawn('id ' .. myID)
-        if not sp or (sp.ID() or 0) == 0 or (sp.Type() or ''):lower() == 'corpse' then
+        if isDeadOrGone(myID) then
             _state.combat.lastTargetID = myID
             _state.combat.myTargetID   = 0
         end
@@ -2232,8 +2230,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         if not _state.session.iAmMA then
             -- Non-MA: assist loop with EngageWaitTimer (mac:499–515)
             while true do
-                local maName = _state.session.mainAssist
-                local maID   = mq.TLO.Spawn('=' .. maName).ID() or 0
+                local maID   = getMASpawn().ID() or 0
 
                 if _state.session.role ~= 'offtank' or maID ~= 0 then
                     Combat.assist(fromWhere)
@@ -2275,14 +2272,12 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                 local aID = tonumber(_state.combat.aggroTargetID) or 0
                 if aID ~= 0 then
                     while true do
-                        local sp = mq.TLO.Spawn('id ' .. aID)
-                        if not sp or (sp.ID() or 0) == 0
-                           or (sp.Type() or ''):lower() == 'corpse' then break end
+                        if isDeadOrGone(aID) then break end
 
                         local md       = _state.combat.meleeDistance
                         local meY      = mq.TLO.Me.Y() or 0
                         local meX      = mq.TLO.Me.X() or 0
-                        local campDist = dist2D(_state.movement.campY, _state.movement.campX, meY, meX)
+                        local campDist = distFromCamp(meY, meX)
                         local cnt
                         if campDist > md then
                             cnt = mq.TLO.SpawnCount('xtarhater radius ' .. md .. ' zradius 50')() or 0
@@ -2339,9 +2334,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         -- Non-manual non-tank: CombatReset if our target died (mac:601)
         local myID = _state.combat.myTargetID
         if myID ~= 0 then
-            local sp     = mq.TLO.Spawn('id ' .. myID)
-            local spType = sp and sp.Type() or ''
-            if (sp and sp.ID() or 0) == 0 or spType:lower() == 'corpse' then
+            if isDeadOrGone(myID) then
                 Combat.combatReset(0, fromWhere .. '_targetDead')
             end
         end
