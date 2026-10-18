@@ -2137,37 +2137,53 @@ function Combat.checkForAdds(calledFrom)
     _utils.debug('combat', 'checkForAdds: mobCount=%d from=%s', mobCount, tostring(calledFrom))
 end
 
--- Port of GetCombatPosition (kissassist.mac:627).
--- Moves toward mobID using nav or moveto until LineOfSight is established
--- or the mob is within meleeDistance. Called only when LOSBeforeCombat=1.
+-- Port of GetCombatPosition 0 (kissassist.mac:627-678). Called only when LOSBeforeCombat=1.
+-- Only repositions for a mob that is already within MeleeDistance but out of line of sight.
+-- A mob farther out (e.g. one still being pulled) gets up to 3s to arrive; if it doesn't,
+-- we stay put rather than running out to it.
+local _combatPosSpam = 0
 local function getCombatPosition(mobID)
-    local mob = mq.TLO.Spawn('id ' .. mobID)
-    if not mob or (mob.ID() or 0) == 0 then return end
+    if _state.dps.paused then return end
+    local function mob() return mq.TLO.Spawn('id ' .. mobID) end
+    local function dist() return math.floor(mob().Distance3D() or 999) end
+    if (mob().ID() or 0) == 0 then return end
     local md = _state.combat.meleeDistance
-    if (mob.Distance() or 999) <= md then return end
 
-    local meshLoaded = _state.pull.moveUse == 'nav' and (mq.TLO.Navigation.MeshLoaded() or false)
-    local timeout    = os.clock() + 15
-
-    while os.clock() < timeout do
-        mq.doevents()
-        mob = mq.TLO.Spawn('id ' .. mobID)
-        if not mob or (mob.ID() or 0) == 0 then break end
-        if mob.LineOfSight() or (mob.Distance() or 999) <= md then break end
-        if _state.session.iAmDead or mq.TLO.Me.Hovering() then break end
-
-        if meshLoaded then
-            if not mq.TLO.Navigation.Active() then
-                mq.cmdf('/squelch /nav id %d dist=%d', mobID, md - 2)
+    if dist() > md then
+        mq.delay(3000, function() return dist() <= md end)
+        if dist() > md then
+            if os.clock() > _combatPosSpam then
+                printf('\awGet Combat Position Failed. Target is too far away(%d).', dist())
+                _combatPosSpam = os.clock() + 5
             end
-        else
-            mq.cmdf('/squelch /moveto id %d dist %d', mobID, md - 2)
+            return
         end
-        mq.delay(100)
     end
 
-    if meshLoaded and mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
-    if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
+    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+    local distanceCheck = _state.combat.meleeOn and math.floor(mob().MaxRangeTo() or md) or md
+    local distanceFrom  = distanceCheck - 2
+    local function inPosition() return dist() <= distanceCheck and mob().LineOfSight() end
+    local timeout = os.clock() + 5
+
+    local meshLoaded = _state.pull.moveUse == 'nav' and (mq.TLO.Navigation.MeshLoaded() or false)
+    if meshLoaded then
+        while os.clock() < timeout do
+            if not mq.TLO.Navigation.Active() then
+                mq.cmdf('/squelch /nav id %d dist=%d los=on', mobID, distanceFrom)
+            end
+            if inPosition() then break end
+            mq.delay(500)
+        end
+        if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
+        if dist() > distanceCheck and mob().LineOfSight() then
+            mq.cmdf('/squelch /moveto id %d dist %d', mobID, distanceFrom)
+        end
+    else
+        mq.cmdf('/squelch /moveto id %d dist %d', mobID, distanceFrom)
+        mq.delay(5000, inPosition)
+        if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
+    end
 end
 
 -- Mirrors Sub CheckForCombat (kissassist.mac:484).
