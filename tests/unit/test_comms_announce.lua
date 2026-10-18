@@ -38,27 +38,27 @@ function M.run(TH, MockMQ)
 
     -- 1. DanNet with peers → /dgtell all with an MQ colour code ------------------
     setEnv({ danNetOn = true, danNetLoaded = true, peers = 3 })
-    Comms.announce('CURING: >> Gerath << with Pure Blood', 'o')
-    TH.assert_true(MockMQ.cmdCalled('/dgtell all \ao CURING: >> Gerath << with Pure Blood \aw'),
+    Comms.announce('CURING: >> TestTank << with Pure Blood', 'o')
+    TH.assert_true(MockMQ.cmdCalled('/dgtell all \ao CURING: >> TestTank << with Pure Blood \aw'),
         'DanNet peers → /dgtell all with colour')
     TH.assert_false(MockMQ.cmdMatched('/bc '), 'never emits an EQBC /bc command')
 
     -- 2. Neither connected → local /echo fallback --------------------------------
     setEnv({})
-    Comms.announce('BATTLE REZZED =>> Gerath <<=', 'o')
-    TH.assert_true(MockMQ.cmdCalled('/echo BATTLE REZZED =>> Gerath <<='),
+    Comms.announce('BATTLE REZZED =>> TestTank <<=', 'o')
+    TH.assert_true(MockMQ.cmdCalled('/echo BATTLE REZZED =>> TestTank <<='),
         'no DanNet → /echo fallback')
 
     -- 3. DanNet enabled but zero peers → /echo (not a silent /dgtell) ------------
     setEnv({ danNetOn = true, danNetLoaded = true, peers = 0 })
-    Comms.announce('REZZED =>> Gerath <<=', 'o')
-    TH.assert_true(MockMQ.cmdCalled('/echo REZZED =>> Gerath <<='),
+    Comms.announce('REZZED =>> TestTank <<=', 'o')
+    TH.assert_true(MockMQ.cmdCalled('/echo REZZED =>> TestTank <<='),
         'DanNet with 0 peers → /echo fallback')
 
     -- 4. danNetOn flag off (plugin present) → /echo, not /dgtell -----------------
     setEnv({ danNetLoaded = true, peers = 3 })  -- danNetOn stays false
-    Comms.announce('REZZED =>> Braelynn <<=', 'o')
-    TH.assert_true(MockMQ.cmdCalled('/echo REZZED =>> Braelynn <<='),
+    Comms.announce('REZZED =>> TestBard <<=', 'o')
+    TH.assert_true(MockMQ.cmdCalled('/echo REZZED =>> TestBard <<='),
         'danNetOn=false → /echo even with peers')
 
     -- 5. Default colour is white when omitted ------------------------------------
