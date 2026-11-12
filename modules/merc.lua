@@ -5,6 +5,9 @@ local Merc = {}
 
 local _state, _utils
 
+-- Min time between revive clicks (ms); see Merc.check.
+local REVIVE_COOLDOWN_MS = 10000
+
 function Merc.init(state, utils)
     _state = state
     _utils = utils
@@ -40,11 +43,16 @@ function Merc.check()
         end
     end
 
-    -- Auto-revive dead merc via UI button when it was previously in group (mac:8575)
+    -- Auto-revive dead merc via UI button when it was previously in group (mac:8575).
+    -- The revive button is also the suspend button, and State keeps reading DEAD
+    -- for a moment after the click; without a cooldown the 50ms loop clicks again
+    -- and that second click suspends the freshly revived merc.
     if _state.merc.inGroup
-       and (mq.TLO.Window('MMGW_ManageWnd').Child('MMGW_SuspendButton').Enabled() or false)
-       and mercState == 'DEAD' then
+       and mercState == 'DEAD'
+       and mq.gettime() >= (_state.merc.reviveReadyAt or 0)
+       and (mq.TLO.Window('MMGW_ManageWnd').Child('MMGW_SuspendButton').Enabled() or false) then
         mq.cmd('/notify MMGW_ManageWnd MMGW_SuspendButton LeftMouseUp')
+        _state.merc.reviveReadyAt = mq.gettime() + REVIVE_COOLDOWN_MS
     end
 
     local myTargetID = _state.combat.myTargetID or 0
