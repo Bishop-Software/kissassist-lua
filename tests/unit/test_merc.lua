@@ -109,6 +109,40 @@ function M.run(TH, MockMQ)
         TH.assert_eq(s.merc.assisting, 300, 're-assist updates latch to new target')
     end
 
+    -- 6. Dead merc revive clicks once, then waits out the cooldown ----------------
+    -- Regression: State reads DEAD for a few passes after the click; a second
+    -- click on the same button suspended the revived merc.
+    do
+        seedInitTLOs(MockMQ, 'DEAD')
+        MockMQ.set('TLO.Window', function()
+            return { Child = function() return { Enabled = function() return true end } end }
+        end)
+        local s = makeState()
+        Merc.init(s, utils)
+        s.merc.on = 1; s.merc.inGroup = true
+        local function clicks()
+            local n = 0
+            for _, c in ipairs(MockMQ.calls()) do
+                if c:find('MMGW_SuspendButton', 1, true) then n = n + 1 end
+            end
+            return n
+        end
+
+        MockMQ.setTime(1000)
+        Merc.check()
+        TH.assert_eq(clicks(), 1, 'DEAD + inGroup → one revive click')
+
+        MockMQ.setTime(1050)
+        Merc.check()
+        MockMQ.setTime(5000)
+        Merc.check()
+        TH.assert_eq(clicks(), 1, 'still DEAD within cooldown → no second click')
+
+        MockMQ.setTime(11000)
+        Merc.check()
+        TH.assert_eq(clicks(), 2, 'cooldown elapsed and still DEAD → retry click')
+    end
+
     package.loaded['modules.merc'] = nil
 end
 

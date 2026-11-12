@@ -482,6 +482,7 @@ local State = {
         assisting = 0,    -- target ID merc is currently assisting (mac MercAssisting)
         inGroup   = false, -- merc was detected Active at least once this session (mac MercInGroup)
         myMerc    = '',   -- mercenary's name (mac MyMerc)
+        reviveReadyAt = 0, -- mq.gettime() before which no revive click is sent
     },
 
     misc = {

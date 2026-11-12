@@ -91,6 +91,11 @@ function MockMQ.delay() end
 function MockMQ.event() end
 function MockMQ.bind() end
 
+-- Controllable clock for mq.gettime(); reset() rewinds it to 0.
+local _now = 0
+function MockMQ.gettime() return _now end
+function MockMQ.setTime(ms) _now = ms end
+
 -- In-memory pickle/unpickle — avoids touching the filesystem during tests.
 function MockMQ.pickle(path, tbl)
     _pickles[path] = tbl
@@ -105,6 +110,7 @@ function MockMQ.reset()
     _returns = {}
     _calls   = {}
     _pickles = {}
+    _now     = 0
 end
 
 return MockMQ
