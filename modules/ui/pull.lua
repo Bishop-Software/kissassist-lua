@@ -5,6 +5,7 @@ local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local intInput = Helpers.intInput
+local Pull     = require('modules.pull')
 
 local PullUI = {}
 local _state
@@ -55,12 +56,28 @@ function PullUI.drawPull()
     intInput('Max Radius',  s.pull.maxRadius,    1, 2000, 'Pull', 'MaxRadius',    function(v) s.pull.maxRadius    = v end)
     intInput('Max Z Range', s.pull.maxZRange,    1, 2000, 'Pull', 'MaxZRange',    function(v) s.pull.maxZRange    = v end)
     intInput('Pull Range',  s.pull.range,         1,  500, 'Pull', 'PullRange',    function(v) s.pull.range        = v end)
-    intInput('Arc Width°',  s.pull.pullArcWidth,  0,  360, 'Pull', 'PullArcWidth', function(v) s.pull.pullArcWidth = v end)
+    intInput('Arc Width°',  s.pull.pullArcWidth,  0,  359, 'Pull', 'PullArcWidth', function(v)
+        -- Keep the current aim if an arc is already set, else aim where we face.
+        local aimed  = s.pull.lSide ~= s.pull.rSide
+        local facing = aimed and s.pull.heading or (mq.TLO.Me.Heading.Degrees() or 0)
+        s.pull.pullArcWidth = v
+        Pull.setPullAngles(facing, v, true)
+    end)
+    if s.pull.pullArcWidth > 0 then
+        ImGui.SameLine()
+        if ImGui.SmallButton('Aim Here') then
+            Pull.setPullAngles(mq.TLO.Me.Heading.Degrees() or 0, s.pull.pullArcWidth)
+        end
+    end
 
     -- Read-only status
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Text('Pull With: ' .. (s.pull.withAlt or 'Melee'))
+    if s.pull.pullArcWidth > 0 then
+        ImGui.Text(string.format('Pull Arc: %.0f° to %.0f° (facing %.0f°)',
+            s.pull.lSide, s.pull.rSide, s.pull.heading))
+    end
 end
 
 function PullUI.init(state)
