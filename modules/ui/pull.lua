@@ -35,7 +35,13 @@ function PullUI.drawPull()
         Config.save()
     end)
 
+    checkbox('Melee Pull Stick', s.pull.meleeStick, function(v)
+        s.pull.meleeStick = v
+        Config.set('Pull', 'PullMeleeStick', v and '1' or '0')
+        Config.save()
+    end)
     if s.session.iAmABard then
+        ImGui.SameLine(160)
         checkbox('Twist On Pull', s.bard.pullTwistOn, function(v)
             s.bard.pullTwistOn = v
             Config.set('Pull', 'PullTwistOn', v and '1' or '0')

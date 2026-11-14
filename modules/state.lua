@@ -169,6 +169,7 @@ local State = {
         maxRadius        = 0,      -- set from INI [Pull] MaxRadius
         maxZRange        = 0,      -- set from INI [Pull] MaxZRange
         maxWpRange       = 0,      -- set from INI [PullAdvanced] MaxWpRange
+        meleeStick       = false,  -- set from INI [Pull] PullMeleeStick (melee pull uses /stick)
         min              = 0,
         mob              = 0,
         mobsNotAllowed   = 'null', -- set from INI [Pull] MobsNotAllowed

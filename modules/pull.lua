@@ -86,6 +86,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     -- [Pull] section
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
     _state.pull.withAlt      = Config.get('Pull', 'PullWith',      'Melee')
+    _state.pull.meleeStick   = Config.get('Pull', 'PullMeleeStick', '0') == '1'
     _state.pull.range        = tonumber(Config.get('Pull', 'PullRange',    '15')) or 15
     _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '0'))  or 0
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
@@ -594,33 +595,78 @@ local function pullReset()
     stopMoving()
 end
 
--- Mirrors Sub PullWithMelee (kissassist.mac:10039).
+-- Mirrors Sub PullWithMelee (kissassist.mac:10040). Closes in and swings until the
+-- mob aggros or takes damage. The .mac loops forever; here the loop also ends when
+-- the mob is gone or the pull deadline passes, and only a landed pull sets pulled.
 local function pullWithMelee(mobID)
     local s    = _state
     local role = s.session.role
+    local retreatRole = role == 'puller' or role == 'pullertank' or
+                        role == 'pullerpettank' or role == 'hunterpettank'
+    -- Keep MQ2Melee from fighting the mob while a puller tags it (mac:10043).
+    local meleeOff = (role == 'puller' or role == 'pullertank') and s.combat.useMQ2Melee
+    if meleeOff then mq.cmd('/squelch /melee melee=0') end
+
+    local function landed()
+        return hasAggro() or (mq.TLO.Target.PctHPs() or 100) < 100
+    end
+    -- MoveTo arrival distance shrinks by 5 each pass, down to 1 (mac:10051).
+    local function arrival()
+        local d = mq.TLO.MoveTo.ArrivalDist() or 0
+        return d > 5 and math.floor(d - 5) or 1
+    end
+    local function stick(withID)
+        if not s.pull.meleeStick or hasAggro() then return end
+        local d = math.floor(mq.TLO.MoveTo.ArrivalDist() or 0)
+        if withID then
+            mq.cmdf('/squelch /stick %d id %d front', d, mobID)
+        else
+            mq.cmdf('/squelch /stick %d front', d)
+        end
+    end
+
+    local deadline = math.max(s.timers.pullTimer or 0, os.clock() + 10)
     mq.cmd('/moveto id ' .. mobID .. ' mdist 15')
-    mq.delay(100)
-    local tries = 0
-    while tries < 30 do
+    mq.delay(1000)
+    while true do
         mq.doevents()
-        if hasAggro() or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
+        if landed() then break end
+        local sp = mq.TLO.Spawn('id ' .. mobID)
+        if not sp() or (sp.Type() or ''):lower() == 'corpse' then break end
+        if os.clock() > deadline then
+            printf('\awMelee pull timed out, mob never engaged.')
+            break
+        end
         if mq.TLO.Target.ID() then
-            mq.cmd('/face fast nolook')
-            mq.cmd('/look 0')
+            mq.cmd(s.movement.faceMobOn == 2 and '/face nolook' or '/face fast nolook')
+        end
+        mq.cmd('/look 0')
+        if (mq.TLO.Target.MaxRangeTo() or 0) >= (mq.TLO.Target.Distance3D() or 999) then
+            if not mq.TLO.Me.Moving() then
+                mq.cmdf('/moveto id %d mdist %d', mobID, arrival())
+            else
+                mq.cmdf('/moveto mdist %d', arrival())
+            end
+            stick(false)
+            if not mq.TLO.Stick.Active() then stick(true) end
+        elseif not mq.TLO.Me.Moving() then
+            mq.cmdf('/moveto id %d mdist %d', mobID, arrival())
+            stick(false)
         end
         mq.cmd('/squelch /attack on')
-        mq.delay(100)
-        if hasAggro() or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
-        tries = tries + 1
+        mq.delay(1000, landed)
+        if landed() then break end
     end
-    -- Puller/pullertank disengage and retreat — let them run back to camp.
-    if role == 'puller' or role == 'pullertank' or
-       role == 'pullerpettank' or role == 'hunterpettank' then
+
+    local pulled = landed()
+    -- Pullers drop the mob and run back to camp; so does anyone whose pull failed.
+    if retreatRole or not pulled then
         mq.cmd('/attack off')
         mq.cmd('/squelch /stick off')
-        mq.cmd('/squelch /target clear')
+        if retreatRole then mq.cmd('/squelch /target clear') end
     end
-    s.pull.pulled      = true
+    if meleeOff then mq.cmd('/squelch /melee melee=1') end
+    s.pull.pulled      = pulled
     s.movement.toClose = false
 end
 
