@@ -530,7 +530,7 @@ function Config.defaultCfg()
     return {
         General = {
             KissAssistVer    = Config.VERSION,
-            Role             = '', CampRadius = '40', CampRadiusExceed = '0',
+            Role             = '', CampRadius = '30', CampRadiusExceed = '0',
             ReturnToCamp     = '0', ChaseAssist = '0', ChaseDistance = '40',
             MedOn            = '1', MedStart = '40', MedStop = '90', MedCombat = '0',
             LootOn           = '1', RezAcceptOn = '1', AcceptInvitesOn = '0',
@@ -549,7 +549,7 @@ function Config.defaultCfg()
             LoadSpellSet = '0', SpellSetName = '',
         },
         Melee = {
-            AssistAt = '95', MeleeOn = '1', FaceMobOn = '1', MeleeDistance = '20',
+            AssistAt = '95', MeleeOn = '1', FaceMobOn = '1', MeleeDistance = '75',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
             TargetSwitchingOn = '0', ManualTargetMode = '0', AutoHide = '0', MeleeTwistOn = '0',
         },

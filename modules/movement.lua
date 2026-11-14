@@ -23,7 +23,7 @@ function Movement.init(state, utils)
 
     -- [General] camp and movement settings
     _state.movement.returnToCamp     = Config.get('General', 'ReturnToCamp',     '0') == '1'
-    _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius',       '50')) or 50
+    _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius',       '30')) or 30
     _state.movement.campRadiusExceed = tonumber(Config.get('General', 'CampRadiusExceed', '0'))  or 0
     _state.session.chaseAssist       = Config.get('General', 'ChaseAssist',      '0') == '1'
     _state.movement.whoToChase       = Config.get('General', 'WhoToChase',       '') or ''
@@ -479,17 +479,20 @@ function Movement.checkStick(flag, useAttack)
     local maDist = comb.meleeDistance
     local cr     = mv.campRadius
 
-    -- Gap-close and stick when: no camp set (free-roam) OR MeleeDistance > CampRadius
-    if not mv.returnToCamp or maDist > cr then
+    -- Gap-close and stick. The mac (mac:1894) only did this in camp mode when
+    -- MeleeDistance > CampRadius, so with e.g. MeleeDistance=20 / CampRadius=40 a
+    -- melee character never moved to a mob inside camp. We always close the gap;
+    -- the "mob too far from camp" guard below is what keeps us leashed to camp.
+    do
         local mobY = mob.Y() or 0
         local mobX = mob.X() or 0
 
         -- "Mob too far from camp" guard only applies in camp mode
-        if mv.returnToCamp and dist2D(refY, refX, mobY, mobX) > maDist then
+        if mv.returnToCamp and dist2D(refY, refX, mobY, mobX) > math.max(maDist, cr) then
             local ma    = mq.TLO.Spawn('=' .. sess.mainAssist)
             local maY   = ma.Y() or 0
             local maX   = ma.X() or 0
-            if dist2D(refY, refX, maY, maX) > maDist then return end
+            if dist2D(refY, refX, maY, maX) > math.max(maDist, cr) then return end
             if dist2D(mobY, mobX, maY, maX) > cr then return end
         end
 
@@ -529,8 +532,7 @@ function Movement.checkStick(flag, useAttack)
         end
     end
 
-    -- Stick to target; in camp mode only when MeleeDistance > CampRadius
-    if mv.returnToCamp and maDist <= cr then return end
+    -- Stick to target (the mac's MeleeDistance > CampRadius gate is dropped; see above)
     local stickHow = mv.dStickHow
     if stickHow == 'I' then return end
 
