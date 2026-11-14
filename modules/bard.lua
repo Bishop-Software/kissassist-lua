@@ -195,11 +195,14 @@ function Bard.doBardStuff()
         elseif not s.bard.twistOn then
             stopMedley()
         end
-        -- GoM one-shot: queue after starting/resuming OOC medley (migration plan)
-        if s.bard.gomActive then
-            mq.cmdf('/medley queue %s', s.bard.gomMedley)
-            s.bard.gomActive = false
-        end
+    end
+
+    -- GoM one-shot: queue the GoM song set on top of whichever medley is running.
+    -- The proc only counts in combat (events.lua onGoMOn), so this must also run
+    -- on the combat path, not just out of combat.
+    if s.bard.gomActive then
+        mq.cmdf('/medley queue %s', s.bard.gomMedley)
+        s.bard.gomActive = false
     end
 
     _utils.debug('bard', 'doBardStuff: done dpsTwisting=%s twisting=%s',

@@ -113,8 +113,11 @@ local function validateTarget(spawnID)
     if _state.pull.pulling then
         local mobY = sp and sp.Y() or 0
         local mobX = sp and sp.X() or 0
-        -- Reject if any non-group PC is within 30 units of the mob.
-        if (mq.TLO.SpawnCount(string.format('pc radius 30 loc %s,%s nogroup', mobY, mobX))() or 0) > 0 then
+        -- Reject if any non-group PC (other than us) is within 30 units of the mob.
+        -- Search form matches mac:1001: loc takes X then Y, space-separated.
+        local pcNear = mq.TLO.SpawnCount(string.format('notid %d loc %s %s radius 30 pc nogroup',
+            mq.TLO.Me.ID() or 0, tostring(mobX), tostring(mobY)))() or 0
+        if pcNear > 0 then
             return false
         end
         -- Reject if mob level is outside configured pull level range.

@@ -25,8 +25,16 @@ function Movement.init(state, utils)
     _state.movement.returnToCamp     = Config.get('General', 'ReturnToCamp',     '0') == '1'
     _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius',       '30')) or 30
     _state.movement.campRadiusExceed = tonumber(Config.get('General', 'CampRadiusExceed', '0'))  or 0
-    _state.session.chaseAssist       = Config.get('General', 'ChaseAssist',      '0') == '1'
-    _state.movement.whoToChase       = Config.get('General', 'WhoToChase',       '') or ''
+    -- ChaseAssist is 0/1/2 in the mac: 1 stops chasing during fights, 2 keeps chasing
+    -- (mac:14560, 3680). The value becomes chaseOnValue, which doWeChase checks.
+    local chaseVal = tonumber(Config.get('General', 'ChaseAssist', '0')) or 0
+    _state.session.chaseAssist       = chaseVal > 0
+    if chaseVal > 0 then _state.movement.chaseOnValue = chaseVal end
+    _state.movement.chaseDistance    = tonumber(Config.get('General', 'ChaseDistance',    '25')) or 25
+    -- The mac chases the main assist by default (mac:346); WhoToChase overrides it.
+    local whoToChase = Config.get('General', 'WhoToChase', '') or ''
+    if whoToChase == '' then whoToChase = _state.session.mainAssist or '' end
+    _state.movement.whoToChase       = whoToChase
     _state.movement.dontMoveMe       = Config.get('General', 'DontMoveMe',       '0') == '1'
     _state.movement.stayPut          = Config.get('General', 'StayPut',          '0') == '1'
     _state.movement.stickDist        = tonumber(Config.get('General', 'StickDist',        '13')) or 13
@@ -299,7 +307,7 @@ function Movement.doWeChase()
     local chaseSpawn = mq.TLO.Spawn('=' .. mv.whoToChase)
     if mq.TLO.Me.Hovering() or (chaseSpawn.ID() or 0) == 0 then return end
 
-    local chaseDistance = mv.chaseOnValue * _state.combat.meleeDistance
+    local chaseDistance = mv.chaseDistance or 25  -- mac ChaseDistance
     local meshLoaded    = _state.pull.moveUse == 'nav' and (mq.TLO.Navigation.MeshLoaded() or false)
 
     -- Send pet to follow us while we chase

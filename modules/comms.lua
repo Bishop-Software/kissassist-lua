@@ -14,6 +14,17 @@ local function payload(msgType, data)
     return data
 end
 
+-- Messages that change our camp, chase target or main assist. Only a member of
+-- our own group/raid may send these; the mac sends them group-only (/dgge).
+local GROUP_ONLY = { CAMP = true, STAY = true, CHASE = true, SWITCHMA = true }
+
+local function inMyGroupOrRaid(name)
+    if name == '' then return false end
+    if (mq.TLO.Group.Member(name).Index() or 0) > 0 then return true end
+    if (mq.TLO.Raid.Members() or 0) > 0 and mq.TLO.Raid.Member(name)() then return true end
+    return false
+end
+
 local function onMessage(message)
     local data = message.content
     if type(data) ~= 'table' then return end
@@ -25,6 +36,12 @@ local function onMessage(message)
     local myName   = (mq.TLO.Me.CleanName() or ''):lower()
     local fromName = (data.from or ''):lower()
     if fromName == myName then return end
+
+    -- Another group boxed on this machine must not move our camp or change our MA
+    if GROUP_ONLY[msgType] and not inMyGroupOrRaid(data.from or '') then
+        _utils.debug('comms', 'ignored %s from %s (not in group/raid)', msgType, tostring(data.from))
+        return
+    end
 
     if msgType == 'CAMP' then
         _state.movement.campX        = data.x    or _state.movement.campX

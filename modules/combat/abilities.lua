@@ -381,6 +381,8 @@ end
 local function checkGoM()
     local s = _state
     if not s.bard.gomActive then return end
+    -- Bards use the proc for the GoM song set (bard.lua), not GoM spells (mac skips BRD)
+    if s.session.iAmABard then return end
     s.bard.gomActive  = false
     s.timers.gomTimer = os.clock() + 3
 

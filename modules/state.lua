@@ -215,7 +215,8 @@ local State = {
         campZoneName    = '',
         cantHit         = false,
         cantSee         = false,
-        chaseOnValue    = 1,
+        chaseOnValue    = 1,   -- ChaseAssist mode when on: 1=stop during fights, 2=always chase
+        chaseDistance   = 25,  -- INI [General] ChaseDistance (mac default 25)
         checkOnReturn   = false,
         dontMoveMe      = false,
         dStickHow       = '0',
