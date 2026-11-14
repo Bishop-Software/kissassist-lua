@@ -200,10 +200,11 @@ function HealingUI.drawCures()
     local s = _state
 
     local curesOnLabels = { 'Off', 'Everyone', 'Self Only', 'Group Only' }
-    local newCuresOnIdx, coc = ImGui.Combo('Cures Mode##curesOn', s.heal.curesOn, curesOnLabels)
+    -- ImGui.Combo is 1-based; CuresOn is 0-3 (0=off 1=everyone 2=self 3=group)
+    local newCuresOnIdx, coc = ImGui.Combo('Cures Mode##curesOn', (s.heal.curesOn or 0) + 1, curesOnLabels)
     if coc then
-        s.heal.curesOn = newCuresOnIdx
-        Config.set('Cures', 'CuresOn', tostring(newCuresOnIdx))
+        s.heal.curesOn = newCuresOnIdx - 1
+        Config.set('Cures', 'CuresOn', tostring(s.heal.curesOn))
         Config.save()
     end
 
@@ -251,8 +252,8 @@ function HealingUI.drawCures()
             -- Type
             ImGui.TableNextColumn()
             local typeIdx    = cureTypeToIdx(dtype, selfOnly)
-            local newTypeIdx, tc = ImGui.Combo('##ctype' .. i, typeIdx - 1, _CURE_TYPE_LABELS)
-            newTypeIdx = newTypeIdx + 1  -- back to 1-based
+            -- ImGui.Combo is 1-based, same as typeIdx
+            local newTypeIdx, tc = ImGui.Combo('##ctype' .. i, typeIdx, _CURE_TYPE_LABELS)
             local newDtype    = _CURE_TYPE_VALUES[newTypeIdx] or ''
             -- 'Self' selection collapses selfOnly into the type field; clear selfOnly
             local newSelfOnly = (newTypeIdx == 2) and false or selfOnly

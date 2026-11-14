@@ -139,11 +139,12 @@ function SpellsUI.drawBuffs()
     ImGui.Spacing()
     local REMEM_LABELS = { 'Off', 'Both', 'Short only', 'LW only' }
     ImGui.PushItemWidth(130)
-    local newRemem, rrc = ImGui.Combo('Re-Mem Mode##miscremem', _state.cast.miscGemRemem, REMEM_LABELS)
+    -- ImGui.Combo is 1-based; MiscGemRemem is 0-3 (0=off 1=both 2=short 3=LW)
+    local newRemem, rrc = ImGui.Combo('Re-Mem Mode##miscremem', (_state.cast.miscGemRemem or 0) + 1, REMEM_LABELS)
     ImGui.PopItemWidth()
     if rrc then
-        _state.cast.miscGemRemem = newRemem
-        Config.set('Spells', 'MiscGemRemem', tostring(newRemem))
+        _state.cast.miscGemRemem = newRemem - 1
+        Config.set('Spells', 'MiscGemRemem', tostring(_state.cast.miscGemRemem))
         Config.save()
     end
     if (_state.cast.miscGemRemem or 0) ~= 0 then
@@ -295,13 +296,13 @@ function SpellsUI.drawGoM()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local tgtIdx = 0
+            local tgtIdx = 1  -- ImGui.Combo is 1-based
             for j, v in ipairs(GOM_TARGETS) do
-                if v == tgt then tgtIdx = j - 1 break end
+                if v:upper() == tgt:upper() then tgtIdx = j break end
             end
             local newTgtIdx
             newTgtIdx, tc = ImGui.Combo('##gomtgt' .. i, tgtIdx, GOM_TARGETS)
-            newTgt = GOM_TARGETS[newTgtIdx + 1] or 'MA'
+            newTgt = GOM_TARGETS[newTgtIdx] or 'MA'
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
