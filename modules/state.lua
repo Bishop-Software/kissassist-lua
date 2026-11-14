@@ -173,7 +173,6 @@ local State = {
         radiusToUse      = 90,     -- [Pull] PullRadiusToUse: % of the pull method's range used (mac default 90)
         min              = 0,
         mob              = 0,
-        mobsNotAllowed   = 'null', -- set from INI [Pull] MobsNotAllowed
         mobsToIgnore     = 'null', -- set from INI [Pull] MobsToIgnore (names)
         mobsToIgnoreByID = 'null',
         mobsToPullFirst  = 'all',
