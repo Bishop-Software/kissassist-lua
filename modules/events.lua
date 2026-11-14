@@ -5,6 +5,8 @@ local Events = {}
 -- Unique names for all registered events, for cleanup
 local REGISTERED = {}
 local _nameCount  = {}
+-- Unique names of the CAST_* events, for Events.doCastEvents
+local CAST_NAMES = {}
 
 -- MQ2Lua requires unique event names. For events with multiple patterns we
 -- append _2, _3 … so each registration gets its own unique name.
@@ -14,6 +16,7 @@ local function register(name, pattern, fn)
     local uniqueName = count == 1 and name or (name .. '_' .. count)
     mq.event(uniqueName, pattern, fn)
     REGISTERED[uniqueName] = true
+    if name:sub(1, 5) == 'CAST_' then CAST_NAMES[#CAST_NAMES + 1] = uniqueName end
 end
 
 -- Cast event handlers set State.cast.castReturn so the cast engine (cast.lua, M3)
@@ -601,10 +604,9 @@ local EVENT_DEFS = {
     { 'CAST_TAKEHOLD',     'Your spell is too powerfull for your intended target#*#',                         onTakehold    },
     { 'CAST_TAKEHOLD',     'This pet may not be made invisible#*#',                                           onTakehold    },
     { 'CAST_IMMUNE',       'Your target has no mana to affect#*#',                                            onImmune      },
-    { 'CAST_IMMUNE',       'Your target is immune to changes in its attack speed#*#',                         onImmune      },
-    { 'CAST_IMMUNE',       'Your target is immune to changes in its run speed#*#',                            onImmune      },
-    { 'CAST_IMMUNE',       'Your target is immune to snare spells#*#',                                        onImmune      },
-    { 'CAST_IMMUNE',       'Your target is immune to the stun portion of this effect#*#',                     onImmune      },
+    -- One pattern for every "Your target is immune to ..." variant (attack speed, run
+    -- speed, snare, fear, stun portion, ...). The mac listed each one separately.
+    { 'CAST_IMMUNE',       'Your target is immune to #*#',                                                    onImmune      },
     { 'CAST_IMMUNE',       'Your target cannot be mesmerized#*#',                                             onImmune      },
     { 'CAST_IMMUNE',       'Your target looks unaffected#*#',                                                 onImmune      },
     { 'CAST_DISTRACTED',   'You need to play a#*#instrument for this song#*#',                                onDistracted  },
@@ -705,9 +707,17 @@ function Events.register(s, u, m, c, co)
     charm    = c
     _comms   = co
     _nameCount = {}
+    CAST_NAMES = {}
     for _, def in ipairs(EVENT_DEFS) do
         register(def[1], def[2], def[3])
     end
+end
+
+-- Run only the queued cast-result events (Sub DoCastingEvents, mac:15501), so the
+-- cast engine can read State.cast.castReturn without firing unrelated events mid-cast.
+-- mq.doevents(names...) runs the handlers in arrival order before it returns.
+function Events.doCastEvents()
+    if #CAST_NAMES > 0 then mq.doevents(unpack(CAST_NAMES)) end
 end
 
 function Events.unregister()
@@ -715,6 +725,7 @@ function Events.unregister()
         mq.unevent(name)
     end
     REGISTERED = {}
+    CAST_NAMES = {}
 end
 
 return Events
