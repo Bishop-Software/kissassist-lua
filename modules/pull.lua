@@ -449,6 +449,8 @@ function Pull.rangeSet()
         if key ~= _lastRange then
             _lastRange = key
             printf('\awPull range set to \at%d\aw for \at%s', p.range, method)
+            -- CastRadius follows the player, so it can be updated from anywhere.
+            if p.mapSet then mq.cmdf('/squelch /mapfilter CastRadius %d', p.range) end
         end
     end
 
@@ -492,6 +494,25 @@ function Pull.rangeSet()
         _lastRange = 'unknown|' .. with
         printf('\arUnknown PullWith setting: %s', with)
     end
+end
+
+-- Draw the pull and camp radii on the MQ2Map map. Mirrors Sub PaintMap
+-- (mac:8917), run once while the puller stands in camp (mac:8494, MapSet).
+-- MQ2Map anchors CampRadius/PullRadius at the player's position when they are
+-- set, so this only paints from inside the camp radius. CastRadius follows the
+-- player and shows the pull range. /makecamphere clears mapSet to repaint.
+function Pull.paintMap()
+    local s = _state
+    if s.pull.mapSet then return end
+    if s.movement.campX == 0 and s.movement.campY == 0 then return end
+    if not mq.TLO.Plugin('MQ2Map').IsLoaded() then return end
+    local d = dist2D(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0, s.movement.campY, s.movement.campX)
+    if d > (s.movement.campRadius or 0) then return end
+    mq.cmdf('/squelch /mapfilter CastRadius %d', s.pull.range or 0)
+    mq.cmdf('/squelch /mapfilter SpellRadius %d', s.pull.maxRadius or 0)
+    mq.cmdf('/squelch /mapfilter PullRadius %d', s.pull.maxRadius or 0)
+    mq.cmdf('/squelch /mapfilter CampRadius %d', s.movement.campRadius or 0)
+    s.pull.mapSet = true
 end
 
 -- True when the PullWith method can be used right now (mac:418): Melee and Pet

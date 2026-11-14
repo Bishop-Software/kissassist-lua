@@ -226,6 +226,8 @@ while not State.terminate do
     -- Phase 9: pull
     local campSet = (State.movement.campX ~= 0 or State.movement.campY ~= 0)
     if PULLER_ROLES[State.session.role] and campSet then
+        -- Draw the pull/camp radii on the map once we're in camp (mac:8494).
+        Pull.paintMap()
         -- Only look for a mob once the pull method is ready, and not while
         -- dragging a corpse (mac:417-418) or during the PullWait respawn wait.
         -- pullCheck runs even when no mob was found (mac:424): that is where the
