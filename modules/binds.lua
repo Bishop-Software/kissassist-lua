@@ -287,6 +287,7 @@ local function onMakeCampHere()
     state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0  -- mac:8424
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
+    state.pull.mapSet           = false  -- repaint the map circles around the new camp
     printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
     if _comms then
         _comms.broadcast('CAMP', {
