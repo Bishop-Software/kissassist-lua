@@ -207,7 +207,7 @@ function Pull.pullValidate(mobID, flag)
 
     -- Ignore by spawn ID.
     if _state.pull.mobsToIgnoreByID ~= 'null' and
-       _state.pull.mobsToIgnoreByID:find(tostring(mobID) .. '|', 1, true) then
+       _state.pull.mobsToIgnoreByID:find('|' .. tostring(mobID) .. '|', 1, true) then
         _utils.debug('pull', 'pullValidate: %d on MobsToIgnoreByID list', mobID)
         return false
     end
@@ -748,13 +748,139 @@ local function stopMoving()
     mq.cmd('/squelch /stick off')
 end
 
+-- Mirrors Sub PullReset (mac:10565).
 local function pullReset()
     local s = _state
     s.pull.pulling        = false
     s.pull.pulled         = false
     s.combat.myTargetID   = 0
     s.combat.myTargetName = '0'
+    s.movement.toClose    = false
+    mq.cmd('/attack off')
     stopMoving()
+    mq.cmd('/squelch /target clear')
+end
+
+-- Add a spawn ID to the ignore-by-ID pull list ("|id|id|"). Mirrors the 'a'
+-- action of Sub PullIgnoreCheck (mac:9980).
+function Pull.ignoreAdd(mobID, from)
+    local id = tonumber(mobID) or 0
+    if id < 1 then return end
+    local p    = _state.pull
+    local list = p.mobsToIgnoreByID
+    if not list or list == 'null' or list == '' then list = '|' end
+    if list:find('|' .. id .. '|', 1, true) then return end
+    p.mobsToIgnoreByID = list .. id .. '|'
+    printf('\awAdded %d to ignore pull list. (%s)', id, from or '')
+end
+
+local function xtSlotID(slot)
+    if (slot or 0) == 0 then return 0 end
+    return mq.TLO.Me.XTarget(slot).ID() or 0
+end
+
+-- After a successful pull, wait in camp for the mob to arrive. Mirrors
+-- Sub WaitForMob (mac:10469). Up to 45 s; gives up (and ignores the target)
+-- if aggro is lost. Per role:
+--   pullertank:     wait until a hater is within MeleeDistance of camp.
+--   puller:         wait until a hater is in camp or within 20 of the MA;
+--                   chain pulling: leave if several mobs come, else wait while
+--                   the pulled mob is still heading for us and > 20 from the MA.
+--   pullerpettank:  bring the pet back, then send it at the first hater
+--                   within PetAttackRange of camp.
+-- Merc assignment and the ranged-weapon swap back are not ported.
+local function waitForMob()
+    local s    = _state
+    local role = s.session.role
+    if role == 'hunter' or role == 'hunterpettank' or s.dps.paused then return end
+    if not s.pull.pulled then return end
+
+    local me       = mq.TLO.Me
+    local deadline = os.clock() + 45
+    local campX, campY = s.movement.campX, s.movement.campY
+    local zr       = s.pull.maxZRange
+    local meleeDist = s.combat.meleeDistance or 75
+
+    if s.pull.chainPull ~= 0 then s.pull.lastMobPullID = mq.TLO.Target.ID() or 0 end
+    -- Target the mob that actually aggroed if it isn't the one we pulled.
+    local pag = _utils.pullAggroID()
+    if pag > 0 and (mq.TLO.Target.ID() or 0) ~= pag and (mq.TLO.Target.AggroHolder.ID() or 0) == 0 then
+        local aggroID = xtSlotID(s.combat.xTSlot)
+        if aggroID > 0 then mq.cmdf('/squelch /target id %d', aggroID) end
+    end
+
+    while true do
+        local fm = s.movement.faceMobOn or 0
+        if (fm == 1 or fm == 2) and mq.TLO.Target.ID() and (me.Standing() or me.Mount.ID()) then
+            mq.cmd(fm == 1 and '/face fast nolook' or '/face nolook')
+        end
+        mq.doevents()
+        if s.combat.myTargetID == 0 then
+            _combat.combatTargetCheck(0)
+            if s.combat.myTargetID == 0 then
+                s.combat.myTargetID = tonumber(s.combat.aggroTargetID) or 0
+            end
+        end
+        _combat.mobRadar('los', s.movement.campRadius)
+        if s.combat.mobCount >= 2 and s.pull.chainPull == 0 then
+            pullReset()
+            return
+        end
+        if (s.combat.aggroTargetID or '') == '' or os.clock() > deadline then
+            _utils.debug('pull', 'waitForMob: no aggro or timed out')
+            local tid = mq.TLO.Target.ID() or 0
+            if tid > 0 then Pull.ignoreAdd(tid, 'waitformob') end
+            pullReset()
+            return
+        end
+        mq.delay(500)
+
+        local mobsInCamp = mq.TLO.SpawnCount(string.format('xtarhater loc %s %s radius %d zradius %d',
+            campX, campY, meleeDist, zr))() or 0
+        local keepWaiting = false
+        if role == 'pullertank' then
+            keepWaiting = mobsInCamp == 0
+        elseif role == 'puller' then
+            local ma = mq.TLO.Spawn('=' .. (s.session.mainAssist or ''))
+            if s.pull.chainPull == 0 then
+                local nearMA = ma() and (mq.TLO.SpawnCount(string.format('xtarhater loc %s %s radius 20 zradius %d',
+                    ma.X() or 0, ma.Y() or 0, zr))() or 0) or 0
+                keepWaiting = mobsInCamp == 0 and nearMA == 0
+            else
+                if mobsInCamp > 1 or s.combat.myTargetID == 0 or
+                   (xtSlotID(s.combat.xTSlot) > 0 and xtSlotID(s.combat.xTSlot2) > 0) then
+                    pullReset()
+                    return
+                end
+                local mob = mq.TLO.Spawn('id ' .. s.combat.myTargetID)
+                if mob() and ma() then
+                    local d = math.sqrt(((mob.Y() or 0) - (ma.Y() or 0))^2 + ((mob.X() or 0) - (ma.X() or 0))^2)
+                    keepWaiting = d > 20 and (mq.TLO.Target.ID() or 0) == s.combat.myTargetID
+                        and (me.TargetOfTarget.ID() or 0) == (me.ID() or -1)
+                end
+            end
+        elseif role == 'pullerpettank' then
+            local pet = me.Pet
+            if (pet.ID() or 0) > 0 and
+               math.sqrt(((pet.Y() or 0) - campY)^2 + ((pet.X() or 0) - campX)^2) > s.movement.campRadius and
+               math.sqrt(((pet.Y() or 0) - (me.Y() or 0))^2 + ((pet.X() or 0) - (me.X() or 0))^2) > 20 then
+                mq.cmd('/pet back off')
+                mq.delay(500)
+                mq.cmd('/pet follow')
+            end
+            local filter = string.format('xtarhater targetable loc %s %s radius %d zradius %d',
+                campX, campY, s.pet.attackRange or 0, zr)
+            if (mq.TLO.SpawnCount(filter)() or 0) == 0 then
+                keepWaiting = true
+            else
+                s.combat.myTargetID = mq.TLO.NearestSpawn('1, ' .. filter).ID() or 0
+                if not mq.TLO.Pet.Combat() then _combat.combatPet() end
+            end
+        end
+        if not keepWaiting then break end
+    end
+
+    if s.combat.myTargetID ~= 0 and _utils.pullAggroID() == 0 then pullReset() end
 end
 
 -- Mirrors Sub PullWithMelee (kissassist.mac:10040). Closes in and swings until the
@@ -1158,6 +1284,14 @@ local function executePull(mobID)
     s.pull.pulling = false
 
     if returnStat == 'btcr' then
+        -- Don't keep retrying a mob we couldn't pull (mac:9936-9942).
+        if s.combat.myTargetID ~= 0 then
+            Pull.ignoreAdd(s.combat.myTargetID, 'pull2')
+            s.combat.myTargetID = 0
+        elseif (mq.TLO.Target.ID() or 0) > 0 then
+            Pull.ignoreAdd(mq.TLO.Target.ID(), 'pull3')
+            mq.cmd('/squelch /target clear')
+        end
         if not s.pull.pullOnReturn then
             if s.movement.returnToCamp then
                 _movement.doWeMove(1, 'pullcheck')
@@ -1166,8 +1300,16 @@ local function executePull(mobID)
         return 'oor'
     end
 
+    -- Back to camp, then wait for the mob to arrive (mac:9951-9966).
     if s.movement.returnToCamp then
         _movement.doWeMove(1, 'pull')
+        if s.pull.pulled then
+            waitForMob()
+            if mq.TLO.Target.ID() and (s.movement.faceMobOn or 0) == 3 then
+                mq.cmd('/face fast nolook')
+            end
+            s.pull.pulled = false
+        end
     end
 end
 

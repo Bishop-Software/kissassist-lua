@@ -45,9 +45,9 @@ local function validateTarget(spawnID)
     }
     if badTypes[mobType] or badTypes[mobType:upper()] then return false end
 
-    -- Ignore-by-ID list (pipe-delimited "id|" entries stored in pull state)
+    -- Ignore-by-ID list ("|id|id|", see Pull.ignoreAdd)
     local ignByID = _state.pull.mobsToIgnoreByID or 'null'
-    if ignByID ~= 'null' and ignByID:find(mobID .. '|', 1, true) then return false end
+    if ignByID ~= 'null' and ignByID:find('|' .. mobID .. '|', 1, true) then return false end
 
     -- Tank: target must appear on the XTarget auto-hater list.
     -- Bypassed when Me.Combat() is true and the mob is the current target
