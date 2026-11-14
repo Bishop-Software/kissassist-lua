@@ -28,6 +28,7 @@ Combat.assist            = Targeting.assist
 Combat.getCombatTarget   = Targeting.getCombatTarget
 Combat.combatTargetCheck = Targeting.combatTargetCheck
 Combat.fight             = Fight.fight
+Combat.combatPet         = Abilities.combatPet
 
 -- Expose validateTarget for pull.lua (Step 7.8).
 Combat.validateTarget = validateTarget
@@ -112,7 +113,7 @@ function Combat.combatReset(sFlag, calledFrom)
                 kept[#kept+1] = id
             end
         end
-        _state.pull.mobsToIgnoreByID = #kept > 0 and ('|' .. table.concat(kept, '|')) or 'null'
+        _state.pull.mobsToIgnoreByID = #kept > 0 and ('|' .. table.concat(kept, '|') .. '|') or 'null'
     end
 
     -- Core state reset (mac:2226–2234)
