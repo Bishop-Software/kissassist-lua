@@ -58,6 +58,14 @@ function M.run(TH, MockMQ)
     MockMQ.set('parse:${Me.PctMana} >= 30', '20 >= 30')
     TH.assert_false(Cond.evalStr('${Me.PctMana} >= 30'), 'evalStr >= false')
 
+    -- MQ '!=' must become Lua '~=' (it used to fail to load and fall through to true)
+    MockMQ.set('parse:${Me.PctHPs}!=100', '100!=100')
+    TH.assert_false(Cond.evalStr('${Me.PctHPs}!=100'), 'evalStr != equal → false')
+    MockMQ.set('parse:${Me.PctHPs}!=100', '90!=100')
+    TH.assert_true(Cond.evalStr('${Me.PctHPs}!=100'), 'evalStr != different → true')
+    MockMQ.set('parse:${Me.PctHPs}!=100 && !0', '90!=100 && !0')
+    TH.assert_true(Cond.evalStr('${Me.PctHPs}!=100 && !0'), 'evalStr != mixed with !0 → true')
+
     -- Cond.eval — cond.on = false: bypass regardless of slot content -----------
     MockMQ.reset()
     state.cond.on = false

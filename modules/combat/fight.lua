@@ -438,13 +438,14 @@ local function outOfRangeBlock(myID)
         _state.combat.burnID = 0
     end
     -- Sync target
-    if _state.combat.dpsOn or _state.combat.meleeOn or _state.pet.activeState then
+    if _state.combat.dpsOn or _state.combat.meleeOn or _state.pet.on then
         Combat.combatTargetCheck(1)
         myID = _state.combat.myTargetID
     end
-    -- Pet / mez (mac:1322-1329)
-    if _state.pet.activeState ~= 0 and _state.pet.combatOn and myID ~= 0 then
-        if _mez then _mez.check('Combat') end
+    -- Pet / mez (mac:1322-1329). The mac runs MezCheck on both branches, so
+    -- mez no longer depends on having a pet.
+    if _mez then _mez.check('Combat') end
+    if _state.pet.on and _state.pet.combatOn and myID ~= 0 then
         local sp = mq.TLO.Spawn('id ' .. myID)
         if (sp and sp.PctHPs() or 100) <= _state.pet.assistAt
            and not mq.TLO.Pet.Combat() then

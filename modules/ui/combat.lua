@@ -59,7 +59,8 @@ function CombatUI.drawMelee()
     if s.session.iAmARogue then
         checkbox('Auto Hide', s.misc.autoHide, function(v)
             s.misc.autoHide = v
-            Config.set('General', 'AutoHide', v and '1' or '0')
+            Config.set('Melee', 'AutoHide', v and '1' or '0')
+            Config.set('General', 'AutoHide', nil)  -- drop the old misplaced key
             Config.save()
         end)
     end

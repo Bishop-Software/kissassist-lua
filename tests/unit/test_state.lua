@@ -26,7 +26,7 @@ function M.run(TH, _MockMQ)
     TH.assert_eq(State.combat.assistAt,        95,       'combat.assistAt')
     TH.assert_eq(State.combat.dpsSkip,         20,       'combat.dpsSkip')
     TH.assert_eq(State.combat.dpsInterval,     2,        'combat.dpsInterval')
-    TH.assert_eq(State.combat.meleeDistance,   30,       'combat.meleeDistance')
+    TH.assert_eq(State.combat.meleeDistance,   75,       'combat.meleeDistance')
     TH.assert_false(State.combat.combatStart,            'combat.combatStart')
     TH.assert_eq(State.combat.autoFireOn,      0,        'combat.autoFireOn')       -- M16
     TH.assert_false(State.combat.petTargetSwitch,        'combat.petTargetSwitch')  -- M22
@@ -49,7 +49,7 @@ function M.run(TH, _MockMQ)
     TH.assert_false(State.pull.on,                       'pull.on')
 
     -- movement
-    TH.assert_eq(State.movement.campRadius,    50,       'movement.campRadius')
+    TH.assert_eq(State.movement.campRadius,    30,       'movement.campRadius')
     TH.assert_eq(State.movement.stickDist,     13,       'movement.stickDist')
     TH.assert_false(State.movement.returnToCamp,         'movement.returnToCamp')
     TH.assert_eq(State.movement.faceMobOn,     0,        'movement.faceMobOn')

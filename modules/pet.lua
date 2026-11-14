@@ -39,7 +39,7 @@ function Pet.init(state, utils, cast, buffs, movement)
     _state.pet.tauntOverride = Config.get('Pet', 'PetTauntOverride', '0') == '1'
     _state.pet.toysGave      = _state.pet.toysGave or ''
     _state.pet.toysDone      = false
-    _state.pet.petRampageOn  = Config.get('Pull', 'PetRampPullWait', '0') == '1'
+    _state.pet.petRampageOn  = Config.get('Pet', 'PetRampPullWait', '0') == '1'
 
     _utils.debug('pet', 'Pet.init: spell=%s focusOn=%d holdOn=%d suspend=%s',
         _state.pet.spell, _state.pet.focusOn,
@@ -67,7 +67,7 @@ local function petStateCheck()
         _state.pet.suspend = false
     end
     if (mq.TLO.Me.Pet.ID() or 0) > 0 then
-        _state.pet.activeState = 1
+        _state.pet.activeState = true
     end
 end
 
@@ -130,7 +130,7 @@ function Pet.doPetStuff()
     -- -------------------------------------------------------------------------
     if not hasPet and petMana <= myMana then
         printf('\awI have no pet. %ss live longer when we have pets.', mq.TLO.Me.Class() or '')
-        s.pet.activeState = 0
+        s.pet.activeState = false
         s.pet.toysGave    = ''
         if s.pet.focusOn == 2 then s.pet.focusOn = 1 end
         if s.pet.holdOn  == 2 then s.pet.holdOn  = 1 end
@@ -158,12 +158,12 @@ function Pet.doPetStuff()
 
         if s.pet.suspend then
             -- Suspend path: unsuspend or summon (mac:5274-5306)
-            if s.pet.totCount == 1 and s.pet.activeState == 0 and s.pet.suspendState == 1 then
+            if s.pet.totCount == 1 and not s.pet.activeState and s.pet.suspendState then
                 printf('\awI have a suspended pet, summoning it now!')
                 petStateCheck()
             end
             local inBook = (mq.TLO.Me.Book(petSpell)() or 0) > 0
-            if s.pet.totCount < 2 and s.pet.suspendState == 0 and s.pet.activeState == 0
+            if s.pet.totCount < 2 and not s.pet.suspendState and not s.pet.activeState
                and inBook and petMana <= myMana then
                 local deadline = mq.gettime() + 60000
                 while mq.gettime() < deadline do
@@ -176,7 +176,7 @@ function Pet.doPetStuff()
                     mq.delay(1000, function() return (mq.TLO.Me.Pet.ID() or 0) > 0 end)
                     if (mq.TLO.Me.Pet.ID() or 0) > 0 then
                         printf('\awMy pet is now: %s from %s', mq.TLO.Me.Pet.CleanName() or '', petSpell)
-                        s.pet.activeState = 1
+                        s.pet.activeState = true
                         _buffs.checkPetBuffs()
                         if s.pet.toysOn then
                             Pet.petToys(mq.TLO.Me.Pet.CleanName() or '')
@@ -205,7 +205,7 @@ function Pet.doPetStuff()
                 end
                 if (mq.TLO.Me.Pet.ID() or 0) > 0 then
                     printf('\awMy pet is now: %s from %s', mq.TLO.Me.Pet.CleanName() or '', petSpell)
-                    s.pet.activeState = 1
+                    s.pet.activeState = true
                 end
                 -- Focus swap-back (mac:5324-5327)
                 if focusSwitch and not ((mq.TLO.Cursor.ID() or 0) > 0) then
@@ -222,12 +222,12 @@ function Pet.doPetStuff()
                 local petDist = mq.TLO.Me.Pet.Distance() or 0
                 local campRad = s.movement.campRadius or 100
                 if petDist <= campRad then
-                    if (mq.TLO.Pet.Stance() or '') ~= 'guard'  then mq.cmd('/pet guard') end
+                    if (mq.TLO.Pet.Stance() or ''):upper() ~= 'GUARD'  then mq.cmd('/pet guard') end
                 else
-                    if (mq.TLO.Pet.Stance() or '') ~= 'follow' then mq.cmd('/pet follow') end
+                    if (mq.TLO.Pet.Stance() or ''):upper() ~= 'FOLLOW' then mq.cmd('/pet follow') end
                 end
             else
-                if (mq.TLO.Pet.Stance() or '') ~= 'follow' then mq.cmd('/pet follow') end
+                if (mq.TLO.Pet.Stance() or ''):upper() ~= 'FOLLOW' then mq.cmd('/pet follow') end
             end
         end
         if s.pet.holdOn == 1 then
@@ -249,12 +249,12 @@ function Pet.doPetStuff()
                 local petDist = mq.TLO.Me.Pet.Distance() or 0
                 local campRad = s.movement.campRadius or 100
                 if petDist <= campRad then
-                    if (mq.TLO.Pet.Stance() or '') ~= 'guard'  then mq.cmd('/pet guard') end
+                    if (mq.TLO.Pet.Stance() or ''):upper() ~= 'GUARD'  then mq.cmd('/pet guard') end
                 else
-                    if (mq.TLO.Pet.Stance() or '') ~= 'follow' then mq.cmd('/pet follow') end
+                    if (mq.TLO.Pet.Stance() or ''):upper() ~= 'FOLLOW' then mq.cmd('/pet follow') end
                 end
             else
-                if (mq.TLO.Pet.Stance() or '') ~= 'follow' then mq.cmd('/pet follow') end
+                if (mq.TLO.Pet.Stance() or ''):upper() ~= 'FOLLOW' then mq.cmd('/pet follow') end
             end
         end
         if s.pet.holdOn == 1 then
