@@ -93,6 +93,11 @@ function Combat.combatReset(sFlag, calledFrom)
         _state.mez.mobDone = false
     end
 
+    -- DPS immune list: drop mobs that are dead or gone; live adds keep theirs
+    for id in pairs(_state.combat.dpsImmune) do
+        if isDeadOrGone(id) then _state.combat.dpsImmune[id] = nil end
+    end
+
     -- MobsToIgnoreByID: remove dead/corpse entries (mac:2216–2224)
     local ignoreIDs = _state.pull.mobsToIgnoreByID or 'null'
     if ignoreIDs ~= 'null' and ignoreIDs ~= '' then

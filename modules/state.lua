@@ -108,6 +108,7 @@ local State = {
         aeRadius           = 50,
         aeArray            = {},
         slotTimers         = {},   -- per-DPS-slot os.clock() expiry (0=expired); mac ABTimer/DPSTimer
+        dpsImmune          = {},   -- [mobID][spellName] = true: DPS spells the mob was immune to
         dpsSkip            = 20,  -- stop DPS rotation when mob HP% is at or below this (mac DPSSkip)
         dpsInterval        = 2,   -- fallback timer (seconds) for zero-duration spells (mac DPSInterval)
         dpsOnOoc           = false, -- DPSOn==2: run DPS rotation out of combat

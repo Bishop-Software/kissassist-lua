@@ -8,7 +8,12 @@ local Helpers = require('modules.helpers')
 local Cast = {}
 
 local Config = require('modules.config')
+local Events = require('modules.events')
 local state, utils, _bard, _cond
+
+-- Outcomes reported by a chat message after the cast itself completed. Casts that
+-- otherwise judge success by cooldown (AA, item) take these over CAST_SUCCESS.
+local LANDED_NO_EFFECT = { CAST_IMMUNE = true, CAST_RESISTED = true, CAST_TAKEHOLD = true }
 
 -- sentFrom values that require immediate interrupt + blocking wait in queueCast.
 local BARD_URGENT = {
@@ -259,6 +264,7 @@ local function castSpell(spellName, sentFrom)
         local timeout = os.clock() + 30
         while os.clock() < timeout do
             mq.delay(100)
+            Events.doCastEvents()
             if (mq.TLO.Me.Casting.ID() or 0) == 0 then break end
             if state.cast.castReturn == 'CAST_CANCELLED' then break end
             -- Pull short-circuit: aggro achieved, no need to finish cast
@@ -293,6 +299,7 @@ local function castSpell(spellName, sentFrom)
         end
 
         mq.delay(100)   -- let final cast-result event settle
+        Events.doCastEvents()
 
         if state.cast.castReturn == 'CAST_CANCELLED' then break end
         castResult = state.cast.castReturn
@@ -414,6 +421,12 @@ local function castAA(whatAA, sentFrom)
             castResult = state.cast.castReturn
             break
         end
+    end
+
+    mq.delay(100)   -- let final cast-result event settle
+    Events.doCastEvents()
+    if castResult == 'CAST_SUCCESS' and LANDED_NO_EFFECT[state.cast.castReturn] then
+        castResult = state.cast.castReturn
     end
 
     utils.debug('cast', 'CastAA result: %s', castResult)
@@ -613,15 +626,15 @@ local function castItem(whatItem, sentFrom)
         end
     end
 
+    mq.delay(100)   -- let final cast-result event settle
+    Events.doCastEvents()
     local castResult = state.cast.castReturn
 
-    -- SUCCESS if item went on cooldown OR summoned item was consumed (not IMMUNE/RESISTED)
+    -- SUCCESS if item went on cooldown OR summoned item was consumed, unless the
+    -- target reported immune/resisted/did not take hold
     local itemReady  = mq.TLO.Me.ItemReady('=' .. whatItem)()
     local itemExists = (mq.TLO.FindItem('=' .. whatItem).ID() or 0) ~= 0
-    if not itemReady
-            or (not itemExists
-                and castResult ~= 'CAST_IMMUNE'
-                and castResult ~= 'CAST_RESISTED') then
+    if (not itemReady or not itemExists) and not LANDED_NO_EFFECT[castResult] then
         castResult = 'CAST_SUCCESS'
     end
 
@@ -1289,7 +1302,8 @@ local function setSlotTimer(spellName, tType, daMod)
         ---@diagnostic disable-next-line: undefined-field
         local dur = aa.Spell.MyDuration.TotalSeconds() or 0
         ---@diagnostic disable-next-line: undefined-field
-        if dur == 0 then dur = aa.Spell.Trigger.MyDuration.TotalSeconds() or 0 end
+        -- Trigger needs an index in Lua (mac's ${...Spell.Trigger} means Trigger[1])
+        if dur == 0 then dur = aa.Spell.Trigger(1).MyDuration.TotalSeconds() or 0 end
         dur = applyMod(dur)
         return dur > 0 and os.clock() + dur or 0
     end
@@ -1457,6 +1471,9 @@ function Cast.combatCast()
         -- DPS stacking check: don't re-cast DoT/spell already on target from me
         if not isCmd and (tType == '' or tType == 'mob' or tType == 'target') then
             if castDPSSpellCheck(spellName) then goto next_dps end
+            -- Skip spells this mob already came back immune to (cleared in combatReset)
+            local immune = state.combat.dpsImmune[castTargetID]
+            if immune and immune[spellName] then goto next_dps end
         end
 
         -- Cast and handle result
@@ -1516,6 +1533,16 @@ function Cast.combatCast()
             end
         elseif result == 'CAST_RESISTED' then
             printf('** %s - RESISTED', mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '')
+        elseif result == 'CAST_IMMUNE' then
+            -- Remember per mob so the rotation stops re-casting it every gem refresh.
+            -- Not in the .mac, which only handles IMMUNE for debuffs/mez.
+            if not isCmd and (tType == '' or tType == 'mob' or tType == 'target') then
+                local immune = state.combat.dpsImmune[castTargetID] or {}
+                immune[spellName] = true
+                state.combat.dpsImmune[castTargetID] = immune
+            end
+            printf('** %s - IMMUNE to %s, skipping it on this mob',
+                mq.TLO.Spawn('id ' .. castTargetID).CleanName() or '', spellName)
         elseif result == 'CAST_INTERRUPTED' or result == 'CAST_CANCELLED'
                 or result == 'CAST_FIZZLE' then
             -- Interrupted/fizzled/cancelled casts do NOT start the gem's recast timer,
