@@ -143,7 +143,6 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
     _state.pull.ranking      = tonumber(Config.get('Pull', 'PullRanking',  '0'))  or 0
     Pull.loadZoneLists()
-    _state.pull.mobsNotAllowed  = Config.get('Pull', 'MobsNotAllowed', 'null')
     _state.pull.moveUse         = Config.get('Pull', 'PullMoveUse',    'los')
     _state.pull.searchType      = Config.get('Pull', 'SearchType',     '')
     -- waypointZRange mirrors MaxZRange (used by movement nav Z-range guard)
