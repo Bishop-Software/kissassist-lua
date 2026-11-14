@@ -55,7 +55,11 @@ function PullUI.drawPull()
     ImGui.Separator()
     intInput('Max Radius',  s.pull.maxRadius,    1, 2000, 'Pull', 'MaxRadius',    function(v) s.pull.maxRadius    = v end)
     intInput('Max Z Range', s.pull.maxZRange,    1, 2000, 'Pull', 'MaxZRange',    function(v) s.pull.maxZRange    = v end)
-    intInput('Pull Range',  s.pull.range,         1,  500, 'Pull', 'PullRange',    function(v) s.pull.range        = v end)
+    -- Pull range comes from PullWith (Pull.rangeSet); this scales it.
+    intInput('Pull Range %', s.pull.radiusToUse,  1,  100, 'Pull', 'PullRadiusToUse', function(v)
+        s.pull.radiusToUse = v
+        Pull.rangeSet()
+    end)
     intInput('Arc Width°',  s.pull.pullArcWidth,  0,  359, 'Pull', 'PullArcWidth', function(v)
         -- Keep the current aim if an arc is already set, else aim where we face.
         local aimed  = s.pull.lSide ~= s.pull.rSide
@@ -73,7 +77,7 @@ function PullUI.drawPull()
     -- Read-only status
     ImGui.Spacing()
     ImGui.Separator()
-    ImGui.Text('Pull With: ' .. (s.pull.withAlt or 'Melee'))
+    ImGui.Text(string.format('Pull With: %s (range %d)', s.pull.withAlt or 'Melee', s.pull.range or 0))
     if s.pull.pullArcWidth > 0 then
         ImGui.Text(string.format('Pull Arc: %.0f° to %.0f° (facing %.0f°)',
             s.pull.lSide, s.pull.rSide, s.pull.heading))

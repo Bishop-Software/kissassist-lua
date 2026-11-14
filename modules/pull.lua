@@ -122,7 +122,15 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
     _state.pull.withAlt      = Config.get('Pull', 'PullWith',      'Melee')
     _state.pull.meleeStick   = Config.get('Pull', 'PullMeleeStick', '0') == '1'
+    -- PullRange is a fallback only: Pull.rangeSet derives it from PullWith, as the
+    -- .mac does (it never reads PullRange from the INI).
     _state.pull.range        = tonumber(Config.get('Pull', 'PullRange',    '15')) or 15
+    -- PullRadiusToUse: % of the pull method's range to use (mac:14927, default 90,
+    -- 0 or > 100 -> 100). Early Lua configs defaulted it to '1', which would mean
+    -- 1%, so treat 1 as unset.
+    local rtu = tonumber(Config.get('Pull', 'PullRadiusToUse', '90')) or 90
+    if rtu == 1 then rtu = 90 elseif rtu <= 0 or rtu > 100 then rtu = 100 end
+    _state.pull.radiusToUse  = rtu
     _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '0'))  or 0
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
     _state.pull.min          = tonumber(Config.get('Pull', 'PullMin',      '0'))  or 0
@@ -158,6 +166,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
         _state.pull.pullLocX[i] = tonumber(Config.get('PullAdvanced', 'PullLocX'..i, '0')) or 0.0
         _state.pull.pullLocZ[i] = tonumber(Config.get('PullAdvanced', 'PullLocZ'..i, '0')) or 0.0
     end
+
+    Pull.rangeSet()
 
     _utils.debug('pull', 'Pull.init complete — on=%s with=%s range=%d maxRadius=%d',
         tostring(_state.pull.on), _state.pull.withAlt,
@@ -412,6 +422,78 @@ end
 -- readyFlag: 1=ready to pull, 0=chain-pull availability check.
 -- a: initial Piterations (pass 1); b: UseCampLoc for hunter (pass 0).
 -- Returns 1 (found, state.pull.mob set) or 0 (none).
+local RANGED_TYPES = { archery = true, throwing = true, throwingv1 = true, throwingv2 = true, ammo = true }
+local _lastRange   -- last "method|range" reported, so changes are announced once
+
+-- Set PullRange from the PullWith method. Mirrors Sub PullRangeSet (mac:8857)
+-- and Sub PullVars (mac:8935); called at init and before each mob search.
+--   Bow|Arrow (ranged item + ammo): item range (50 if none) + arrow range for
+--     bows, x PullRadiusToUse%; PullWith becomes 'Ranged'. No ammo -> Melee.
+--   clicky item: its spell's range x PullRadiusToUse%.
+--   spell / disc / AA: MyRange (AA: its spell's range) x PullRadiusToUse%.
+--   Pet: 185 (hunterpettank: 80% of PetAttackRange).  Melee: 15.
+-- Anything else keeps the current range.
+function Pull.rangeSet()
+    local p    = _state.pull
+    local with = p.withAlt or 'Melee'
+    local lw   = with:lower()
+    local pct  = (p.radiusToUse or 90) / 100
+    local me   = mq.TLO.Me
+    local first, second = with:match('^([^|]*)|?(.*)$')
+
+    local function set(range, method)
+        -- Round, don't floor: 200 * 0.9 can come out as 179.999... in floating point.
+        p.range   = math.floor((range or 0) + 0.5)
+        p.withAlt = method
+        local key = method .. '|' .. p.range
+        if key ~= _lastRange then
+            _lastRange = key
+            printf('\awPull range set to \at%d\aw for \at%s', p.range, method)
+        end
+    end
+
+    -- Keywords first (the .mac checks items first, but no item is named Melee/Pet).
+    if lw == 'pet' then
+        if _state.session.role == 'hunterpettank' then
+            set((_state.pet.attackRange or 0) * 0.80, 'Pet')
+        else
+            set(185, 'Pet')
+        end
+    elseif lw == 'melee' then
+        set(15, 'Melee')
+    elseif lw == 'ranged' then
+        p.withAlt = 'Ranged'
+    elseif (mq.TLO.FindItemCount('=' .. first)() or 0) > 0 then
+        local item  = mq.TLO.FindItem('=' .. first)
+        local itype = (item.Type() or ''):lower()
+        if RANGED_TYPES[itype] then
+            p.item = first
+            local r = item.Range() or 0
+            if r == 0 then r = 50 end
+            local ammo = mq.TLO.FindItem('=' .. second)
+            if second ~= '' and ammo.WornSlot('ammo')() and (mq.TLO.FindItemCount('=' .. second)() or 0) > 0 then
+                p.ammo = second
+                if itype == 'archery' then r = r + (ammo.Range() or 0) end
+                set(r * pct, 'Ranged')
+            else
+                printf("\arI can't find any ammo, defaulting to Melee for PullWith")
+                set(15, 'Melee')
+            end
+        elseif second == '' then
+            set((item.Spell.Range() or 0) * pct, with)
+        end
+    elseif me.CombatAbility(with)() or me.Book(with)() or me.AltAbility(with)() then
+        if me.AltAbility(with)() then
+            set((me.AltAbility(with).Spell.Range() or 0) * pct, with)
+        else
+            set((mq.TLO.Spell(with).MyRange() or 0) * pct, with)
+        end
+    elseif _lastRange ~= 'unknown|' .. with then
+        _lastRange = 'unknown|' .. with
+        printf('\arUnknown PullWith setting: %s', with)
+    end
+end
+
 -- True when the PullWith method can be used right now (mac:418): Melee and Pet
 -- always; Ranged when the ranged attack is ready; otherwise the named spell, AA,
 -- combat ability or item must be ready. Checked before searching so the puller
@@ -473,6 +555,10 @@ function Pull.findMobToPull(readyFlag, a, b)
        (mq.TLO.Me.Buff('Revival Sickness').ID()         or 0) > 0 then
         return 0
     end
+
+    -- Re-derive the pull range each search (mac:8968): spell/AA ranges change
+    -- with level and AAs.
+    Pull.rangeSet()
 
     -- Clear CheckOnReturn once ready (mac:8949)
     if s.movement.checkOnReturn and readyFlag == 1 then
