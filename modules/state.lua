@@ -462,6 +462,7 @@ local State = {
         petFollow      = 60,  -- .mac default: 60s
         pullAlert      = 0,
         pullTimer      = 0,
+        pullDelay      = 0,   -- PullWait respawn wait ends at this os.clock() (mac PullDelay)
         pullWait1      = 0,
         pullWait2      = 0,
         readBuffs      = 0,

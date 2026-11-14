@@ -40,6 +40,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_aggro.lua` | `Utils.pullAggroID()` (the `.mac`'s `PullAggroTargetID`): XTarget-based pull aggro for normal and chain pulls (#224) |
 | `unit/test_pull_arc.lua` | `Pull.pullAngles()` (the `.mac`'s `SetPullAngles`, including wrap through 0/360) and `Pull.headingTo()` (#226) |
 | `unit/test_pull_ready.lua` | `Pull.pullAbilityReady()`: Melee/Pet always, Ranged via `RangedReady`, named pulls via spell/AA/disc/item readiness (#227) |
+| `unit/test_pull_wait.lua` | `Pull.startPullWait()` / `Pull.pullWaiting()`: non-blocking PullWait timer, ends on expiry or aggro, sits to med when `MedOn` (#145) |
 
 Counts change as tests are added; the runner prints the current total.
 

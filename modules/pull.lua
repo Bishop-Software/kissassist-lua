@@ -428,6 +428,32 @@ function Pull.pullAbilityReady(withAlt)
         or me.ItemReady(withAlt)() == true
 end
 
+-- Start the PullWait respawn wait (mac:9421-9439 Sub PullDelay). The .mac blocks
+-- in a /doevents loop; here the main loop keeps running (heals, buffs, combat)
+-- and Phase 9 skips pulling until Pull.pullWaiting() turns false.
+function Pull.startPullWait(seconds)
+    local s = _state
+    s.timers.pullDelay = os.clock() + seconds
+    s.pull.pulling = false
+    s.pull.pulled  = false
+    local me = mq.TLO.Me
+    if s.heal.medOn and not me.Mount.ID() and me.Standing() and not me.Moving() then
+        mq.cmd('/sit')
+    end
+end
+
+-- True while the PullWait respawn wait is running. Aggro ends it early, as in
+-- the .mac (the fight itself runs through the normal combat phases).
+function Pull.pullWaiting()
+    local s = _state
+    if (s.timers.pullDelay or 0) == 0 then return false end
+    if os.clock() >= s.timers.pullDelay or (s.combat.aggroTargetID or '') ~= '' then
+        s.timers.pullDelay = 0
+        return false
+    end
+    return true
+end
+
 function Pull.findMobToPull(readyFlag, a, b)
     local s    = _state
     local role = s.session.role
@@ -1103,10 +1129,10 @@ function Pull.pullCheck()
                     end
                 end
             end
-            -- Simple inline PullDelay (mac:9418–9439; respawn wait loop deferred to M7 stretch).
-            if s.pull.pullWait > 0 and not hasAggro() then
+            -- PullWait respawn wait (mac:9415-9418). Non-blocking; see Pull.pullWaiting.
+            if s.pull.pullWait > 0 and (s.combat.aggroTargetID or '') == '' then
                 printf('\awPULLING-> Waiting %d seconds for mobs to respawn.', s.pull.pullWait)
-                mq.delay(s.pull.pullWait * 1000)
+                Pull.startPullWait(s.pull.pullWait)
             end
         end
         return
