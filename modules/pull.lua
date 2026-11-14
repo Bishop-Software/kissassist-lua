@@ -412,6 +412,22 @@ end
 -- readyFlag: 1=ready to pull, 0=chain-pull availability check.
 -- a: initial Piterations (pass 1); b: UseCampLoc for hunter (pass 0).
 -- Returns 1 (found, state.pull.mob set) or 0 (none).
+-- True when the PullWith method can be used right now (mac:418): Melee and Pet
+-- always; Ranged when the ranged attack is ready; otherwise the named spell, AA,
+-- combat ability or item must be ready. Checked before searching so the puller
+-- doesn't run to a mob with the pull on cooldown.
+function Pull.pullAbilityReady(withAlt)
+    withAlt = withAlt or (_state and _state.pull.withAlt) or 'Melee'
+    local lw = withAlt:lower()
+    if lw == 'melee' or lw == 'pet' then return true end
+    local me = mq.TLO.Me
+    if lw == 'ranged' then return me.RangedReady() == true end
+    return me.SpellReady(withAlt)() == true
+        or me.AltAbilityReady(withAlt)() == true
+        or me.CombatAbilityReady(withAlt)() == true
+        or me.ItemReady(withAlt)() == true
+end
+
 function Pull.findMobToPull(readyFlag, a, b)
     local s    = _state
     local role = s.session.role
