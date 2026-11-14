@@ -7,6 +7,33 @@ local Config = require('modules.config')
 
 local Settings = {}
 
+-- Turn MQ2Melee handling on or off for this session. Returns false (and leaves
+-- it off) when enabling but the plugin isn't loaded: with UseMQ2Melee on,
+-- checkStick only sends /killthis, so without the plugin nothing attacks.
+-- Unlike the mac (mac:16348-16366) we don't load it ourselves: MQ2Melee skips
+-- its casting checks for bards and can fire abilities mid-song; loading it
+-- coincided with broken bard songs in testing.
+function Settings.setMQ2Melee(state, on)
+    if on then
+        if not mq.TLO.Plugin('MQ2Melee').IsLoaded() then
+            state.combat.useMQ2Melee = false
+            return false
+        end
+        mq.cmd('/squelch /melee aggro=0')
+        mq.cmd('/squelch /melee melee=1')
+        mq.cmd('/squelch /melee petassist=0')
+        mq.cmd('/squelch /melee on')
+        mq.cmd('/squelch /melee stickmode=0')
+    elseif mq.TLO.Plugin('MQ2Melee').IsLoaded() then
+        -- Stop the plugin attacking/sticking on its own so it doesn't fight
+        -- our /attack + /stick handling.
+        mq.cmd('/squelch /melee melee=0')
+        mq.cmd('/squelch /melee off')
+    end
+    state.combat.useMQ2Melee = on
+    return true
+end
+
 function Settings.load(state, utils)
     local _state = state
 
@@ -17,22 +44,10 @@ function Settings.load(state, utils)
     _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
     _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
     _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',           '1') == '1'
-    _state.combat.useMQ2Melee       = Config.get('Melee', 'UseMQ2Melee',       '0') == '1'
-    -- MQ2Melee must actually be loaded, otherwise nothing turns auto-attack on (mac:16348-16366).
-    -- Unlike the mac we don't load it ourselves: MQ2Melee skips its casting checks
-    -- for bards and can fire abilities mid-song; loading it coincided with broken
-    -- bard songs in testing.
-    if _state.combat.useMQ2Melee then
-        if mq.TLO.Plugin('MQ2Melee').IsLoaded() then
-            mq.cmd('/squelch /melee aggro=0')
-            mq.cmd('/squelch /melee melee=1')
-            mq.cmd('/squelch /melee petassist=0')
-            mq.cmd('/squelch /melee on')
-            mq.cmd('/squelch /melee stickmode=0')
-        else
-            printf('\ayMQ2Melee plugin is not loaded. Setting UseMQ2Melee off for this session.')
-            _state.combat.useMQ2Melee = false
-        end
+    _state.combat.useMQ2Melee = false
+    if Config.get('Melee', 'UseMQ2Melee', '0') == '1'
+       and not Settings.setMQ2Melee(_state, true) then
+        printf('\ayMQ2Melee plugin is not loaded. Setting UseMQ2Melee off for this session.')
     end
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'

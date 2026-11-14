@@ -2,6 +2,7 @@
 
 local mq = require('mq')
 local Helpers    = require('modules.ui.helpers')
+local CombatSettings = require('modules.combat.settings')
 local Config     = Helpers.Config
 local checkbox   = Helpers.checkbox
 local intInput   = Helpers.intInput
@@ -38,7 +39,10 @@ function CombatUI.drawMelee()
     end)
 
     checkbox('Use MQ2Melee', s.combat.useMQ2Melee, function(v)
-        s.combat.useMQ2Melee = v
+        if not CombatSettings.setMQ2Melee(s, v) then
+            printf('\ayMQ2Melee plugin is not loaded. Load it with /plugin mq2melee first.')
+            return
+        end
         Config.set('Melee', 'UseMQ2Melee', v and '1' or '0')
         Config.save()
     end)
