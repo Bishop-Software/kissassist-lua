@@ -20,26 +20,34 @@ kissassist does **not** need to be running. The test runner is a standalone scri
 
 ### What they cover
 
-| File | Assertions | What is tested |
-|---|---|---|
-| `unit/test_state.lua` | 86 | All 16 `State.*` sub-tables exist with correct default values and array sizes |
-| `unit/test_utils.lua` | 15 | `timerExpired()` / `setTimer()` math; `setFlag` / `setAll` helpers |
-| `unit/test_helpers_module.lua` | 20 | `dist2D`, `applyDAMod` (all DAMod forms: `+N`, `-N`, absolute, empty) |
-| `unit/test_cond.lua` | 22 | `Cond.eval()`: `conOn=false` bypass, truthy/falsy `mq.parse` results, all `TARGETCHECK` sub-conditions (nil target, PC type, dead, 0 HP, name substring) |
-| `unit/test_config_args.lua` | 56 | `Config.parseArgs()`: all 10 roles, uppercase normalisation, `assistAt` boundary clamping (0/101 ignored), all startup keyword flags (`debug`, `debugall`, `debugcombat`, parse-mode) |
+Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lua` file must be added to that list or it won't run.**
 
-**Total: 205 unit assertions**
+| File | What is tested |
+|---|---|
+| `unit/test_state.lua` | All `State.*` sub-tables exist with correct default values and array sizes |
+| `unit/test_utils.lua` | `timerExpired()` / `setTimer()` math; `setFlag` / `setAll` helpers |
+| `unit/test_helpers_module.lua` | `dist2D`, `applyDAMod` (all DAMod forms: `+N`, `-N`, absolute, empty) |
+| `unit/test_cond.lua` | `Cond.evalStr()` / `Cond.eval()`: truthy/falsy `mq.parse` results, TLO-expanded comparisons including `!=`, all `TARGETCHECK` sub-conditions |
+| `unit/test_config_args.lua` | `Config.parseArgs()`: roles, MA name, `assistAt` clamping, startup keyword and debug flags |
+| `unit/test_config_cond.lua` | `Config.parseCondArray()` with case-insensitive `\|condN` detection (#172) |
+| `unit/test_config_burn.lua` | `Config.parseBurnEntry()`: `.mac` Burn layout `Spell\|Target[\|abort][\|condN]`, old UI layout tolerated |
+| `unit/test_charm.lua` | `Charm.init` (charm-class flag, INI defaults) and charm helpers |
+| `unit/test_buffs.lua` | `State.buffs` fields for the BUFFSTATE actor system (#113) |
+| `unit/test_healing_rez.lua` | Rez spells extracted from `[Heals]` into the auto-rez list |
+| `unit/test_comms_announce.lua` | `Comms.announce` uses `/dgtell` only with DanNet on and peers present, else `/echo` |
+| `unit/test_merc.lua` | Merc "never assists" regression: `Mercenary.State` handling |
+| `unit/test_dps_immune.lua` | `Cast.combatCast` stops recasting a DPS spell on a mob that was immune to it, still casts it on other mobs |
+
+**Total: 372 assertions in 12 suites as of 2026-11-14, before `test_dps_immune` was registered.** Counts change as tests are added; the runner prints the current total.
 
 ### Expected output
 
 ```
 [TEST] Starting KissAssist unit test suite...
-[PASS] test_state            86/86 assertions
-[PASS] test_utils            15/15 assertions
-[PASS] test_helpers_module   26/26 assertions
-[PASS] test_cond             22/22 assertions
-[PASS] test_config_args      56/56 assertions
-[TEST] Suite complete: 205 passed, 0 failed
+[PASS] test_state                 n/n
+[PASS] test_utils                 n/n
+...
+[TEST] Suite complete: N passed, 0 failed (of N total)
 ```
 
 ---
@@ -53,11 +61,13 @@ Integration tests run from **within a live kissassist session**. They issue slas
 Start kissassist normally, then use the `/katest` bind:
 
 ```
-/katest all                  ← runs all four suites in sequence
+/katest all                  ← runs all six suites in sequence
 /katest debug_cmds           ← run one suite
 /katest toggle_cmds
 /katest camp_cmds
 /katest switchma
+/katest charm_cmds
+/katest switchtarget
 ```
 
 All tests save and restore any state they modify — it is safe to run in-game while the character is active.
@@ -71,8 +81,9 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | `integration/test_camp_cmds.lua` | 11 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears flag; `/stayhere` sets flag and coords |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
+| `integration/test_switchtarget.lua` | ~6 | `/kaswitchtarget` updates the aggro/combat target fields |
 
-**Total: ~62 integration assertions**
+**Total: ~70 integration assertions**
 
 ---
 
