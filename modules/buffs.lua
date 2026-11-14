@@ -1344,8 +1344,17 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
     _comms = comms  -- nil when Comms not yet init'd; writeBuffs guards with `if _comms`
     _cond  = cond
 
-    -- Cross-char comms flag (guards all write functions)
-    _state.session.danNetOn = Config.get('General', 'DanNetOn', '0') == '1'
+    -- DanNetOn comes from the config, as in the mac, and only counts when MQ2DanNet
+    -- is loaded. It turns on the KissAssist_Buffs.ini write and /dgge relays for
+    -- .mac characters; the actor buff broadcast runs either way.
+    local wantDanNet = Config.get('General', 'DanNetOn', '0') == '1'
+    local hasDanNet  = mq.TLO.Plugin('MQ2DanNet').IsLoaded() == true
+    _state.session.danNetOn = wantDanNet and hasDanNet
+    if wantDanNet and not hasDanNet then
+        printf('\ayKissAssist: \awDanNetOn=1 but MQ2DanNet is not loaded; DanNet relay off for this session.')
+    elseif _state.session.danNetOn then
+        printf('\ayKissAssist: \awMQ2DanNet relay active for mixed Lua/.mac groups.')
+    end
 
     -- [Buffs] section
     _state.buffs.buffsOn         = Config.get('Buffs', 'BuffsOn',        '0') == '1'

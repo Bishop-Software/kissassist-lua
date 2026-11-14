@@ -58,6 +58,15 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
+-- Load this zone's pull/ignore lists from KissAssist_Info.ini (shared across
+-- characters). Called at startup and again after zoning.
+function Pull.loadZoneLists()
+    local infoFile = _state.session.infoFileName or ''
+    local zone     = _state.session.zoneName     or ''
+    _state.pull.mobsToPullFirst = _utils.zoneIniGet(infoFile, zone, 'MobsToPull')   or 'all'
+    _state.pull.mobsToIgnore    = _utils.zoneIniGet(infoFile, zone, 'MobsToIgnore') or 'null'
+end
+
 function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, comms)
     _state    = state
     _utils    = utils
@@ -85,16 +94,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.chainPull    = tonumber(Config.get('Pull', 'ChainPull',    '0'))  or 0
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
     _state.pull.ranking      = tonumber(Config.get('Pull', 'PullRanking',  '0'))  or 0
-    -- Load zone-scoped pull/ignore lists from KissAssist_Info.ini (shared across characters).
-    local _infoFile = _state.session.infoFileName or ''
-    local _zone     = _state.session.zoneName     or ''
-    if _infoFile ~= '' and _zone ~= '' then
-        _state.pull.mobsToPullFirst = mq.TLO.Ini(_infoFile, _zone, 'MobsToPull')()  or 'all'
-        _state.pull.mobsToIgnore    = mq.TLO.Ini(_infoFile, _zone, 'MobsToIgnore')() or 'null'
-    else
-        _state.pull.mobsToPullFirst = 'all'
-        _state.pull.mobsToIgnore    = 'null'
-    end
+    Pull.loadZoneLists()
     _state.pull.mobsNotAllowed  = Config.get('Pull', 'MobsNotAllowed', 'null')
     _state.pull.moveUse         = Config.get('Pull', 'PullMoveUse',    'los')
     _state.pull.searchType      = Config.get('Pull', 'SearchType',     '')

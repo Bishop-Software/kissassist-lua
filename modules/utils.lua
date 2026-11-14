@@ -52,6 +52,34 @@ end
 
 -- Replacements for .mac timer variables. Timers are stored as os.clock() expiry timestamps.
 function Utils.timerExpired(t) return os.clock() >= t end
+
+-- Section name for this zone in KissAssist_Info.ini, matching the mac so lists are
+-- shared with .mac characters (mac:219-224, 11126-11130): the long zone name, or
+-- the short name when the long one has a comma or apostrophe, plus _I in instances.
+function Utils.zoneKey()
+    local short = mq.TLO.Zone.ShortName() or ''
+    local long  = mq.TLO.Zone.Name() or ''
+    local key   = long
+    if long == '' or long:find(',', 1, true) or long:find("'", 1, true) then key = short end
+    if mq.TLO.Me.InInstance() then key = key .. '_I' end
+    return key
+end
+
+-- Read a zone list (MobsToPull, MobsToIgnore, MobsToBurn, CharmImmune, ...) from
+-- KissAssist_Info.ini. Uses the mac-style section first, then falls back to the
+-- short-name section that older Lua builds wrote to, so those lists aren't lost.
+-- Returns nil when neither section has the key.
+function Utils.zoneIniGet(infoFile, zoneKey, key)
+    if not infoFile or infoFile == '' or not zoneKey or zoneKey == '' then return nil end
+    local v = mq.TLO.Ini(infoFile, zoneKey, key)()
+    if v ~= nil and v ~= '' then return v end
+    local legacy = (mq.TLO.Zone.ShortName() or '') .. (mq.TLO.Me.InInstance() and '_I' or '')
+    if legacy ~= '' and legacy ~= zoneKey then
+        v = mq.TLO.Ini(infoFile, legacy, key)()
+        if v ~= nil and v ~= '' then return v end
+    end
+    return nil
+end
 function Utils.setTimer(seconds) return os.clock() + seconds end
 
 -- Resolve a spell name to the highest rank in the character's spellbook.

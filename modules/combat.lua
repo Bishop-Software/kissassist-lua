@@ -35,6 +35,11 @@ Combat.validateTarget = validateTarget
 -- Expose groupEscape for debuff.lua (mac:7858).
 Combat.groupEscape = groupEscape
 
+-- Reload this zone's named watch list (MobsToBurn) after zoning.
+function Combat.loadNamedList()
+    Settings.loadNamedList(_state)
+end
+
 -- Mirrors Bind_Settings (DPS/Melee/Burn/General sections) from kissassist.mac.
 -- Loads combat arrays and wires state.combat flags from INI.
 function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff, buffs, comms, merc, charm)

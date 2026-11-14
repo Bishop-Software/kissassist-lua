@@ -62,7 +62,7 @@ local _MEZ_CLASSES   = {BRD=true, ENC=true, NEC=true}
 local _CHARM_CLASSES = {DRU=true, ENC=true, NEC=true, BRD=true}
 State.session.iAmAMezClass   = _MEZ_CLASSES[_cls]   ~= nil
 State.session.iAmACharmClass = _CHARM_CLASSES[_cls] ~= nil
-State.session.zoneName  = mq.TLO.Zone.ShortName()
+State.session.zoneName  = Utils.zoneKey()  -- KissAssist_Info.ini section, same rules as the mac
 local DMZ_ZONES = {[345]=true,[344]=true,[202]=true,[203]=true,[279]=true,[151]=true,[33506]=true}
 State.misc.dmz = DMZ_ZONES[mq.TLO.Zone.ID()] ~= nil
 
@@ -149,6 +149,15 @@ while not State.terminate do
         State.cast.pendingLoadSpellSet = false
         Cast.loadSpellSet()
     end
+    -- After zoning: reload this zone's lists from KissAssist_Info.ini and reset
+    -- combat, as the mac's Event_Zoned does (mac:11124-11130).
+    if State.session.zoneListsPending then
+        State.session.zoneListsPending = false
+        Pull.loadZoneLists()
+        Combat.loadNamedList()
+        Charm.loadZoneLists()
+        Combat.combatReset(0, 'zoned')
+    end
     -- #132: broadcast buff state once after zone-in, when buffs have fully populated
     if State.buffs.pendingZoneBroadcast
             and State.timers.justZoned <= os.clock()
@@ -197,7 +206,9 @@ while not State.terminate do
     -- Phase 5.5: merc (mac:393)
     if State.merc.on > 0 then Merc.check() end
     -- Phase 6: buffs
-    if not State.combat.combatStart and not State.session.danNetOn then
+    -- writeBuffs always sends the actor buff broadcast and adds the INI write
+    -- itself when DanNet is on; pet/merc writers skip themselves under DanNet.
+    if not State.combat.combatStart then
         Buffs.writeBuffs()
         Buffs.writeBuffsPet()
         Buffs.writeBuffsMerc()

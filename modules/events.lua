@@ -272,14 +272,11 @@ local function onZoned(_, message)
     state.timers.justZoned  = os.clock() + 10  -- 200 ticks * 50ms
     local zoneID            = mq.TLO.Zone.ID()
     state.misc.dmz          = DMZ_ZONES[zoneID] == true
-    local short             = mq.TLO.Zone.ShortName() or ''
-    local suffix            = mq.TLO.Me.InInstance() and '_I' or ''
-    local name              = mq.TLO.Zone.Name() or short
-    if name:find(',', 1, true) or name:find("'", 1, true) then
-        state.session.zoneName = short .. suffix
-    else
-        state.session.zoneName = short .. suffix
-    end
+    -- Recompute the Info INI section (it can change between instanced and normal
+    -- copies of a zone) and have the main loop reload the zone lists and reset
+    -- combat (mac:11124-11130 CombatReset + ZoneName).
+    state.session.zoneName         = utils.zoneKey()
+    state.session.zoneListsPending = true
     if state.movement.campZone ~= zoneID then
         if state.movement.returnToCamp then
             -- Active camp in another zone — pause RTC and remember to restore
@@ -309,7 +306,8 @@ local function onZoned(_, message)
     state.buffs.memberBuffsExpiry = {}
     -- #132: broadcast our own buff state once buffs repopulate after zone-in
     state.buffs.pendingZoneBroadcast = true
-    -- CombatReset, WinTitle, LoadSpawnMaster in M4/M7
+    -- CombatReset + zone list reload run from the main loop (zoneListsPending).
+    -- WinTitle and LoadSpawnMaster aren't ported.
 end
 
 local function onJoined(_, joinee)

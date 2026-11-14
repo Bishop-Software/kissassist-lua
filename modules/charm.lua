@@ -7,6 +7,17 @@ local _state, _utils, _cast, _pet, _bard, _comms
 -- Classes that can use charm: Druid (animals), Enchanter (any), Necro (undead), Bard (any).
 local CHARM_CLASSES = { DRU = true, ENC = true, NEC = true, BRD = true }
 
+-- Per-zone charm immune list from KissAssist_Info.ini — mirrors LoadIni
+-- "${ZoneName}" CharmImmune. Called at startup and again after zoning.
+function Charm.loadZoneLists()
+    local zoneName = _state.session.zoneName or ''
+    local infoFile = _state.session.infoFileName or 'KissAssist_Info.ini'
+    local immune   = _utils.zoneIniGet(infoFile, zoneName, 'CharmImmune') or 'NULL'
+    local aaImm    = _utils.zoneIniGet(infoFile, zoneName, 'AACharmImmune') or '0'
+    _state.charm.immuneList = (immune:lower() == 'null' or immune == '') and '' or immune
+    _state.charm.aaImmune   = aaImm == '1'
+end
+
 -- Port of Sub DoCharmStuff / CreateTimersCharm / CharmRadar (KS_Charm.inc).
 function Charm.init(state, utils, cast, pet, bard, comms)
     _state = state
@@ -29,13 +40,7 @@ function Charm.init(state, utils, cast, pet, bard, comms)
     _state.charm.radius   = tonumber(Config.get('Charm', 'CharmRadius',   '50')) or 50
     _state.charm.keep     = Config.get('Charm', 'CharmKeep', '0') == '1'
 
-    -- Per-zone immune list from KissAssist_Info.ini — mirrors LoadIni "${ZoneName}" CharmImmune
-    local zoneName = mq.TLO.Zone.ShortName() or ''
-    local infoFile = _state.session.infoFileName or 'KissAssist_Info.ini'
-    local immune   = mq.TLO.Ini(infoFile, zoneName, 'CharmImmune', 'NULL')() or 'NULL'
-    local aaImm    = mq.TLO.Ini(infoFile, zoneName, 'AACharmImmune', '0')() or '0'
-    _state.charm.immuneList = (immune:lower() == 'null' or immune == '') and '' or immune
-    _state.charm.aaImmune   = aaImm == '1'
+    Charm.loadZoneLists()
 
     -- Per-slot timer tables (CreateTimersCharm: 30 slots each)
     for i = 1, 30 do
@@ -349,13 +354,13 @@ local function addCharmImmune(spawnId, mobName)
     end
     if _state.charm.aaImmune and mobName and mobName ~= '' and mobName:lower() ~= 'null' then
         -- Append name to per-zone CharmImmune list in KissAssist_Info.ini
-        local zoneName = mq.TLO.Zone.ShortName() or ''
+        local zoneName = _state.session.zoneName or ''
         local infoFile = _state.session.infoFileName or 'KissAssist_Info.ini'
-        local existing = mq.TLO.Ini(infoFile, zoneName, 'CharmImmune', 'NULL')() or 'NULL'
+        local existing = _utils.zoneIniGet(infoFile, zoneName, 'CharmImmune') or 'NULL'
         local newVal   = (existing:lower() == 'null' or existing == '')
                          and mobName
                          or (existing .. ',' .. mobName)
-        mq.cmdf('/iniwrite "%s" "%s" CharmImmune "%s"', infoFile, zoneName, newVal)
+        mq.cmdf('/ini "%s" "%s" "CharmImmune" "%s"', infoFile, zoneName, newVal)
         _state.charm.immuneList = newVal
         _utils.debug('charm', 'addCharmImmune: wrote %s to %s [%s]', mobName, infoFile, zoneName)
     end
