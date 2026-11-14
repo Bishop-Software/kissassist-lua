@@ -150,8 +150,7 @@ local State = {
     },
 
     pull = {
-        aggroTargetID    = '',
-        ammo             = 'NULL',
+        ammo            = 'NULL',
         beginMobID       = '',
         chainPullTemp    = '',
         chainPull        = 0,      -- 0=off 1=on 2=just-finished (mac int, not bool)
