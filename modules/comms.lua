@@ -128,13 +128,8 @@ function Comms.init(s, u)
 
     _actor = actors.register(MAILBOX, onMessage)
     _utils.debug('comms', 'Comms.init: mailbox [%s] registered', MAILBOX)
-
-    -- Activate DanNet shim when MQ2DanNet is loaded (mixed Lua/.mac group)
-    if mq.TLO.Plugin('MQ2DanNet')() then
-        _state.session.danNetOn = true
-        printf('\ayKissAssist: \awMQ2DanNet detected — shim active for mixed Lua/.mac group.')
-        _utils.debug('comms', 'Comms.init: DanNet shim active')
-    end
+    -- session.danNetOn (the DanNet relay for .mac characters) is set in Buffs.init
+    -- from [General] DanNetOn, and only when MQ2DanNet is loaded.
 end
 
 -- Unicast to a specific character by name on the same server.

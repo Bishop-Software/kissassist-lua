@@ -4,8 +4,24 @@
 
 local mq     = require('mq')
 local Config = require('modules.config')
+local Utils  = require('modules.utils')
 
 local Settings = {}
+
+-- Named-mob watch list: this zone's MobsToBurn from KissAssist_Info.ini (shared
+-- across characters). Called at startup and again after zoning.
+function Settings.loadNamedList(state)
+    local infoFile = state.session.infoFileName or ''
+    local zone     = state.session.zoneName     or ''
+    local rawBurn  = Utils.zoneIniGet(infoFile, zone, 'MobsToBurn') or ''
+    state.combat.namedWatchList = {}
+    for entry in (rawBurn .. ','):gmatch('([^,]+),') do
+        local e = entry:match('^%s*(.-)%s*$')
+        if e ~= '' and e:lower() ~= 'null' then
+            state.combat.namedWatchList[#state.combat.namedWatchList + 1] = e:lower()
+        end
+    end
+end
 
 -- Turn MQ2Melee handling on or off for this session. Returns false (and leaves
 -- it off) when enabling but the plugin isn't loaded: with UseMQ2Melee on,
@@ -156,18 +172,7 @@ function Settings.load(state, utils)
     _state.pet.combatOn            = Config.get('Pet', 'PetCombatOn',                '1') == '1'
     _state.combat.petTargetSwitch  = Config.get('General', 'PetTargetSwitch',        '0') == '1'
 
-    -- Named-mob watch list — zone-scoped MobsToBurn from KissAssist_Info.ini (shared across chars).
-    local _infoFile = _state.session.infoFileName or ''
-    local _zone     = _state.session.zoneName     or ''
-    local _rawBurn  = (_infoFile ~= '' and _zone ~= '')
-        and (mq.TLO.Ini(_infoFile, _zone, 'MobsToBurn')() or '') or ''
-    _state.combat.namedWatchList = {}
-    for entry in (_rawBurn .. ','):gmatch('([^,]+),') do
-        local e = entry:match('^%s*(.-)%s*$')
-        if e ~= '' and e ~= 'null' then
-            _state.combat.namedWatchList[#_state.combat.namedWatchList + 1] = e:lower()
-        end
-    end
+    Settings.loadNamedList(_state)
 
     utils.debug('combat', 'Combat.init: dpsOn=%s meleeOn=%s assistAt=%d meleeDistance=%d dps#=%d burn#=%d debuffCount=%d aggroOn=%s campRadius=%d',
         tostring(_state.combat.dpsOn),

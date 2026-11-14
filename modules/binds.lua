@@ -1,4 +1,5 @@
-local mq = require('mq')
+local mq    = require('mq')
+local Utils = require('modules.utils')
 
 local Binds = {}
 
@@ -353,7 +354,9 @@ local function onSetPullArc(width, _fdir)
         state.pull.lSide = 0
         state.pull.rSide = 0
     end
-    mq.cmdf('/ini "%s" "Pull" "PullArcWidth" "%d"', state.session.iniFileName, w)
+    -- Save to the pickle config (the .ini was renamed to .bak at migration)
+    _config.set('Pull', 'PullArcWidth', tostring(w))
+    _config.save()
     printf('\ayPull arc set to \at%d\ay (lSide=%.1f rSide=%.1f).', w, state.pull.lSide, state.pull.rSide)
 end
 
@@ -361,7 +364,8 @@ end
 local function onSetPullRanking(n, _arg)
     local ranking = tonumber(n) or 0
     state.pull.ranking = ranking
-    mq.cmdf('/ini "%s" "Pull" "PullRanking" "%d"', state.session.iniFileName, ranking)
+    _config.set('Pull', 'PullRanking', tostring(ranking))
+    _config.save()
     printf('\ayPull ranking set to \at%d\ay.', ranking)
 end
 
@@ -380,32 +384,62 @@ local function onCampfire()
     printf('\ay>> Campfire placed at %.1f, %.1f', state.movement.campY, state.movement.campX)
 end
 
-local function onTbManager(action, spell)
-    if not action or action == '' or not spell or spell == '' then
-        printf('\ay/tbmanager [add|remove] SpellName')
+-- Mirrors Bind_TooBuffList (kissassist.mac:16086). The "too buff" list holds the
+-- names of characters outside the group to also buff, '|'-terminated
+-- ("Name1|Name2|"). Runtime only; the mac never saves it to the INI.
+local function onTbManager(action, actionID)
+    local a    = (action or ''):lower()
+    local list = state.buffs.extendedList or ''
+    if a ~= 'add' and a ~= 'remove' and a ~= 'reset' and a ~= 'clear' then
+        printf('\ayInvalid Action for Too Buff List, please use add, remove, reset or clear.')
         return
     end
-    local a    = action:lower()
-    local list = state.buffs.extendedList or ''
-    if a == 'add' then
-        if list:find(spell, 1, true) then
-            printf('\ay%s is already in the Too-Buff list.', spell)
-        else
-            state.buffs.extendedList = list == '' and spell or (list .. ',' .. spell)
-            mq.cmdf('/ini "%s" "Buffs" "ExtendedList" "%s"', state.session.iniFileName, state.buffs.extendedList)
-            printf('\ayAdded %s to Too-Buff list.', spell)
-        end
-    elseif a == 'remove' then
-        local parts = {}
-        for entry in (list .. ','):gmatch('([^,]+),') do
-            if entry ~= spell then parts[#parts + 1] = entry end
-        end
-        state.buffs.extendedList = table.concat(parts, ',')
-        mq.cmdf('/ini "%s" "Buffs" "ExtendedList" "%s"', state.session.iniFileName, state.buffs.extendedList)
-        printf('\ayRemoved %s from Too-Buff list.', spell)
-    else
-        printf('\ay/tbmanager [add|remove] SpellName')
+
+    local workID = tonumber(actionID) or 0
+    if workID == 0 then workID = mq.TLO.Target.ID() or 0 end
+    local workName = workID ~= 0 and (mq.TLO.Spawn('id ' .. workID).CleanName() or '') or ''
+    if (a == 'add' or a == 'remove') and workName == '' then
+        printf('\ayInvalid ID. Please target a Character or use a proper ID.')
+        return
     end
+
+    if a == 'reset' then
+        -- Drop names that are no longer in the zone
+        local kept = {}
+        for name in list:gmatch('([^|]+)|') do
+            if (mq.TLO.Spawn('=' .. name).ID() or 0) ~= 0 then
+                kept[#kept + 1] = name .. '|'
+            else
+                printf('\ayRemoved %s from the Too Buff List.', name)
+            end
+        end
+        list = table.concat(kept)
+    elseif a == 'clear' then
+        list = ''
+        printf('\ayToo Buff List Cleared.')
+    elseif a == 'remove' then
+        if list:find(workName .. '|', 1, true) then
+            list = list:gsub(workName:gsub('%p', '%%%0') .. '|', '', 1)
+            printf('\ayRemoved %s from Too Buff List.', workName)
+        else
+            printf('\ay%s Not Found on the Too Buff List.', workName)
+        end
+    else -- add
+        local count = select(2, list:gsub('|', ''))
+        if count > 49 then
+            printf('\ayThere is a limit of 50 names. Please remove some before trying to add more.')
+            return
+        end
+        if list:find(workName .. '|', 1, true) then
+            printf('\ay%s Found on Too Buff List. No Need to add again.', workName)
+            return
+        end
+        list = list .. workName .. '|'
+        printf('\ayAdded %s to the Too Buff List.', workName)
+    end
+
+    state.buffs.extendedList       = list
+    state.buffs.globalExtendedList = list  -- mac g_ExtendedBuffList
 end
 
 -- ─── Pull management ──────────────────────────────────────────────────────────
@@ -426,7 +460,7 @@ local function onAddPull(name)
         printf('\ay/addpull: zone not available yet')
         return
     end
-    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToPull')() or ''
+    local existing = Utils.zoneIniGet(iniFile, zone, 'MobsToPull') or ''
     local lname = name:lower()
     for entry in (existing .. ','):gmatch('([^,]+),') do
         if entry:match('^%s*(.-)%s*$'):lower() == lname then
@@ -457,7 +491,7 @@ local function onAddIgnore(name, _byID)
         printf('\ay/addignore: zone not available yet')
         return
     end
-    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToIgnore')() or ''
+    local existing = Utils.zoneIniGet(iniFile, zone, 'MobsToIgnore') or ''
     local lname = name:lower()
     for entry in (existing .. ','):gmatch('([^,]+),') do
         if entry:match('^%s*(.-)%s*$'):lower() == lname then
@@ -502,7 +536,7 @@ local function onAddMezImmune(_mti)
     local iniFile = state.session.infoFileName
     local zone    = state.session.zoneName
     if iniFile and iniFile ~= '' and zone and zone ~= '' then
-        local existing = mq.TLO.Ini(iniFile, zone, 'MezImmune')() or ''
+        local existing = Utils.zoneIniGet(iniFile, zone, 'MezImmune') or ''
         if not existing:find(name, 1, true) then
             local updated = (existing == '' or existing == 'null') and name or (existing .. ',' .. name)
             mq.cmdf('/ini "%s" "%s" "MezImmune" "%s"', iniFile, zone, updated)
@@ -571,7 +605,7 @@ local function onAddCharmImmune()
         local iniFile = state.session.infoFileName
         local zone    = state.session.zoneName
         if iniFile and iniFile ~= '' and zone and zone ~= '' then
-            local existing = mq.TLO.Ini(iniFile, zone, 'CharmImmune')() or ''
+            local existing = Utils.zoneIniGet(iniFile, zone, 'CharmImmune') or ''
             if not existing:find(name, 1, true) then
                 local updated = (existing == '' or existing:lower() == 'null')
                                 and name or (existing .. ',' .. name)
@@ -599,7 +633,7 @@ local function onAddBurn(name)
         printf('\ay/addburn: zone not available yet')
         return
     end
-    local existing = mq.TLO.Ini(iniFile, zone, 'MobsToBurn')() or ''
+    local existing = Utils.zoneIniGet(iniFile, zone, 'MobsToBurn') or ''
     local lname = name:lower()
     for entry in (existing .. ','):gmatch('([^,]+),') do
         if entry:match('^%s*(.-)%s*$'):lower() == lname then
@@ -699,21 +733,37 @@ end
 -- Reads Gem1..GemN from [Spells] (or [Spells{set}]) in the character INI and
 -- mems each spell into the corresponding gem slot.
 local function onMemMySpells(_charName, p_spellSet)
-    local iniFile     = state.session.iniFileName
     local gemSlots    = state.cast.gemSlots or 8
+
+    -- Gem list for a config section: the migrated [Spells] Gems array (what
+    -- /writespells and the UI write), or Gem1..GemN keys for other sections.
+    -- Returns nil when the section has no gems.
+    local function gemsFor(section)
+        local gems = _config.get(section, 'Gems', nil)
+        if type(gems) ~= 'table' then
+            gems = {}
+            for i = 1, gemSlots do gems[i] = _config.get(section, 'Gem' .. i, nil) end
+        end
+        for i = 1, gemSlots do
+            local g = gems[i]
+            if g and g ~= '' and g ~= 'null' then return gems end
+        end
+        return nil
+    end
 
     -- Determine spell section (Spells or SpellsN for alternate sets)
     local spellSection = (p_spellSet and p_spellSet ~= '' and p_spellSet ~= 'null')
                          and ('Spells' .. p_spellSet) or 'Spells'
 
-    -- Validate section exists; fall back to Spells if alternate set not found
-    if (mq.TLO.Ini(iniFile, spellSection, 'Gem1')() or '') == '' then
+    -- Read from the pickle config; the character .ini is renamed to .bak at migration
+    local gemList = gemsFor(spellSection)
+    if not gemList then
         if spellSection ~= 'Spells' then
             printf('\aw No Spells Section found for: %s. Defaulting to Spells Section.', spellSection)
-            spellSection = 'Spells'
+            gemList = gemsFor('Spells')
         end
-        if (mq.TLO.Ini(iniFile, 'Spells', 'Gem1')() or '') == '' then
-            printf('\aw No Spells found in INI: %s. Use /writespells and try again.', iniFile)
+        if not gemList then
+            printf('\aw No Spells found in your config. Use /writespells and try again.')
             return
         end
     end
@@ -723,7 +773,7 @@ local function onMemMySpells(_charName, p_spellSet)
     local wasStanding = mq.TLO.Me.Standing()
 
     for i = 1, gemSlots do
-        local spellToMem = mq.TLO.Ini(iniFile, spellSection, 'Gem' .. i)() or ''
+        local spellToMem = gemList[i] or ''
         if spellToMem ~= '' and spellToMem ~= 'null' then
             -- Strip " Rk. X" rank suffix before resolving to current rank
             local baseName = spellToMem
