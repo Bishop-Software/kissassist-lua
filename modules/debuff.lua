@@ -193,6 +193,9 @@ function Debuff.check(firstMobID)
     if (_state.debuff.on or 0) == 0 then return end
     if (_state.debuff.count or 0) == 0 then return end
     if mq.TLO.Window('RespawnWnd').Open() then return end
+    -- Mez gets the first chance at each mob: wait until this pass's mez work is
+    -- done (mac:7616 MezOn && !MezMobDone), so we don't debuff a mob due a mez.
+    if (_state.mez.on or 0) > 0 and not _state.mez.mobDone then return end
     if _state.dps.paused then return end
     if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
 
