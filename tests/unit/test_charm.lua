@@ -45,7 +45,16 @@ local function makeState(overrides)
 end
 
 local function makeUtils()
-    return { debug = function() end }
+    return {
+        debug = function() end,
+        -- Charm reads its zone lists through Utils.zoneIniGet (PR #249); read
+        -- through the mocked TLO.Ini like the real helper's first lookup.
+        zoneIniGet = function(file, zone, key)
+            local v = require('mq').TLO.Ini(file, zone, key)()
+            if v == nil or v == '' then return nil end
+            return v
+        end,
+    }
 end
 
 -- Minimal no-op stubs for cast/pet/bard/comms.
