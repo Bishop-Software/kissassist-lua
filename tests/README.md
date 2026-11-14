@@ -80,7 +80,7 @@ All tests save and restore any state they modify — it is safe to run in-game w
 
 | File | Purpose |
 |---|---|
-| `tests/run_tests.lua` | Unit test runner — discovers and runs all `unit/test_*.lua` files |
+| `tests/run_tests.lua` | Unit test runner — runs the suites in its explicit list (register new `unit/test_*.lua` files there) |
 | `tests/mock_mq.lua` | Programmable fake `mq` module: stubbed TLO, `cmd`, `parse`, `event`, `bind`, `delay` |
 | `tests/test_helpers.lua` | Assert utilities used by both unit and integration tests: `assert_eq`, `assert_true`, `assert_false`, `assert_near`, `assert_raises`, `printSummary` |
 

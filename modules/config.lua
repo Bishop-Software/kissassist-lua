@@ -231,8 +231,9 @@ function Config.migrateIni(state)
     local function ra(section, key, n)
         local arr = {}
         for i = 1, n do
-            local v = mq.TLO.Ini(iniFile, section, key .. i)()
-            if v then arr[i] = v end
+            -- Pad missing keys with '' so the array has no holes: every loader
+            -- walks these with ipairs, which stops at the first nil.
+            arr[i] = mq.TLO.Ini(iniFile, section, key .. i)() or ''
         end
         return arr
     end

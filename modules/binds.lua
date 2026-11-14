@@ -23,6 +23,11 @@ local DEBUG_FIELDS = {
     pet    = 'pet',
     pull   = 'pull',
     rk     = 'rk',
+    bard   = 'bard',
+    charm  = 'charm',
+    comms  = 'comms',
+    debuff = 'debuff',
+    merc   = 'merc',
 }
 
 -- ─── Debug ────────────────────────────────────────────────────────────────────
@@ -51,7 +56,7 @@ local function onDebug(cmd1, cmd2, cmd3)
         onoff = asOnOff(c1)
         if not onoff and state.debug.all then field = 'all' end
     elseif c1 == 'help' then
-        printf('\ay/debug [all|buffs|combat|cast|chainp|heals|mez|move|pet|pull|rk] [on|off] [log]')
+        printf('\ay/debug [all|bard|buffs|cast|chainp|charm|combat|comms|debuff|heals|merc|mez|move|pet|pull|rk] [on|off] [log]')
         return
     else
         field = state.debug.all and 'all' or 'general'
@@ -278,6 +283,7 @@ local function onMakeCampHere()
     state.movement.campZ        = mq.TLO.Me.FloorZ()
     state.movement.campZone     = mq.TLO.Zone.ID()
     state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
+    state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0  -- mac:8424
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
@@ -298,6 +304,7 @@ local function onStayHere()
     state.movement.campZ        = mq.TLO.Me.FloorZ()
     state.movement.campZone     = mq.TLO.Zone.ID()
     state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
+    state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
     state.movement.returnToCamp = true
     state.session.chaseAssist   = false
     printf('\ay>> StayHere — camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
@@ -362,6 +369,7 @@ end
 
 local function onBuffGroup(_flag)
     state.buffs.forceBuffs = true
+    state.timers.readBuffs = 0  -- mac:11734
     state.timers.iniNext   = 0
     _buffs.checkBuffs(true)
 end
@@ -736,7 +744,8 @@ local function onMemMySpells(_charName, p_spellSet)
                 end
                 -- Mem only if slot doesn't already have this spell
                 if (mq.TLO.Me.Gem(i).Name() or '') ~= spellToMem then
-                    state.misc.dontMoveMe = true
+                    local prevDontMove = state.movement.dontMoveMe
+                    state.movement.dontMoveMe = true
                     while mq.TLO.Me.Moving() do mq.delay(100) end
                     if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Standing() then
                         mq.cmd('/sit')
@@ -751,7 +760,7 @@ local function onMemMySpells(_charName, p_spellSet)
                         if (mq.TLO.Me.Gem(i).Name() or '') == spellToMem then break end
                     end
                     if stickActive then mq.cmd('/stick unpause') end
-                    state.misc.dontMoveMe = false
+                    state.movement.dontMoveMe = prevDontMove
                 end
             else
                 printf('\aw Could Not find the spell %s in your spell book.', baseName)

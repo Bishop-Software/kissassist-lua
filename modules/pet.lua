@@ -314,9 +314,10 @@ function Pet.doPetStuff()
     if (mq.TLO.Me.Pet.ID() or 0) > 0 and miscGem > 0 and (s.cast.miscGemRemem or 0) ~= 0 then
         local gemName = mq.TLO.Me.Gem(miscGem).Name() or ''
         if gemName ~= (s.cast.reMemMiscSpell or '') and _cast.castMemSpell then
-            s.combat.dontMoveMe = true
+            local prevDontMove = s.movement.dontMoveMe
+            s.movement.dontMoveMe = true
             _cast.castMemSpell(s.cast.reMemMiscSpell, miscGem, false, 'DoPetStuff')
-            s.combat.dontMoveMe = false
+            s.movement.dontMoveMe = prevDontMove
         end
     end
 

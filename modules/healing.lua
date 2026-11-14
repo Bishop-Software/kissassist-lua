@@ -232,11 +232,11 @@ function Heal.checkHealth(sentFrom)
         local maName = _state.session.mainAssist
         if maName ~= '' then
             ---@diagnostic disable-next-line: undefined-field
-            local maID  = mq.TLO.Spawn(maName .. ' PC').ID()  or 0
+            local maID  = mq.TLO.Spawn('=' .. maName .. ' pc').ID()  or 0
             ---@diagnostic disable-next-line: undefined-field
-            local maPct = mq.TLO.Spawn(maName .. ' PC').PctHPs() or 100
+            local maPct = mq.TLO.Spawn('=' .. maName .. ' pc').PctHPs() or 100
             ---@diagnostic disable-next-line: undefined-field
-            local maType = mq.TLO.Spawn(maName .. ' PC').Type() or ''
+            local maType = mq.TLO.Spawn('=' .. maName .. ' pc').Type() or ''
             if maID ~= 0 and maType ~= 'corpse' and maID ~= mq.TLO.Me.ID()
                     and maPct < _state.heal.singleHealPointMA then
                 singleHeal(maName, maID, maPct, 'SingleHeal')

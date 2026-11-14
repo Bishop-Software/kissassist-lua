@@ -32,6 +32,7 @@ local function onMessage(message)
         _state.movement.campZ        = data.z    or _state.movement.campZ
         _state.movement.campZone     = data.zone     or _state.movement.campZone
         _state.movement.campZoneName = data.zoneName or _state.movement.campZoneName
+        _state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
         _state.movement.returnToCamp = true
         _state.session.chaseAssist   = false
         _utils.debug('comms', 'CAMP from %s: %.1f %.1f', data.from, data.y or 0, data.x or 0)

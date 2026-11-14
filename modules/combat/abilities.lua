@@ -284,7 +284,8 @@ local function aeCheck()
     local s = _state
     if not s.combat.aeOn then return end
     if (mq.TLO.Target.Type() or ''):lower() == 'corpse' then return end
-    if s.combat.aggroTargetID == 0 then return end
+    local aggroID = s.combat.aggroTargetID or ''
+    if aggroID == '' or aggroID == '0' then return end  -- mac:12477 !AggroTargetID
     if not _cast or not _cast.castWhat then return end
 
     local aeRadius = s.combat.aeRadius
@@ -565,7 +566,7 @@ local function rogueHide()
     if not _state.misc.autoHide then return end
     if mq.TLO.Me.Hovering() then return end
     if mq.TLO.Me.Combat() then return end
-    if mq.TLO.Me.AbilityReady('hide') and mq.TLO.Me.AbilityReady('sneak') then
+    if mq.TLO.Me.AbilityReady('hide')() and mq.TLO.Me.AbilityReady('sneak')() then
         mq.cmd('/doability hide')
         mq.cmd('/doability sneak')
     end
