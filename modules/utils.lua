@@ -32,8 +32,30 @@ local _prefix = {
     merc      = '\agMERC',
 }
 
+local _state
+
 function Utils.init(state)
+    _state = state
     _flags = state.debug
+end
+
+-- Mob ID the current pull has drawn aggro from, or 0. Mirrors the .mac's
+-- /noparse PullAggroTargetID (mac:16247), so it is recomputed on every call:
+--   not chain pulling: whatever sits in the first Auto Hater XTarget slot.
+--   chain pulling: MyTargetID once XTarget slot 1 holds the pull target, holds
+--   a different mob than when the pull started (BeginMobID), or slot 2 is in use.
+function Utils.pullAggroID()
+    if not _state then return 0 end
+    local c = _state.combat
+    if (c.xTSlot or 0) == 0 then return 0 end
+    local xt1 = mq.TLO.Me.XTarget(c.xTSlot).ID() or 0
+    if (_state.pull.chainPull or 0) == 0 then return xt1 end
+    if xt1 == 0 then return 0 end
+    local myTarget = tonumber(c.myTargetID) or 0
+    local beginID  = tonumber(_state.pull.beginMobID) or 0
+    local xt2      = (c.xTSlot2 or 0) > 0 and (mq.TLO.Me.XTarget(c.xTSlot2).ID() or 0) or 0
+    if xt1 == myTarget or xt1 ~= beginID or xt2 > 0 then return myTarget end
+    return 0
 end
 
 function Utils.setFlag(cat, val)

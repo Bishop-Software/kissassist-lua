@@ -169,6 +169,14 @@ local function shouldInterrupt(sentFrom)
     return false
 end
 
+-- True when a pull cast can stop early because the pull already drew aggro
+-- (mac: ${sentFrom.Find[pull]} && ${PullAggroTargetID}). MQ string compares are
+-- case-insensitive and Pull passes 'Pull', so lowercase before matching.
+local function pullHasAggro(sentFrom)
+    return (sentFrom or ''):lower():find('pull', 1, true) ~= nil
+        and utils.pullAggroID() > 0
+end
+
 -- ─── CastSpell ────────────────────────────────────────────────────────────────
 
 -- Mirrors CastSpell (kissassist.mac:2833-2915).
@@ -268,7 +276,7 @@ local function castSpell(spellName, sentFrom)
             if (mq.TLO.Me.Casting.ID() or 0) == 0 then break end
             if state.cast.castReturn == 'CAST_CANCELLED' then break end
             -- Pull short-circuit: aggro achieved, no need to finish cast
-            if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+            if pullHasAggro(sentFrom) then
                 mq.cmd('/stopcast')
                 return 'CAST_SUCCESS'
             end
@@ -305,7 +313,7 @@ local function castSpell(spellName, sentFrom)
         castResult = state.cast.castReturn
 
         -- Pull short-circuit (post-cast, e.g. resisted but mob is running)
-        if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+        if pullHasAggro(sentFrom) then
             return 'CAST_SUCCESS'
         end
 
@@ -401,7 +409,7 @@ local function castAA(whatAA, sentFrom)
     local timeout    = os.clock() + 30
     while os.clock() < timeout do
         mq.delay(100)
-        if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+        if pullHasAggro(sentFrom) then
             return 'CAST_SUCCESS'
         end
         -- CastingInterruptOn: interrupt for higher-priority cast (mac:2895)
@@ -592,7 +600,7 @@ local function castItem(whatItem, sentFrom)
         local timeout = os.clock() + 30
         while os.clock() < timeout do
             mq.delay(100)
-            if sentFrom == 'pull' and state.pull.aggroTargetID ~= '' then
+            if pullHasAggro(sentFrom) then
                 return 'CAST_SUCCESS'
             end
             if (mq.TLO.Me.Casting.ID() or 0) == 0
@@ -1117,7 +1125,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     end
 
     -- Pull short-circuit pre-cast
-    if sentFrom:find('pull', 1, true) and state.pull.aggroTargetID ~= '' then
+    if pullHasAggro(sentFrom) then
         return 'CAST_SUCCESS'
     end
 
@@ -1189,7 +1197,7 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     state.cast.castResult = castResult
 
     -- Pull short-circuit post-cast
-    if sentFrom:find('pull', 1, true) and state.pull.aggroTargetID ~= '' then
+    if pullHasAggro(sentFrom) then
         return 'CAST_SUCCESS'
     end
 

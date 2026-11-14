@@ -18,6 +18,11 @@ local function dist2D(x1, y1, x2, y2)
     return math.sqrt(dx * dx + dy * dy)
 end
 
+-- True once the pull has drawn aggro (live XTarget check; see Utils.pullAggroID).
+local function hasAggro()
+    return _utils.pullAggroID() > 0
+end
+
 -- Case-insensitive name search in a comma/pipe-separated list.
 -- '*' prefix = substring match; '#' prefix = strip then exact; plain = exact.
 local function inNameList(list, name)
@@ -598,14 +603,14 @@ local function pullWithMelee(mobID)
     local tries = 0
     while tries < 30 do
         mq.doevents()
-        if s.pull.aggroTargetID ~= '' or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
+        if hasAggro() or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
         if mq.TLO.Target.ID() then
             mq.cmd('/face fast nolook')
             mq.cmd('/look 0')
         end
         mq.cmd('/squelch /attack on')
         mq.delay(100)
-        if s.pull.aggroTargetID ~= '' or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
+        if hasAggro() or (mq.TLO.Target.PctHPs() or 100) < 100 then break end
         tries = tries + 1
     end
     -- Puller/pullertank disengage and retreat — let them run back to camp.
@@ -634,18 +639,18 @@ local function pullWithRanged(mobID)
     local tries = 0
     while tries < 3 do
         mq.doevents()
-        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        if hasAggro() then s.pull.pulled = true; return end
         local tID   = mq.TLO.Target.ID()       or 0
         local tDist = mq.TLO.Target.Distance3D() or 0
         if tID == mobID and tDist >= 30 and mq.TLO.Target.LineOfSight() then
             mq.cmd('/range')
             local waitMs = math.max(100, math.floor(tDist / 50 + 1) * 1000)
-            mq.delay(waitMs, function() return s.pull.aggroTargetID ~= '' end)
+            mq.delay(waitMs, function() return hasAggro() end)
         end
-        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        if hasAggro() then s.pull.pulled = true; return end
         tries = tries + 1
     end
-    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+    if hasAggro() then s.pull.pulled = true end
 end
 
 -- Mirrors Sub PullWithPet (kissassist.mac:10313).
@@ -657,10 +662,10 @@ local function pullWithPet(mobID)
     -- Re-send the pet each 2s window it isn't moving; give up after 6 idle windows (mac:10323-10346)
     local petMoving    = false
     local triedSending = 0
-    while s.pull.aggroTargetID == '' do
+    while not hasAggro() do
         if not petMoving then mq.cmd('/pet attack') end
-        mq.delay(2000, function() mq.doevents(); return s.pull.aggroTargetID ~= '' end)
-        if s.pull.aggroTargetID ~= '' then break end
+        mq.delay(2000, function() mq.doevents(); return hasAggro() end)
+        if hasAggro() then break end
         if mq.TLO.Me.Pet.Moving() then
             petMoving    = true
             triedSending = 0
@@ -672,7 +677,7 @@ local function pullWithPet(mobID)
         if not sp() or (sp.Type() or ''):lower() == 'corpse' then break end
         if triedSending > 5 then break end
     end
-    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+    if hasAggro() then s.pull.pulled = true end
     mq.cmd('/pet back off')
 end
 
@@ -687,7 +692,7 @@ local function pullWithCast(mobID)
     local tries = 0
     while tries < 5 do
         mq.doevents()
-        if s.pull.aggroTargetID ~= '' then s.pull.pulled = true; return end
+        if hasAggro() then s.pull.pulled = true; return end
         local sp = mq.TLO.Spawn('id ' .. mobID)
         if not (sp() and sp.LineOfSight()) then return end
         if not mq.TLO.Me.Moving() then
@@ -696,17 +701,17 @@ local function pullWithCast(mobID)
                 tries = tries + 1
             else
                 if result == 'CAST_SUCCESS' or result == 'CAST_RESISTED'
-                   or s.pull.aggroTargetID ~= '' then
+                   or hasAggro() then
                     s.pull.pulled = true
                 end
-                mq.delay(100, function() return s.pull.aggroTargetID ~= '' end)
+                mq.delay(100, function() return hasAggro() end)
                 break
             end
         else
             mq.delay(100)
         end
     end
-    if s.pull.aggroTargetID ~= '' then s.pull.pulled = true end
+    if hasAggro() then s.pull.pulled = true end
 end
 
 -- Main pull movement + dispatch loop. Mirrors Sub Pull (kissassist.mac:9589–9969).
@@ -755,11 +760,14 @@ local function executePull(mobID)
             end
         end
 
-        -- Aggro already detected via event.
-        if s.pull.aggroTargetID ~= '' then
+        -- Something already has aggro on us (mac:9658). The .mac retargets
+        -- AggroTargetID, i.e. the mob in the first Auto Hater XTarget slot.
+        if hasAggro() then
+            local aggroID = mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0
+            if aggroID == 0 then aggroID = s.combat.myTargetID end
             s.pull.pulled         = true
-            s.combat.myTargetID   = tonumber(s.pull.aggroTargetID) or 0
-            s.combat.myTargetName = mq.TLO.Spawn('id ' .. s.pull.aggroTargetID).CleanName() or '?'
+            s.combat.myTargetID   = aggroID
+            s.combat.myTargetName = mq.TLO.Spawn('id ' .. aggroID).CleanName() or '?'
             stopMoving()
             _utils.debug('pull', 'executePull: early aggro detected')
             goto done
@@ -852,7 +860,7 @@ local function executePull(mobID)
                     if stuckCount >= 2 and not mq.TLO.Me.Hovering() then
                         _movement.stuck('pull')
                     end
-                    if stuckCount >= 7 and s.pull.aggroTargetID == '' then
+                    if stuckCount >= 7 and not hasAggro() then
                         printf('\awI am stuck, aborting pull.')
                         stopMoving()
                         returnStat     = 'btcr'
@@ -878,7 +886,7 @@ local function executePull(mobID)
             end
         end
 
-        if s.pull.pulled or s.pull.aggroTargetID ~= '' then goto done end
+        if s.pull.pulled or hasAggro() then goto done end
 
         -- BTC: if abort-level, stop; if no LOS, stop.
         if returnStat == 'btcr' then
@@ -935,7 +943,7 @@ local function executePull(mobID)
     ::done::
     -- Post-pull cleanup (mac:9924–9969).
     mq.cmd('/moveto dist 10')
-    if not s.pull.pulled and s.pull.aggroTargetID ~= '' then
+    if not s.pull.pulled and hasAggro() then
         s.pull.pulled = true
         returnStat    = ''
     end
@@ -1000,7 +1008,7 @@ function Pull.pullCheck()
                 end
             end
             -- Simple inline PullDelay (mac:9418–9439; respawn wait loop deferred to M7 stretch).
-            if s.pull.pullWait > 0 and s.pull.aggroTargetID == '' then
+            if s.pull.pullWait > 0 and not hasAggro() then
                 printf('\awPULLING-> Waiting %d seconds for mobs to respawn.', s.pull.pullWait)
                 mq.delay(s.pull.pullWait * 1000)
             end
