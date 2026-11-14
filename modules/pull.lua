@@ -442,7 +442,8 @@ function Pull.rangeSet()
     local first, second = with:match('^([^|]*)|?(.*)$')
 
     local function set(range, method)
-        p.range   = math.floor(range or 0)
+        -- Round, don't floor: 200 * 0.9 can come out as 179.999... in floating point.
+        p.range   = math.floor((range or 0) + 0.5)
         p.withAlt = method
         local key = method .. '|' .. p.range
         if key ~= _lastRange then
