@@ -999,7 +999,9 @@ function Buffs.checkBuffs(forceGroup)
                             Buffs.writeBuffs()
                         end
                     elseif result == 'CAST_HASBUFF' then
-                        timers_i[j] = os.clock() + spellOrBuffDur(buffToCheck)
+                        -- Use the target's remaining duration when castWhat reported it (mac:4569)
+                        local left = tonumber(_state.buffs.hasBuffDuration) or 0
+                        timers_i[j] = os.clock() + (left > 0 and left or spellOrBuffDur(buffToCheck))
                     elseif result == 'CAST_COMPONENTS' then
                         mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
                         _state.buffs.buffsArray[i].name = 'NULL'

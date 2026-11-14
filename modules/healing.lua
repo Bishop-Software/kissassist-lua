@@ -177,21 +177,78 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
     if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
     if not targetID or targetID == 0 then return end
 
+    local tgt       = mq.TLO.Spawn('id ' .. targetID)
+    local tgtType   = (tgt.Type() or ''):lower()
+    local tgtClass  = tgt.Class.ShortName() or ''
+    local tgtDist   = tgt.Distance() or 9999
+    local inGroup   = (mq.TLO.Spawn('id ' .. targetID .. ' group').ID() or 0) ~= 0
+    local myID      = mq.TLO.Me.ID() or 0
+    local maID      = mq.TLO.Spawn('=' .. (_state.session.mainAssist or '')).ID() or 0
+    local myClass   = mq.TLO.Me.Class.ShortName() or ''
+    local petsOn    = _state.heal.healGroupPetsOn
+
+    -- class / !class lists are comma-separated class short names in field 4
+    local function classListed(list)
+        for c in (list or ''):gmatch('[^,]+') do
+            if c:upper() == tgtClass then return true end
+        end
+        return false
+    end
+
     for _, slot in ipairs(_state.heal.healsArray) do
         if not slot then goto next_sh end
         local condNo    = slot.condNo or 0
         if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_sh end
         local entry     = slot.name or ''
-        local spell     = entry:match('^([^|]+)') or ''
-        local threshold = tonumber(entry:match('^[^|]+|([^|]+)')) or 0
-        if spell ~= '' and threshold > 0 and hpPct <= threshold then
-            _utils.debug('heals', string.format('singleHeal: %s (%d%%) -> %s', name, hpPct, spell))
-            _cast.castWhat(spell, targetID, sentFrom)
-            if _state.cast.castReturn == 'CAST_SUCCESS' then
-                printf('\ag** %s on >> %s <<', spell, name or '')
+        local parts     = {}
+        for p in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spell     = parts[1] or ''
+        local threshold = tonumber(parts[2]) or 0
+        local tag       = (parts[3] or ''):lower()
+        if spell == '' or threshold <= 0 or hpPct > threshold then goto next_sh end
+
+        -- Tag filters (mac:6585-6594)
+        if tag == 'pet' and tgtType ~= 'pet' then goto next_sh end
+        if tag == 'me' and targetID ~= myID then goto next_sh end
+        if tag == '!me' and targetID == myID then goto next_sh end
+        if tag == 'class' and not classListed(parts[4]) then goto next_sh end
+        if tag == '!class' and classListed(parts[4]) then goto next_sh end
+        if tag == 'pet' and not petsOn then goto next_sh end
+        if tag == 'ma' and targetID ~= maID then goto next_sh end
+        if tag == '!ma' and targetID == maID then goto next_sh end
+        -- Life taps and nuke heals are cast on a mob, never on the friend being healed
+        if tag:find('tap', 1, true) or tag:find('mob', 1, true) then goto next_sh end
+
+        do
+            local sp       = mq.TLO.Spell(spell)
+            local tt       = sp.TargetType() or ''
+            -- Group-only spells (mac:6595-6601)
+            if tt:lower() == 'group v1' and not inGroup then goto next_sh end
+            local groupOnlyLine = spell:find('Aegis of Superior Divinity', 1, true)
+                or spell:find('Harmony of the Soul', 1, true)
+                or spell:find('Divine Arbitration', 1, true)
+            if groupOnlyLine and (tgtType == 'pet' or not inGroup) then goto next_sh end
+            if (myClass == 'DRU' or myClass == 'SHM') and not inGroup
+               and (spell:find('Intervention', 1, true) or spell:find('Survival', 1, true)) then
+                goto next_sh
             end
-            return
+            -- Range (mac:6580-6584): AERange for group spells, 100 if unknown
+            local range = tonumber(sp.Range()) or 0
+            if tt:find('Group v', 1, true) then range = tonumber(sp.AERange()) or 0 end
+            if range == 0 then range = 100 end
+            if tgtDist > range then goto next_sh end
         end
+
+        _utils.debug('heals', string.format('singleHeal: %s (%d%%) -> %s', name, hpPct, spell))
+        _cast.castWhat(spell, targetID, sentFrom)
+        if _state.cast.castReturn == 'CAST_SUCCESS' then
+            printf('\ag** %s on >> %s <<', spell, name or '')
+        end
+        -- This heal can't be used right now: try the next one instead of giving up
+        if _state.cast.castReturn == 'CAST_COND_FAILED' or _state.cast.castReturn == 'CAST_NOT_FOUND' then
+            goto next_sh
+        end
+        do return end
         ::next_sh::
     end
 end
@@ -249,11 +306,20 @@ function Heal.checkHealth(sentFrom)
         local mostHurtName = ''
         local mostHurtID   = 0
         local mostHurtPct  = 100
+        -- HealsOn=2 leaves the MA (and the MA's pet) to the MA heal path (mac:6414)
+        local skipMAID = 0
+        if healsOnVal == 2 and (_state.session.mainAssist or '') ~= '' then
+            skipMAID = mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0
+        end
 
         for i = 0, 5 do
             local m = mq.TLO.Group.Member(i)
             ---@diagnostic disable-next-line: undefined-field
             local mID   = m and m.ID()       or 0
+            ---@diagnostic disable-next-line: undefined-field
+            if skipMAID ~= 0 and (mID == skipMAID or (m and (m.Pet.ID() or 0) == skipMAID)) then
+                goto next_member
+            end
             ---@diagnostic disable-next-line: undefined-field
             local mType = m and m.Type()     or ''
             ---@diagnostic disable-next-line: undefined-field
@@ -276,8 +342,8 @@ function Heal.checkHealth(sentFrom)
                     mostHurtPct  = mPct
                 end
 
-                -- Pet check (mac:6435)
-                if _state.heal.healGroupPetsOn then
+                -- Pet check (mac:6435). Cleric/wizard "pets" (hammers, swords) aren't healed.
+                if _state.heal.healGroupPetsOn and mClass ~= 'CLR' and mClass ~= 'WIZ' then
                     ---@diagnostic disable-next-line: undefined-field
                     local petID  = m.Pet.ID()     or 0
                     ---@diagnostic disable-next-line: undefined-field
@@ -290,6 +356,7 @@ function Heal.checkHealth(sentFrom)
                     end
                 end
             end
+            ::next_member::
         end
 
         if mostHurtID ~= 0 and mostHurtPct < _state.heal.singleHealPoint then

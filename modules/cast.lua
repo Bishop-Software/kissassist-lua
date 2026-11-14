@@ -886,13 +886,74 @@ Cast.castReMem    = castReMem
 
 -- ─── Buff Stacking Check ──────────────────────────────────────────────────────
 
--- Mirrors CastBuffsSpellCheck (kissassist.mac:2946) — simplified.
--- Returns true if spellName is already active on self (Me.Buff or Me.Song).
--- Full WillStack / SPA-374/340 group-target check deferred to M10.
-local function castBuffsSpellCheck(spellName)
+-- Self-cast check: the spell is already active on us (Me.Buff or Me.Song).
+local function selfHasBuff(spellName)
     if (mq.TLO.Me.Buff(spellName).ID() or 0) ~= 0 then return true end
     if (mq.TLO.Me.Song(spellName).ID() or 0) ~= 0 then return true end
     return false
+end
+
+-- Mirrors CastBuffsSpellCheck (kissassist.mac:2946-3000) for a buff on another
+-- target (the current Target). Returns the remaining seconds of the blocking buff
+-- when the spell is already on the target or won't stack, else nil. A blocking
+-- buff with no duration returns 1 so the caller still treats it as present.
+local function castBuffsSpellCheck(spellName)
+    local tgt = mq.TLO.Target
+    mq.delay(5000, function() return tgt.BuffsPopulated() == true end)
+
+    local function remaining(nameOrSlot)
+        local secs = tonumber(tgt.BuffDuration(nameOrSlot).TotalSeconds()) or 0
+        return secs > 0 and secs or 1
+    end
+    local function blockedByStacking(spell)
+        for i = 1, 85 do
+            local buffName = tgt.Buff(i).Name()
+            if buffName and buffName ~= '' and not spell.WillStack(buffName)() then
+                return remaining(i)
+            end
+        end
+        return nil
+    end
+
+    -- Already on the target
+    if (tgt.Buff(spellName).ID() or 0) ~= 0 then return remaining(spellName) end
+
+    local spell = mq.TLO.Spell(spellName)
+    if spell.HasSPA(374)() or spell.HasSPA(340)() then
+        -- Buff that applies child spells (e.g. unity/talisman lines): check each child
+        local numEffects = spell.NumEffects() or 0
+        local children = {}
+        for k = 1, numEffects do
+            local attrib = spell.Attrib(k)()
+            if attrib == 374 or attrib == 340 then
+                local child = mq.TLO.Spell(spell.Base2(k)())
+                if child() then children[#children + 1] = child end
+            end
+        end
+        for _, child in ipairs(children) do
+            local childName = child.Name() or ''
+            if childName ~= '' and (tgt.Buff(childName).ID() or 0) ~= 0 then
+                return remaining(childName)
+            end
+        end
+        for _, child in ipairs(children) do
+            local blocked = blockedByStacking(child)
+            if blocked then return blocked end
+        end
+        return nil
+    end
+
+    -- AA whose spell triggers another spell: check the triggered buff
+    local trigger = mq.TLO.AltAbility(spellName).Spell.Trigger(1)
+    if (trigger.ID() or 0) ~= 0 then
+        local triggerName = trigger.Name() or ''
+        if triggerName ~= '' and (tgt.Buff(triggerName).ID() or 0) ~= 0 then
+            return remaining(triggerName)
+        end
+        return nil
+    end
+
+    return blockedByStacking(spell)
 end
 
 -- CastWhat dispatcher — mirrors CastWhat (kissassist.mac:2467-2614).
@@ -1032,10 +1093,27 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
 
     -- DPS stacking check stub → M4
 
-    -- Buff stacking check: skip if spell is already active on self
-    if (sentFrom == 'Buffs' or sentFrom == 'buffs-nomem') and castBuffsSpellCheck(castWhat) then
-        utils.debug('cast', 'CastWhat: %s CAST_HASBUFF (already active on self)', castWhat)
-        return 'CAST_HASBUFF'
+    -- Buff stacking check (mac:2524-2532). On another target, check that target's
+    -- buffs (already there, or won't stack) and report the remaining duration;
+    -- on ourselves, just check our own buffs/songs.
+    state.buffs.hasBuffDuration = 0
+    if sentFrom == 'Buffs' or sentFrom == 'buffs-nomem' then
+        local myID  = mq.TLO.Me.ID() or 0
+        local tgtID = tonumber(whatID) or 0
+        if tgtID == myID or tgtID == 0 then
+            if selfHasBuff(castWhat) then
+                utils.debug('cast', 'CastWhat: %s CAST_HASBUFF (already active on self)', castWhat)
+                return 'CAST_HASBUFF'
+            end
+        elseif (mq.TLO.Target.ID() or 0) == tgtID
+           and (mq.TLO.Spell(castWhat).SpellType() or ''):find('Beneficial', 1, true) then
+            local blockedFor = castBuffsSpellCheck(castWhat)
+            if blockedFor then
+                state.buffs.hasBuffDuration = blockedFor
+                utils.debug('cast', 'CastWhat: %s CAST_HASBUFF (on target or won\'t stack, %ds left)', castWhat, blockedFor)
+                return 'CAST_HASBUFF'
+            end
+        end
     end
 
     -- Pull short-circuit pre-cast

@@ -223,7 +223,10 @@ local function mezMobs(mobID, slotIndex)
             return
         elseif result == 'CAST_RESISTED' and tryNum < 2 then
             printf('\ay[Mez] Resisted -> %s (ID:%d), retrying', mobName, mobID)
-            if _state.mez.mezDebuffOnResist and _state.mez.mezDebuffSpell ~= '' then
+            -- Enchanter only, and not on an already-tashed target (mac:7521, 7537)
+            if _state.mez.mezDebuffOnResist and _state.mez.mezDebuffSpell ~= ''
+               and mq.TLO.Me.Class.ShortName() == 'ENC'
+               and (mq.TLO.Target.Tashed.ID() or 0) == 0 then
                 mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() or _state.terminate end)
                 if _state.terminate then return end
                 _cast.castWhat(_state.mez.mezDebuffSpell, mobID, 'MezDebuff', 0, 0)
@@ -332,8 +335,10 @@ function Mez.check(sentFrom)
             goto continue_mez
         end
 
-        -- HP threshold — mob too low to bother re-mezzing (mac:7344-7347)
-        if (mob.PctHPs() or 100) < _state.mez.stopHPs then
+        -- HP threshold — mob too low to bother re-mezzing (mac:7344-7347). With the MA
+        -- gone the mac drops the floor to 1% so near-dead adds still get mezzed (mac:7279).
+        local stopHPs = maAlive and _state.mez.stopHPs or 1
+        if (mob.PctHPs() or 100) < stopHPs then
             entry[1] = 'NULL'; entry[2] = 'NULL'; entry[3] = 'NULL'
             goto continue_mez
         end
