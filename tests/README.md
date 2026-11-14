@@ -38,6 +38,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_merc.lua` | Merc "never assists" regression: `Mercenary.State` handling |
 | `unit/test_dps_immune.lua` | `Cast.combatCast` stops recasting a DPS spell on a mob that was immune to it, still casts it on other mobs |
 | `unit/test_pull_aggro.lua` | `Utils.pullAggroID()` (the `.mac`'s `PullAggroTargetID`): XTarget-based pull aggro for normal and chain pulls (#224) |
+| `unit/test_pull_arc.lua` | `Pull.pullAngles()` (the `.mac`'s `SetPullAngles`, including wrap through 0/360) and `Pull.headingTo()` (#226) |
 
 Counts change as tests are added; the runner prints the current total.
 

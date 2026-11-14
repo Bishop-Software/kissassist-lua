@@ -342,22 +342,40 @@ local function onTrackMeDown(name, _useNavOnly, _ignoreDist)
     end
 end
 
--- Mirrors Bind_SetPullArc (kissassist.mac). Sets arc width; recomputes lSide/rSide.
-local function onSetPullArc(width, _fdir)
+local PULL_DIRS = { n = 0, ne = 45, e = 90, se = 135, s = 180, sw = 225, w = 270, nw = 315 }
+
+-- Mirrors Bind_SetPullArc (mac:14461): /setpullarc <width> [degrees|n|ne|e|se|s|sw|w|nw].
+-- No direction = the way you are facing. Width 0 turns directional pulling off.
+local function onSetPullArc(width, fdir)
     local w = tonumber(width) or 0
-    state.pull.pullArcWidth = w
-    if w > 0 then
-        local half = w / 2.0
-        state.pull.lSide = -half
-        state.pull.rSide =  half
-    else
-        state.pull.lSide = 0
-        state.pull.rSide = 0
+    local function save()
+        -- Save to the pickle config (the .ini was renamed to .bak at migration)
+        _config.set('Pull', 'PullArcWidth', tostring(state.pull.pullArcWidth))
+        _config.save()
     end
-    -- Save to the pickle config (the .ini was renamed to .bak at migration)
-    _config.set('Pull', 'PullArcWidth', tostring(w))
-    _config.save()
-    printf('\ayPull arc set to \at%d\ay (lSide=%.1f rSide=%.1f).', w, state.pull.lSide, state.pull.rSide)
+    if w <= 0 or w > 359 then
+        if state.pull.pullArcWidth > 0 then printf('\ayTurning off Directional Pulling.') end
+        state.pull.pullArcWidth = 0
+        save()
+        return
+    end
+    local facing
+    if not fdir or fdir == '' then
+        facing = mq.TLO.Me.Heading.Degrees() or 0
+    elseif tonumber(fdir) then
+        facing = tonumber(fdir) % 360
+    else
+        facing = PULL_DIRS[fdir:lower()]
+        if not facing then
+            printf('\arInvalid Direction. Turning off Directional Pulling.')
+            state.pull.pullArcWidth = 0
+            save()
+            return
+        end
+    end
+    state.pull.pullArcWidth = w
+    require('modules.pull').setPullAngles(facing, w)
+    save()
 end
 
 -- Mirrors Bind_SetPullRanking (kissassist.mac). Sets mob ranking preference.

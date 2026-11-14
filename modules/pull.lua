@@ -42,13 +42,48 @@ local function inNameList(list, name)
     return false
 end
 
+-- Heading in degrees from (fromY, fromX) to (toY, toX), same convention as MQ's
+-- Spawn.HeadingTo / Me.Heading (0 = north, clockwise).
+function Pull.headingTo(fromY, fromX, toY, toX)
+    ---@diagnostic disable-next-line: deprecated
+    local deg = math.deg(math.atan2(fromY - toY, toX - fromX)) + 90
+    if deg < 0 then deg = deg + 360 elseif deg >= 360 then deg = deg - 360 end
+    return deg
+end
+
+-- Left/right edges of a pull arc of `width` degrees centred on `facing`, wrapped
+-- into 0-360. Mirrors Sub SetPullAngles (mac:14490).
+function Pull.pullAngles(facing, width)
+    local half  = width * 0.5
+    local lSide = facing - half
+    if lSide < 0 then lSide = 360 + lSide end
+    local rSide = facing + half
+    if rSide > 360 then rSide = rSide - 360 end
+    return lSide, rSide
+end
+
+-- Aim the pull arc: store its edges and facing in State.pull (mac:14490).
+function Pull.setPullAngles(facing, width, quiet)
+    if not width or width <= 0 then return end
+    facing = facing or 0
+    local p = _state.pull
+    p.lSide, p.rSide = Pull.pullAngles(facing, width)
+    p.heading = facing
+    if not quiet then
+        printf('\aySetting Pull Angles. Facing: \at%.2f\ay Left Side: \at%.2f\ay Right Side: \at%.2f\ay Width: \at%d',
+            facing, p.lSide, p.rSide, width)
+    end
+end
+
 -- Check whether mobID falls within the configured pull arc.
 -- Mac: FigureMobAngle (mac:14511-14520)
+-- The .mac reads Spawn[mob].HeadingTo[CampY,CampX], but MQ's HeadingTo ignores its
+-- argument and measures from the player, so it only matches the camp while the
+-- puller stands there. Measure from the camp itself.
 local function figureMobAngle(mobID)
     local sp = mq.TLO.Spawn('id ' .. mobID)
     if not sp() then return false end
-    local locStr = tostring(_state.movement.campY) .. ',' .. tostring(_state.movement.campX)
-    local dir    = sp.HeadingTo(locStr).Degrees() or 0
+    local dir = Pull.headingTo(_state.movement.campY, _state.movement.campX, sp.Y() or 0, sp.X() or 0)
     local lSide, rSide = _state.pull.lSide, _state.pull.rSide
     -- lSide >= rSide means the arc wraps through 0/360.
     if lSide >= rSide then
@@ -94,8 +129,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.max          = tonumber(Config.get('Pull', 'PullMax',      '0'))  or 0
     _state.pull.hold         = Config.get('Pull', 'PullHold',      '0') == '1'
     _state.pull.pullArcWidth = tonumber(Config.get('Pull', 'PullArcWidth', '0'))  or 0
-    _state.pull.lSide        = tonumber(Config.get('Pull', 'PullLSide',    '0'))  or 0.0
-    _state.pull.rSide        = tonumber(Config.get('Pull', 'PullRSide',    '0'))  or 0.0
+    if _state.pull.pullArcWidth > 359 then _state.pull.pullArcWidth = 0 end  -- mac:16278
     _state.pull.pullWait     = tonumber(Config.get('Pull', 'PullWait',     '0'))  or 0
     _state.pull.chainPull    = tonumber(Config.get('Pull', 'ChainPull',    '0'))  or 0
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
@@ -107,11 +141,11 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     -- waypointZRange mirrors MaxZRange (used by movement nav Z-range guard)
     _state.pull.waypointZRange  = _state.pull.maxZRange
 
-    -- Derive arc half-widths from PullArcWidth when individual sides not set
-    if _state.pull.pullArcWidth > 0 and _state.pull.lSide == 0 and _state.pull.rSide == 0 then
-        local half = _state.pull.pullArcWidth / 2.0
-        _state.pull.lSide = -half
-        _state.pull.rSide =  half
+    -- Puller roles aim the arc the way the character faces at startup (mac:16492).
+    if _state.pull.pullArcWidth > 0 and (_state.session.role or ''):find('puller', 1, true) then
+        Pull.setPullAngles(mq.TLO.Me.Heading.Degrees() or 0, _state.pull.pullArcWidth, true)
+        printf('\awPulling an Area starting from the Left at \at%.2f\aw degrees ending at \at%.2f\aw degrees.',
+            _state.pull.lSide, _state.pull.rSide)
     end
 
     -- [PullAdvanced] section
