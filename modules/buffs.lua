@@ -518,7 +518,7 @@ function Buffs.checkBuffs(forceGroup)
         if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
     end
     if mq.TLO.Me.Invis() and mq.TLO.Me.Class.Name() ~= 'Rogue' then return end
-    if _state.movement.chaseAssist and mq.TLO.Me.Moving() then return end
+    if _state.session.chaseAssist and mq.TLO.Me.Moving() then return end
     if mq.TLO.Me.Moving() and _state.movement.whoToChase == mq.TLO.Me.Name() then return end
 
     -- PowerSource refuel (mac:4192)
@@ -1042,7 +1042,8 @@ function Buffs.checkBuffs(forceGroup)
             end
         end
 
-        if savedTargetID ~= 0 then
+        -- Only re-target when this entry actually changed the target
+        if savedTargetID ~= 0 and (mq.TLO.Target.ID() or 0) ~= savedTargetID then
             mq.cmdf('/squelch /target id %d', savedTargetID)
         end
 
@@ -1057,11 +1058,20 @@ function Buffs.checkBuffs(forceGroup)
             local currentName = (mq.TLO.Me.Gem(miscGem).Name() or ''):lower()
             if currentName ~= reMemSpell:lower() or _state.cast.reMemCastLW then
                 _state.cast.reMemCast       = true
+                local prevDontMove          = _state.movement.dontMoveMe
                 _state.movement.dontMoveMe  = true
                 _cast.castReMem(reMemSpell, true, 'buffs')
-                _state.movement.dontMoveMe  = false
+                _state.movement.dontMoveMe  = prevDontMove  -- keep a configured DontMoveMe=1
             end
         end
+    end
+
+    -- Throttle the next pass to CheckBuffsTimer seconds (mac:4700). Joined,
+    -- /buffgroup and WornOff reset it so those still rebuff right away.
+    local endAggroID = _state.combat.aggroTargetID or ''
+    if _state.timers.readBuffs <= os.clock()
+       and (endAggroID == '' or endAggroID == '0') then
+        _state.timers.readBuffs = os.clock() + (_state.buffs.checkBuffsTimer or 15)
     end
 end
 
@@ -1171,8 +1181,8 @@ function Buffs.checkPetBuffs()
     if (mq.TLO.Me.Pet.ID() or 0) == 0 then return end
     if not _state.pet.on then return end
     if not _state.buffs.petBuffsOn then return end
-    if _state.session.combatStart then return end
-    if _state.combat.pulling then return end
+    if _state.combat.combatStart then return end  -- mac:5407
+    if _state.pull.pulling then return end  -- mac:5408
     if os.clock() < (_state.timers.petBuffCheck or 0) then return end
     if mq.TLO.Me.Invis() then return end
 

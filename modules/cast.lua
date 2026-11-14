@@ -148,7 +148,7 @@ local function shouldInterrupt(sentFrom)
         if cls ~= 'nec' and cls ~= 'mag' then
             local maName   = state.session.mainAssist or ''
             local healFloor = math.min(state.heal.singleHealPointMA or 70, 70)
-            if maName ~= '' and (mq.TLO.Spawn(maName).PctHPs() or 100) < healFloor then
+            if maName ~= '' and (mq.TLO.Spawn('=' .. maName).PctHPs() or 100) < healFloor then
                 return true
             end
             local watchPct = state.heal.groupWatchPct or 20
@@ -283,7 +283,7 @@ local function castSpell(spellName, sentFrom)
                 local cls = (mq.TLO.Me.Class.ShortName() or ''):lower()
                 if haveHeals() and cls ~= 'nec' and cls ~= 'mag' then
                     local maName = state.session.mainAssist or ''
-                    local maHP   = (maName ~= '' and mq.TLO.Spawn(maName).PctHPs()) or 100
+                    local maHP   = (maName ~= '' and mq.TLO.Spawn('=' .. maName).PctHPs()) or 100
                     local intAt  = math.min(state.heal.singleHealPointMA or 70, 70)
                     if maHP < intAt then
                         mq.cmd('/stopcast')

@@ -41,16 +41,20 @@ local function drawSongSet(songs, setName)
             -- Song name (stretches to fill available width)
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
+            -- Text edits update the row live but only save (INI rewrite + /medley
+            -- reload) once the field loses focus, not on every keystroke.
             local newName, ne = ImGui.InputText(('##sname_%s_%d'):format(setName, i), entry.name or '', 0)
+            if ImGui.IsItemDeactivatedAfterEdit() then changed = true end
             ImGui.PopItemWidth()
-            if ne and newName ~= entry.name then entry.name = newName; changed = true end
+            if ne and newName ~= entry.name then entry.name = newName end
 
             -- Duration expression hint (e.g. "30" or "${Medley.Tune}+30").
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
             local newDur, de = ImGui.InputText(('##sdur_%s_%d'):format(setName, i), entry.dur or '', 0)
+            if ImGui.IsItemDeactivatedAfterEdit() then changed = true end
             ImGui.PopItemWidth()
-            if de and newDur ~= entry.dur then entry.dur = newDur; changed = true end
+            if de and newDur ~= entry.dur then entry.dur = newDur end
 
             -- Condition — same cond001/cond002 dropdown as Buffs/Heals/Aggro tabs.
             ImGui.TableNextColumn()

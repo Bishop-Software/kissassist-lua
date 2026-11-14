@@ -90,7 +90,7 @@ local function mezRadar()
                         -- Add to first empty slot
                         for _, entry in ipairs(arr) do
                             if entry[1] == 'NULL' then
-                                entry[1] = id
+                                entry[1] = tostring(id)  -- compared as strings elsewhere
                                 entry[2] = sp.Level() or 0
                                 entry[3] = sp.CleanName() or ''
                                 _utils.debug('mez', 'mezRadar: adding %s (ID:%d)', entry[3], id)

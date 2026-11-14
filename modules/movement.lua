@@ -35,6 +35,8 @@ function Movement.init(state, utils)
     _state.movement.navPathHelper    = Config.get('General', 'NavPathHelper',    '1') ~= '0'
     _state.movement.locDelayCheckUW  = Config.get('General', 'LocDelayCheckUW',  '0') == '1'
     _state.movement.faceMobOn        = tonumber(Config.get('Melee', 'FaceMobOn', '1')) or 1
+    -- Heading to face after returning to camp; reset whenever camp is set (mac:16680)
+    _state.movement.lookForward      = mq.TLO.Me.Heading.DegreesCCW() or 0
     _state.movement.scatterOn        = Config.get('General', 'ScatterOn',        '0') == '1'
     _state.movement.scatterDistance  = tonumber(Config.get('General', 'ScatterDistance',  '20')) or 20
 
@@ -267,9 +269,9 @@ function Movement.doWeMove(forceFlag, sentFrom)
 
     -- Settle, face, restore pitch
     mq.delay(200, function() return not mq.TLO.Me.Moving() end)
-    if (mv.faceMobOn and _state.combat.aggroTargetID == '' and not _state.combat.combatStart)
+    if ((mv.faceMobOn or 0) ~= 0 and _state.combat.aggroTargetID == '' and not _state.combat.combatStart)
        or not isPullerRole(role) then
-        mq.cmdf('/face heading %d', mv.lookForward)
+        mq.cmdf('/face heading %d', math.floor(mv.lookForward or 0))
     end
     if not mq.TLO.Me.FeetWet() then mq.cmd('/look 0') end
 

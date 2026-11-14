@@ -13,6 +13,9 @@ local _flags = {
     mez       = false, move      = false,
     pet       = false, pull      = false,
     rk        = false, time      = false,
+    bard      = false, charm     = false,
+    comms     = false, debuff    = false,
+    merc      = false,
 }
 
 -- MQ color codes mirror the .mac DEBUGX macros (\at=teal \ar=red \am=magenta etc.)
@@ -24,6 +27,9 @@ local _prefix = {
     pet       = '\aoPET',       pull      = '\ayPULL',
     chainpull = '\ayPULL',      time      = '\atDEBUGTIME',
     rk        = '\atRK',        logging   = '\atLOG',
+    bard      = '\amBARD',      charm     = '\ayCHARM',
+    comms     = '\atCOMMS',     debuff    = '\aoDEBUFF',
+    merc      = '\agMERC',
 }
 
 function Utils.init(state)

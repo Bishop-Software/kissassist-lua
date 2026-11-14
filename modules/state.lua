@@ -57,6 +57,11 @@ local State = {
         pull      = false,
         rk        = false,
         time      = false,
+        bard      = false,
+        charm     = false,
+        comms     = false,
+        debuff    = false,
+        merc      = false,
     },
 
     combat = {

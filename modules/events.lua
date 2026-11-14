@@ -317,6 +317,7 @@ local function onJoined(_, joinee)
     state.combat.eventFlag   = true
     state.timers.joinedParty = os.clock() + 2  -- 200 ticks * 50ms ≈ 2s heal suppression window
     state.buffs.forceBuffs   = true
+    state.timers.readBuffs   = 0  -- rebuff the new member now (mac:11170)
     -- #138: announce our buff state to new group so they don't wait for the 30s heartbeat
     state.buffs.pendingZoneBroadcast = true
     -- Per-member buff state reset in M6 (buffs.lua)
