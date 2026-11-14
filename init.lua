@@ -227,10 +227,13 @@ while not State.terminate do
     local campSet = (State.movement.campX ~= 0 or State.movement.campY ~= 0)
     if PULLER_ROLES[State.session.role] and campSet then
         -- Only look for a mob once the pull method is ready, and not while
-        -- dragging a corpse (mac:417-418).
-        if not State.pull.hold and not State.misc.dragCorpse and Pull.pullAbilityReady() then
+        -- dragging a corpse (mac:417-418) or during the PullWait respawn wait.
+        -- pullCheck runs even when no mob was found (mac:424): that is where the
+        -- fail counter, hunter return-to-camp and PullWait live.
+        if not State.pull.hold and not State.misc.dragCorpse and not Pull.pullWaiting()
+           and Pull.pullAbilityReady() then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
-            if State.pull.mob ~= 0 then Pull.pullCheck() end
+            Pull.pullCheck()
             State.pull.mob = 0
         end
     end
