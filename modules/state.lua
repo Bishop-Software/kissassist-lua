@@ -301,7 +301,7 @@ local State = {
     },
 
     pet = {
-        activeState   = 0,
+        activeState   = false,
         assistAt      = 100,   -- PetAssistAt: mob HP% threshold to send pet (set from INI)
         attackRange   = 115,  -- PetAttackDistance default (mac:14810); overwritten by combat.lua init
         combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)

@@ -399,7 +399,7 @@ function Buffs.castMount()
         if entry:find('|0', 1, true) then goto mcontinue end
         local parts = {}
         for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
-        if (parts[2] or '') ~= 'mount' then goto mcontinue end
+        if (parts[2] or ''):lower() ~= 'mount' then goto mcontinue end
         local spellName = parts[1] or ''
         if spellName == '' then goto mcontinue end
         if mq.TLO.Me.FeetWet() then goto mcontinue end
@@ -424,7 +424,7 @@ function Buffs.castMana()
 
         local parts = {}
         for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
-        if (parts[2] or '') ~= 'mana' then goto mncontinue end
+        if (parts[2] or ''):lower() ~= 'mana' then goto mncontinue end
 
         local spellName  = parts[1] or ''
         if spellName == '' then goto mncontinue end
@@ -685,7 +685,7 @@ function Buffs.checkBuffs(forceGroup)
                 local didCast = regenOther(spellToCast, stat, tonumber(p3) or 0)
                 if didCast then
                     local dur = tonumber(mq.TLO.Spell(spellToCast).Duration.TotalSeconds()) or 0
-                    timers_i[0] = os.clock() + dur * 10
+                    timers_i[0] = os.clock() + dur
                 end
             end
             goto continue

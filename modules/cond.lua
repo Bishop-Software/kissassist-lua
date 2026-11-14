@@ -62,6 +62,7 @@ function Cond.evalStr(expr)
     -- mq.parse leaves MQ operators (!  &&  ||) and NULL untouched; normalize to Lua.
     -- !<number>: MQ treats 0 as false, nonzero as true, so !0=true, !13=false.
     result = result:gsub('NULL', '0')
+    result = result:gsub('!=', '~=')  -- before the !<x> rewrites below
     result = result:gsub('!(%d+)', function(n) return tonumber(n) == 0 and 'true' or 'false' end)
     result = result:gsub('!TRUE', 'false'):gsub('!FALSE', 'true')
     result = result:gsub('TRUE', 'true'):gsub('FALSE', 'false')

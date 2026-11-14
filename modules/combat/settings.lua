@@ -72,7 +72,9 @@ function Settings.load(state, utils)
 
     _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '75')) or 75
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
-    _state.misc.autoHide        = Config.get('General', 'AutoHide', '0') == '1'
+    -- AutoHide lives in [Melee] (mac:14689); older UI builds saved it to [General].
+    _state.misc.autoHide        = Config.get('Melee', 'AutoHide', '0') == '1'
+                                  or Config.get('General', 'AutoHide', '0') == '1'
 
     -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
     _state.session.useSpawnMaster = Config.get('General', 'UseSpawnMaster', '0') == '1'

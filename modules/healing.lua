@@ -988,15 +988,15 @@ function Heal.recoverCorpses(rc_flag, rc_dist)
         end
 
         -- Wait for spell ready (mac:15431), up to 35s
-        if mq.TLO.Me.Gem(useWhat) then
+        if mq.TLO.Me.Gem(useWhat)() then
             local readyEnd = os.clock() + 35
             while not mq.TLO.Me.SpellReady(useWhat)() and os.clock() < readyEnd do
                 if _state.session.chaseAssist and _movement then
                     _movement.doWeChase(0, 'summoncorpse')
                 else
                     mq.doevents()
-                    mq.delay(50)
                 end
+                mq.delay(50)  -- doWeChase can return without yielding
             end
             if not mq.TLO.Me.SpellReady(useWhat)() then break end
         end

@@ -1393,7 +1393,8 @@ function Cast.combatCast()
         if spellName == '' or spellName == 'null' then goto next_dps end
 
         local hpThresh = tonumber(hpThreshStr)
-        if not hpThresh or hpThresh <= 0 then break end
+        -- No HP% (or 0): skip just this entry, like the mac (mac:1668 Int[Arg2] > 0).
+        if not hpThresh or hpThresh <= 0 then goto next_dps end
 
         -- IAmMA or DPSOn off → use global AssistAt; otherwise use per-entry threshold
         local dpsAt = (state.combat.dpsOn and not state.session.iAmMA)
