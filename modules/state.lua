@@ -510,7 +510,6 @@ local State = {
         itemsGiven           = 0,
         lastZone             = 0,
         macroReturn          = '',
-        mapSet               = false,
         mountOn              = true,
         mq2castReload        = false,
         mq2meleeReload       = false,
