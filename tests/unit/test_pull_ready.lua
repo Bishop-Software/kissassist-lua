@@ -47,9 +47,12 @@ function M.run(TH, MockMQ)
     setReady({ item = true })
     TH.assert_true(Pull.pullAbilityReady('Snare'), 'named: item ready')
 
-    -- Unknown names: TLO returns nil, treated as not ready.
+    -- Unknown names: every member returns nil, treated as not ready.
     MockMQ.reset()
-    MockMQ.set('TLO.Me.SpellReady', function() return function() return nil end end)
+    local nilMember = function() return function() return nil end end
+    for _, m in ipairs({ 'SpellReady', 'AltAbilityReady', 'CombatAbilityReady', 'ItemReady' }) do
+        MockMQ.set('TLO.Me.' .. m, nilMember)
+    end
     TH.assert_false(Pull.pullAbilityReady('Nonexistent'), 'named: nil results -> not ready')
 
     package.loaded['modules.pull'] = nil
