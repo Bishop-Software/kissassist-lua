@@ -55,7 +55,7 @@ function Settings.load(state, utils)
                                     tostring(_state.session.assistAt)))
                                 or _state.session.assistAt
 
-    _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '30')) or 30
+    _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '75')) or 75
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
     _state.misc.autoHide        = Config.get('General', 'AutoHide', '0') == '1'
 

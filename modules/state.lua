@@ -85,7 +85,7 @@ local State = {
         burnAllNamed       = 0,
         dpsArray           = {},
         dpsOn              = false,
-        meleeDistance      = 30,
+        meleeDistance      = 75,
         meleeOn            = false,
         namedCheck         = false,
         namedWatchList     = {},
@@ -201,7 +201,7 @@ local State = {
         advpathX        = 0.0,
         advpathY        = 0.0,
         advpathZ        = 0.0,
-        campRadius       = 50,
+        campRadius       = 30,
         campRadiusExceed = 0,   -- 0=disabled; >0=leash distance that disables ReturnToCamp
         campX           = 0,
         campY           = 0,
