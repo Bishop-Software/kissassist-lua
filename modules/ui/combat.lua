@@ -777,13 +777,13 @@ function CombatUI.drawAE()
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
-            local tgtIdx = 0
+            local tgtIdx = 1  -- ImGui.Combo is 1-based
             for j, v in ipairs(AE_TARGETS) do
-                if v:upper() == target:upper() then tgtIdx = j - 1 break end
+                if v:upper() == target:upper() then tgtIdx = j break end
             end
             local newTgtIdx
             newTgtIdx, tac = ImGui.Combo('##aetgt' .. i, tgtIdx, AE_TARGETS)
-            newTarget = AE_TARGETS[newTgtIdx + 1] or 'Mob'
+            newTarget = AE_TARGETS[newTgtIdx] or 'Mob'
             ImGui.PopItemWidth()
 
             ImGui.TableNextColumn()
