@@ -26,6 +26,7 @@ function Settings.drawControls()
     ImGui.Spacing()
     ImGui.Separator()
     intInput('Camp Radius', s.movement.campRadius,  1, 1000, 'General', 'CampRadius', function(v) s.movement.campRadius = v end)
+    intInput('Chase Distance', s.movement.chaseDistance, 1, 500, 'General', 'ChaseDistance', function(v) s.movement.chaseDistance = v end)
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
 end

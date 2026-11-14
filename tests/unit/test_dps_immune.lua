@@ -59,6 +59,8 @@ function M.run(TH, MockMQ)
 
     local realCastWhat = Cast.castWhat
     local casts = 0
+    -- Stub castWhat on purpose (restored at the end of the test).
+    ---@diagnostic disable-next-line: duplicate-set-field
     Cast.castWhat = function() casts = casts + 1; return 'CAST_IMMUNE' end
 
     -- 1. IMMUNE result is remembered for that mob and spell -----------------------

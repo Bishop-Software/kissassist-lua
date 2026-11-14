@@ -362,7 +362,10 @@ local function onGoMOn()
     utils.debug('bard', 'GoMOn')
     state.combat.eventFlag = true
     local cls = mq.TLO.Me.Class.ShortName()
-    if cls=='BRD' or cls=='BER' or cls=='MNK' or cls=='ROG' or cls=='WAR' or state.bard.gomByPass then
+    -- The mac skips GoM for BRD/BER/MNK/ROG/WAR (mac Event_GoMOn). Bards are let
+    -- through here only for the Lua burst-song feature (bard.lua queues GoMMedley);
+    -- checkGoM still never casts GoM spells for a bard.
+    if cls=='BER' or cls=='MNK' or cls=='ROG' or cls=='WAR' or state.bard.gomByPass then
         state.bard.gomByPass = false
         return
     end
@@ -718,6 +721,8 @@ end
 -- cast engine can read State.cast.castReturn without firing unrelated events mid-cast.
 -- mq.doevents(names...) runs the handlers in arrival order before it returns.
 function Events.doCastEvents()
+    -- MQ2Lua runs LuaJIT, where the global unpack is correct (no table.unpack).
+    ---@diagnostic disable-next-line: deprecated
     if #CAST_NAMES > 0 then mq.doevents(unpack(CAST_NAMES)) end
 end
 
