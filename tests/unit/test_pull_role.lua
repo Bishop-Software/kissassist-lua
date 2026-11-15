@@ -28,7 +28,9 @@ function M.run(TH, MockMQ)
         MockMQ.set('TLO.Me.CleanName', 'Me')
         MockMQ.set('TLO.Group.Leader.ID', leader and 10 or 20)
         MockMQ.set('TLO.Group.Puller.ID', puller)
-        MockMQ.set('TLO.SpawnCount', function(q) return q == 'group mercenary' and mercs or 0 end)
+        MockMQ.set('TLO.SpawnCount', function(q)
+            return function() return q == 'group mercenary' and mercs or 0 end
+        end)
         MockMQ.set('TLO.Spawn', function()
             return setmetatable({ X = function() return mobDist end, Y = function() return 0 end },
                 { __call = function() return 'mob' end })
