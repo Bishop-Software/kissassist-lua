@@ -44,6 +44,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_range.lua` | `Pull.rangeSet()` (the `.mac`'s `PullRangeSet`): range from Melee/Pet/spell/disc/AA/clicky/`Bow\|Arrow`, scaled by `PullRadiusToUse` (#225) |
 | `unit/test_pull_ignore.lua` | `Pull.ignoreAdd()`: ignore-by-ID pull list format `\|id\|id\|`, no duplicates, no partial-ID matches (#144) |
 | `unit/test_pull_map.lua` | `Pull.paintMap()` (the `.mac`'s `PaintMap`): `/mapfilter` circles painted once in camp with MQ2Map loaded, repainted after `mapSet` clears (#259) |
+| `unit/test_pull_ranking.lua` | `Pull.setRanking()` (the `.mac`'s `UpdatePullRanking`) and `Pull.nameAllowed()`: `:`-marked MobsToPull entries become the pull-first list while ranking is on; off strips the marks (#146) |
 
 Counts change as tests are added; the runner prints the current total.
 

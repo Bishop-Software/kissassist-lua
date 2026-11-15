@@ -379,13 +379,31 @@ local function onSetPullArc(width, fdir)
     save()
 end
 
--- Mirrors Bind_SetPullRanking (kissassist.mac). Sets mob ranking preference.
-local function onSetPullRanking(n, _arg)
-    local ranking = tonumber(n) or 0
-    state.pull.ranking = ranking
-    _config.set('Pull', 'PullRanking', tostring(ranking))
-    _config.save()
-    printf('\ayPull ranking set to \at%d\ay.', ranking)
+-- Mirrors Bind_SetPullRanking (kissassist.mac:15019). Pull ranking pulls the
+-- MobsToPull entries marked with ':' first. Per session; not saved.
+local PULL_RANK_ROLES = { puller = true, pullertank = true, pullerpettank = true,
+                          hunter = true, hunterpettank = true }
+local function onSetPullRanking(flag)
+    if not PULL_RANK_ROLES[state.session.role] then
+        printf('\ayInvalid current Role to use Pull Ranking. Setting Pull Ranking OFF!')
+        require('modules.pull').setRanking(false, true)
+        return
+    end
+    flag = (flag or ''):lower()
+    local on
+    if flag == 'on' or flag == '1' then
+        on = true
+    elseif flag == 'off' or flag == '0' then
+        on = false
+    else
+        printf('\ayInvalid SetPullRanking argument. Must be one of the following: on, off, 1, or 0.')
+        return
+    end
+    if on == state.pull.ranking then
+        printf('\ayPull Ranking is %s.', on and 'on' or 'off')
+        return
+    end
+    require('modules.pull').setRanking(on)
 end
 
 -- ─── Buffs / group ────────────────────────────────────────────────────────────
@@ -482,14 +500,15 @@ local function onAddPull(name)
     local existing = Utils.zoneIniGet(iniFile, zone, 'MobsToPull') or ''
     local lname = name:lower()
     for entry in (existing .. ','):gmatch('([^,]+),') do
-        if entry:match('^%s*(.-)%s*$'):lower() == lname then
+        if entry:match('^%s*(.-)%s*$'):gsub(':', ''):lower() == lname then
             printf('\ay%s is already on the pull list.', name)
             return
         end
     end
     local updated = (existing == '' or existing == 'all' or existing == 'null')
         and name or (existing .. ',' .. name)
-    state.pull.mobsToPullFirst = updated
+    state.pull.mobsToPullRaw = updated
+    require('modules.pull').setRanking(state.pull.ranking, true)
     mq.cmdf('/ini "%s" "%s" "MobsToPull" "%s"', iniFile, zone, updated)
     printf('\ayAdded \at%s\ay to pull list.', name)
 end
@@ -675,7 +694,8 @@ local function onZoneInfo()
     printf('-------------------------------------------------------------------------')
     printf('MobsToPullRaw:   %s', state.pull.mobsToPullRaw)
     printf('MobsToPullFirst: %s', state.pull.mobsToPullFirst)
-    printf('MobsToPull:      %s', state.pull.mob)
+    printf('MobsToPull:      %s', state.pull.mobsToPull)
+    printf('Pull Ranking:    %s', state.pull.ranking and 'on' or 'off')
     local infoFile = state.session.infoFileName or ''
     local zone     = state.session.zoneName     or ''
     local burnList = (infoFile ~= '' and zone ~= '')

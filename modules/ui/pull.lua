@@ -41,8 +41,13 @@ function PullUI.drawPull()
         Config.set('Pull', 'PullMeleeStick', v and '1' or '0')
         Config.save()
     end)
+    ImGui.SameLine(160)
+    -- Per session, not saved (mac Bind_SetPullRanking).
+    checkbox('Pull Ranking', s.pull.ranking, function(v) Pull.setRanking(v) end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip("Pull the MobsToPull entries marked with ':' first")
+    end
     if s.session.iAmABard then
-        ImGui.SameLine(160)
         checkbox('Twist On Pull', s.bard.pullTwistOn, function(v)
             s.bard.pullTwistOn = v
             Config.set('Pull', 'PullTwistOn', v and '1' or '0')
