@@ -198,7 +198,7 @@ function Charm.check(sentFrom)
     -- Gem check: if it is a book spell and not currently memmed, mem it then return
     -- (mac: /MemSpell ${MiscGem} "${CharmSpell}" ... /return)
     if not isAA and not mq.TLO.Me.Gem(spell)() then
-        local miscGem = tonumber(Config.get('Spells', 'MiscGem', '0')) or 0
+        local miscGem = tonumber(Config.get('Spells', 'MiscGem', '8')) or 8
         if miscGem > 0 then
             mq.cmdf('/MemSpell %d "%s"', miscGem, spell)
             mq.delay(15000, function()

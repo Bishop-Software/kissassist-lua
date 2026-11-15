@@ -37,9 +37,17 @@ function Cast.init(s, u)
     utils = u
     state.cast.checkStuckGem       = Config.get('Spells', 'CheckStuckGem', '1') == '1'
     state.cast.castingInterruptOn  = tonumber(Config.get('Spells', 'CastingInterruptOn', '62')) or 62
+    -- Misc gem: where spells that aren't memorized get memmed (mac:14637-14654).
+    -- These were never loaded, so the gem was 0 until changed on the Spells tab.
+    -- Melee-only classes have no spell gems, as in the mac.
+    local cls = mq.TLO.Me.Class.ShortName() or ''
+    local noGems = cls == 'BER' or cls == 'MNK' or cls == 'ROG' or cls == 'WAR'
+    state.cast.miscGem      = noGems and 0 or (tonumber(Config.get('Spells', 'MiscGem',      '8')) or 8)
+    state.cast.miscGemLW    = noGems and 0 or (tonumber(Config.get('Spells', 'MiscGemLW',    '0')) or 0)
+    state.cast.miscGemRemem = noGems and 0 or (tonumber(Config.get('Spells', 'MiscGemRemem', '1')) or 1)
     local lss = tonumber(Config.get('Spells', 'LoadSpellSet', '0')) or 0
     state.cast.loadSpellSet = lss
-    state.cast.spellSetName = Config.get('Spells', 'SpellSetName', '') or ''
+    state.cast.spellSetName = Config.get('Spells', 'SpellSetName', 'KissAssist') or 'KissAssist'
     if lss > 0 then Cast.loadSpellSet() end
 end
 

@@ -1359,7 +1359,7 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
     -- [Buffs] section
     _state.buffs.buffsOn         = Config.get('Buffs', 'BuffsOn',        '0') == '1'
     _state.buffs.rebuffOn        = Config.get('Buffs', 'RebuffOn',       '1') == '1'
-    _state.buffs.checkBuffsTimer = tonumber(Config.get('Buffs', 'CheckBuffsTimer', '15')) or 15
+    _state.buffs.checkBuffsTimer = tonumber(Config.get('Buffs', 'CheckBuffsTimer', '10')) or 10
     _state.buffs.powerSource     = Config.get('Buffs', 'PowerSource',    '') or ''
 
     local buffsArr = Config.get('Buffs', 'Buffs', nil)
