@@ -10,6 +10,7 @@ local Pull     = require('modules.pull')
 local PullUI = {}
 local _state
 local _levelBuf  -- Pull Level text being edited
+local _pauseBuf  -- Pull Pause text being edited
 
 function PullUI.drawPull()
     local s = _state
@@ -84,6 +85,17 @@ function PullUI.drawPull()
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("min|max, min|max|linked (moves up as you level), auto (your level -5 to +2), 0|0 = any")
     end
+    _pauseBuf = _pauseBuf or s.pull.pauseSetting
+    local pauseText = ImGui.InputText('Pull Pause', _pauseBuf, 0)
+    _pauseBuf = pauseText
+    if ImGui.IsItemDeactivatedAfterEdit() and pauseText ~= s.pull.pauseSetting then
+        Pull.setPullPause(pauseText)
+        Config.set('Pull', 'PullPause', s.pull.pauseSetting)
+        Config.save()
+    end
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip("X|Y: pull X minutes, then rest Y minutes. X|Y|condN: also hold pulls while condition N is true. 0 = off")
+    end
     intInput('Arc Width°',  s.pull.pullArcWidth,  0,  359, 'Pull', 'PullArcWidth', function(v)
         -- Keep the current aim if an arc is already set, else aim where we face.
         local aimed  = s.pull.lSide ~= s.pull.rSide
@@ -102,6 +114,11 @@ function PullUI.drawPull()
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Text(string.format('Pull With: %s (range %d)', s.pull.withAlt or 'Melee', s.pull.range or 0))
+    if s.pull.pauseHold then
+        local left = math.floor(math.max(0, (s.timers.pullPause1 or 0) - os.clock()))
+        ImGui.TextColored(1, 0.8, 0.2, 1, string.format('Pull Pause: resting, %d:%02d left',
+            math.floor(left / 60), left % 60))
+    end
     if s.pull.levelMode ~= 'off' then
         ImGui.Text(string.format('Pull Levels: %d to %d (%s)', s.pull.min, s.pull.max, s.pull.levelMode))
     end
