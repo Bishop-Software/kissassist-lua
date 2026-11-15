@@ -51,6 +51,58 @@ local function drawWatchLists(s)
     for _, e in ipairs(ignores) do ImGui.BulletText(e) end
 end
 
+local _locBuf  = {}  -- PullLocs text being edited, per slot
+local _locZone       -- zone the buffers belong to
+
+-- Editor for this zone's no-pull areas (PullLocs1-5, 'Y,X|Range'), saved to
+-- KissAssist_Info.ini. Used while the No-Pull Areas toggle is on.
+local function drawNoPullAreas(s)
+    if not ImGui.CollapsingHeader('No-Pull Areas') then return end
+    local zone = s.session.zoneName or ''
+    if zone ~= _locZone then _locBuf, _locZone = {}, zone end
+    ImGui.TextDisabled(string.format('Zone: %s  (Y,X|Range: mobs within Range of Y,X are not pulled)',
+        zone ~= '' and zone or '?'))
+    if not s.pull.pullLocsOn then
+        ImGui.TextColored(1, 0.8, 0.2, 1, 'No-Pull Areas is off, so these are not used.')
+    end
+
+    local raws = s.pull.pullLocsRaw or {}
+    for i = 1, 5 do
+        local raw = raws[i] or ''
+        ImGui.PushID(i)
+        _locBuf[i] = _locBuf[i] or raw
+        ImGui.SetNextItemWidth(180)
+        local text = ImGui.InputText(string.format('%d', i), _locBuf[i], 0)
+        _locBuf[i] = text
+        if ImGui.IsItemDeactivatedAfterEdit() and text ~= raw then
+            if not Pull.setPullLoc(i, text) then
+                printf('\ayNo-pull area %d: "%s" is not Y,X|Range, e.g. 120,-450|60', i, text)
+            end
+            _locBuf[i] = s.pull.pullLocsRaw[i] or ''
+        end
+        ImGui.SameLine()
+        if ImGui.SmallButton('My Loc') then
+            local cur   = Pull.parsePullLoc(raw)
+            local range = cur and cur.range or 50
+            Pull.setPullLoc(i, string.format('%d,%d|%d', math.floor(mq.TLO.Me.Y() or 0),
+                math.floor(mq.TLO.Me.X() or 0), math.floor(range)))
+            _locBuf[i] = s.pull.pullLocsRaw[i]
+        end
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Centre this area on where you stand (keeps the range, else 50)')
+        end
+        ImGui.SameLine()
+        if ImGui.SmallButton('Clear') then
+            Pull.setPullLoc(i, '')
+            _locBuf[i] = ''
+        end
+        ImGui.PopID()
+    end
+    if Pull.inPullLocArea(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0) then
+        ImGui.TextColored(1, 0.8, 0.2, 1, 'You are standing in a no-pull area.')
+    end
+end
+
 function PullUI.drawPull()
     local s = _state
 
@@ -74,11 +126,14 @@ function PullUI.drawPull()
         Config.save()
     end)
     ImGui.SameLine(160)
-    checkbox('Waypoint Pull', s.pull.pullLocsOn, function(v)
+    checkbox('No-Pull Areas', s.pull.pullLocsOn, function(v)
         s.pull.pullLocsOn = v
         Config.set('PullAdvanced', 'PullLocsOn', v and '1' or '0')
         Config.save()
     end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip("Don't pull mobs inside this zone's no-pull areas (set them below)")
+    end
 
     checkbox('Melee Pull Stick', s.pull.meleeStick, function(v)
         s.pull.meleeStick = v
@@ -190,6 +245,7 @@ function PullUI.drawPull()
 
     ImGui.Spacing()
     drawWatchLists(s)
+    drawNoPullAreas(s)
 end
 
 function PullUI.init(state)

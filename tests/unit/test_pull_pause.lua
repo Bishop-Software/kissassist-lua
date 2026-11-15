@@ -10,7 +10,7 @@ function M.run(TH, MockMQ)
 
     local state = {
         session = { role = 'pullertank', infoFileName = '', zoneName = '' },
-        pull    = { pullLocY = {}, pullLocX = {}, pullLocZ = {} },
+        pull    = {},
         timers  = {},
         heal    = { medOn = false, medding = false },
         combat  = { aggroTargetID = '' },
