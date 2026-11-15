@@ -454,7 +454,8 @@ function Heal.doWeMed()
         if pct >= _state.heal.medStop then
             _state.heal.medding = false
             _utils.debug('heals', string.format('doWeMed: done medding %s at %d%%', stat, pct))
-            if mq.TLO.Me.Sitting() then
+            -- Stay seated through a PullPause rest (Pull.pullPauseCheck stands us).
+            if mq.TLO.Me.Sitting() and not _state.pull.pauseHold then
                 mq.cmd('/stand')
             end
         elseif not mq.TLO.Me.Sitting() then

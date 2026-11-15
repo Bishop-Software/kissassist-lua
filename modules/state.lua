@@ -157,7 +157,11 @@ local State = {
         chainPullHP      = 90,     -- [Pull] ChainPullHP: pull the next mob once the current one is below this HP%
         heading          = 0.0,
         hold             = false,
-        holdCond         = '0',
+        pauseHold        = false,  -- PullPause rest in progress (mac PullHold==2)
+        pauseRun         = 0,      -- [Pull] PullPause X: minutes to pull before resting (0 = off)
+        pauseRest        = 0,      -- [Pull] PullPause Y: minutes to rest
+        pauseCond        = 0,      -- [Pull] PullPause |condN: hold pulls while condition N is true
+        pauseSetting     = '0',    -- [Pull] PullPause as written
         ignore1          = 'NULL',
         ignore2          = 'NULL',
         ignore3          = 'NULL',
@@ -467,6 +471,8 @@ local State = {
         pullAlert      = 0,
         pullTimer      = 0,
         pullDelay      = 0,   -- PullWait respawn wait ends at this os.clock() (mac PullDelay)
+        pullPause1     = 0,   -- PullPause: end of the pull window / rest (os.clock, mac PullWaitTimer1)
+        pullPause2     = 0,   -- PullPause: window restarts if no pull by this time (mac PullWaitTimer2)
         pullWait1      = 0,
         pullWait2      = 0,
         readBuffs      = 0,

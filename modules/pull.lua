@@ -276,6 +276,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
     Pull.setPullLevel(Config.get('Pull', 'PullLevel', '0|0'))
     _state.pull.chainPullHP  = tonumber(Config.get('Pull', 'ChainPullHP',  '90')) or 90
+    Pull.setPullPause(Config.get('Pull', 'PullPause', '0'))
     _state.pull.hold         = Config.get('Pull', 'PullHold',      '0') == '1'
     _state.pull.pullArcWidth = tonumber(Config.get('Pull', 'PullArcWidth', '0'))  or 0
     if _state.pull.pullArcWidth > 359 then _state.pull.pullArcWidth = 0 end  -- mac:16278
@@ -701,6 +702,87 @@ function Pull.pullWaiting()
     return true
 end
 
+-- ---------------------------------------------------------------------------
+-- PullPause (mac:8502 DoMiscStuff): pull for X minutes, then hold pulls and
+-- med for Y minutes. [Pull] PullPause = 'X|Y' or 'X|Y|condN'; X = 0 turns the
+-- cycle off. The X-minute window restarts if no pull happens for Y minutes.
+-- '|condN' holds pulls while condition N is true (mac PullHoldCond).
+-- ---------------------------------------------------------------------------
+
+function Pull.setPullPause(value)
+    local p    = _state.pull
+    local v    = tostring(value or '0')
+    local role = _state.session.role or ''
+    local a, b = v:match('^%s*([^|]*)|?([^|]*)')
+    p.pauseSetting = v
+    p.pauseRun  = math.floor(tonumber(a) or 0)
+    p.pauseRest = math.floor(tonumber(b) or 0)
+    p.pauseCond = tonumber(v:lower():match('|cond(%d+)')) or 0
+    -- Only pullers and hunters pause (mac:8842).
+    if not role:find('puller', 1, true) and not role:find('hunter', 1, true) then
+        p.pauseRun, p.pauseCond = 0, 0
+    end
+    if p.pauseRest <= 0 then p.pauseRun = 0 end
+    p.pauseHold = false
+    _state.timers.pullPause1, _state.timers.pullPause2 = 0, 0
+end
+
+-- Run each main-loop pass. Starts and ends the pause.
+function Pull.pullPauseCheck()
+    local p, t = _state.pull, _state.timers
+    if (p.pauseRun or 0) == 0 then return end
+    local now = os.clock()
+    if not p.hold and not p.pauseHold and (t.pullPause2 or 0) <= now then
+        t.pullPause1 = now + p.pauseRun  * 60
+        t.pullPause2 = now + p.pauseRest * 60
+    end
+    if (t.pullPause1 or 0) > now then
+        -- Med through the pause, as the .mac's DoWeMed 1 does.
+        local me = mq.TLO.Me
+        if p.pauseHold and _state.heal.medOn and (_state.combat.aggroTargetID or '') == ''
+           and not me.Mount.ID() and me.Standing() and not me.Moving() then
+            mq.cmd('/sit')
+        end
+        return
+    end
+    if not p.hold and not p.pauseHold then
+        printf('\ayPausing Pulls for %d Minutes.', p.pauseRest)
+        p.pauseHold  = true
+        t.pullPause1 = now + p.pauseRest * 60
+    elseif p.pauseHold then
+        printf('\ayResetting Pull Timer for %d Minutes.', p.pauseRun)
+        p.pauseHold  = false
+        t.pullPause1 = now + p.pauseRun  * 60
+        t.pullPause2 = now + p.pauseRest * 60
+        if mq.TLO.Me.Sitting() and not _state.heal.medding then mq.cmd('/stand') end
+    end
+end
+
+-- A pull happened: keep the X-minute window running (mac:9368).
+function Pull.pullPauseActive()
+    local p = _state.pull
+    if (p.pauseRun or 0) > 0 then
+        _state.timers.pullPause2 = os.clock() + (p.pauseRest + 1) * 60
+    end
+end
+
+-- True while the PullPause '|condN' hold condition is true (mac:9595).
+local holdSpam = 0
+function Pull.heldByCond()
+    local n = _state.pull.pauseCond or 0
+    if n == 0 then return false end
+    -- Cond.eval treats "conditions off" and missing entries as true; a hold
+    -- condition only applies when it exists.
+    local c = _state.cond
+    if not c or not c.on or not c.expressions or (c.expressions[n] or '') == '' then return false end
+    if not require('modules.cond').eval(n) then return false end
+    if os.clock() >= holdSpam then
+        printf('\ayHolding Pulls Due to Pull Hold Condition.')
+        holdSpam = os.clock() + 5
+    end
+    return true
+end
+
 -- Chain pulling: don't pull the next mob while the current one is still
 -- above ChainPullHP (mac:8959). True = wait.
 function Pull.chainPullBusy()
@@ -733,7 +815,7 @@ function Pull.findMobToPull(readyFlag, a, b)
        (s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) then
         return 0
     end
-    if mq.TLO.Me.Invis() or s.pull.hold or s.dps.paused or
+    if mq.TLO.Me.Invis() or s.pull.hold or s.pull.pauseHold or s.dps.paused or
        (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 or
        (mq.TLO.Me.Buff('Revival Sickness').ID()         or 0) > 0 then
         return 0
@@ -1604,6 +1686,7 @@ function Pull.pullCheck()
     end
 
     executePull(pullMob)
+    Pull.pullPauseActive()
 
     _utils.debug('pull', 'pullCheck: leave mob=%d', pullMob)
 end

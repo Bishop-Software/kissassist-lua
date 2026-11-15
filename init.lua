@@ -229,12 +229,14 @@ while not State.terminate do
     if PULLER_ROLES[State.session.role] and campSet then
         -- Draw the pull/camp radii on the map once we're in camp (mac:8494).
         Pull.paintMap()
+        Pull.pullPauseCheck()  -- PullPause cycle (mac:8502)
         -- Only look for a mob once the pull method is ready, and not while
-        -- dragging a corpse (mac:417-418) or during the PullWait respawn wait.
+        -- dragging a corpse (mac:417-418), during the PullWait respawn wait,
+        -- during a PullPause rest or while the PullPause hold condition is true.
         -- pullCheck runs even when no mob was found (mac:424): that is where the
         -- fail counter, hunter return-to-camp and PullWait live.
-        if not State.pull.hold and not State.misc.dragCorpse and not Pull.pullWaiting()
-           and Pull.pullAbilityReady() then
+        if not State.pull.hold and not State.pull.pauseHold and not State.misc.dragCorpse
+           and not Pull.pullWaiting() and not Pull.heldByCond() and Pull.pullAbilityReady() then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
             Pull.pullCheck()
             State.pull.mob = 0
