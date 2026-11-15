@@ -154,6 +154,7 @@ while not State.terminate do
     if State.session.zoneListsPending then
         State.session.zoneListsPending = false
         Pull.loadZoneLists()
+        Pull.pickMoveUse(true)
         Combat.loadNamedList()
         Charm.loadZoneLists()
         Combat.combatReset(0, 'zoned')
