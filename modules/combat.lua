@@ -29,6 +29,7 @@ Combat.getCombatTarget   = Targeting.getCombatTarget
 Combat.combatTargetCheck = Targeting.combatTargetCheck
 Combat.fight             = Fight.fight
 Combat.combatPet         = Abilities.combatPet
+Combat.isSpawnNamed      = Abilities.isSpawnNamed
 
 -- Expose validateTarget for pull.lua (Step 7.8).
 Combat.validateTarget = validateTarget

@@ -49,6 +49,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_level.lua` | `Pull.setPullLevel()` / `levelGained()` (PullLevel fixed/linked/auto/off) and `Pull.chainPullBusy()` (ChainPullHP) (#61) |
 | `unit/test_pull_pause.lua` | PullPause (`Pull.setPullPause` / `pullPauseCheck` / `heldByCond`): pull X minutes then rest Y, idle restart, manual hold, `\|condN` hold condition (#61) |
 | `unit/test_pull_role.lua` | `Pull.roleToggle()` (PullRoleToggle): pullerpettank group leader with a merc takes the group Puller role for a pull outside camp and drops it back in camp (#61) |
+| `unit/test_pull_chain.lua` | `Pull.chainPullNextMob()` (the `.mac`'s `ChainPullNextMob`): mid-fight hand-off to the next pull below ChainPullHP, and every case that keeps fighting instead; chain pull is puller-only (#257) |
 
 Counts change as tests are added; the runner prints the current total.
 

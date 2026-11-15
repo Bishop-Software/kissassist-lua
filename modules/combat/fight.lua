@@ -299,13 +299,16 @@ local function tickPreamble(myID, fromWhere)
     return nil
 end
 
--- Non-chainpull DPS path (mac:1178-1200): only a plain puller that is chain-pulling skips it.
+-- DPS pass. The normal path (mac:1178-1200) runs early in each tick; a
+-- chain-pulling puller skips it and runs the same DPS later, after the chain
+-- pull check (mac:1260-1272, chainPath = true).
 -- Debuffs and CombatCast can change the target, so this returns (status, myID).
-local function dpsPass(myID, role, fromWhere)
-    if role == 'puller' and _state.pull.chainPull ~= 0 then return nil, myID end
+local function dpsPass(myID, role, fromWhere, chainPath)
+    local chainPuller = role == 'puller' and _state.pull.chainPull ~= 0
+    if chainPuller ~= (chainPath == true) then return nil, myID end
 
     -- Dead/paused: exit combat (mac:1185-1187)
-    if isDeadOrGone(myID) or _state.dps.paused then
+    if not chainPath and (isDeadOrGone(myID) or _state.dps.paused) then
         Combat.combatReset(0, fromWhere .. '_inner')
         return BREAK, myID
     end
@@ -475,6 +478,7 @@ local function fight(fromWhere)
     if not preEngageOk(myID, role) then return end
 
     local combatRadius = getCombatRadius(myID)
+    local spamTankWait = true  -- "Tank to far from camp" once per fight (mac:1057)
 
     -- Deferred: CheckCures/CheckHealth (M5), DoWeChase (M7), DPS meter (M9)
 
@@ -531,6 +535,15 @@ local function fight(fromWhere)
             if myID ~= 0 and (sp and sp.Type() or ''):lower() ~= 'corpse'
                and not _state.dps.paused then
                 reEngage(myID, combatRadius)
+                -- Chain pulling puller: hand off to the next pull, else DPS (mac:1254-1272)
+                if role == 'puller' and _state.pull.chainPull ~= 0 then
+                    local r = require('modules.pull').chainPullNextMob(spamTankWait)
+                    if r == 1 then return end
+                    if r == 'W' then spamTankWait = false end
+                    status, myID = dpsPass(myID, role, fromWhere, true)
+                    if status == BREAK then break end
+                    if status == CONTINUE then goto continue_fight end
+                end
             else
                 status, myID = onTargetGone(myID, fromWhere)
                 if status == BREAK then break end
