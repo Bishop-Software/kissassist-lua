@@ -49,7 +49,7 @@ function Movement.init(state, utils)
     _state.movement.scatterDistance  = tonumber(Config.get('General', 'ScatterDistance',  '20')) or 20
 
     -- [Pull] movement-related pull settings
-    _state.pull.moveUse        = Config.get('Pull', 'PullMoveUse', 'los') or 'los'
+    -- pull.moveUse (nav/los/advpath) is chosen by Pull.pickMoveUse.
     _state.pull.max            = tonumber(Config.get('Pull', 'MaxRadius', '0')) or 0
     _state.pull.waypointZRange = tonumber(Config.get('Pull', 'MaxZRange', '0')) or 0
 

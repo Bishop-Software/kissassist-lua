@@ -161,6 +161,52 @@ function Pull.setRanking(on, quiet)
     return p.ranking
 end
 
+-- True when MQ2Nav is loaded with a mesh for this zone.
+local function navMeshLoaded()
+    local plugin = mq.TLO.Plugin('MQ2Nav')
+    if not plugin or not plugin.IsLoaded() then return false end
+    return mq.TLO.Navigation.MeshLoaded() == true
+end
+
+-- Choose how to move for pulls and camp/chase movement (state.pull.moveUse).
+-- Mac: startup block (mac:16498). PullMoveUse is not an INI setting there:
+-- advpath when a path was loaded, else nav when MQ2Nav has a mesh for the
+-- zone, else los. The mac only picks at startup; the port also re-picks after
+-- zoning (onlyIfChanged = true) since the mesh differs per zone.
+function Pull.pickMoveUse(onlyIfChanged)
+    local s        = _state
+    local role     = s.session.role or ''
+    local isPuller = role:find('pull', 1, true) or role:find('hunt', 1, true)
+    local mode
+    if isPuller and (s.pull.pathWpCount or 0) > 0 and (s.session.pullPath or 'null') ~= 'null' then
+        mode = 'advpath'
+    elseif navMeshLoaded() then
+        mode = 'nav'
+    else
+        mode = 'los'
+    end
+    local changed = mode ~= s.pull.moveUse
+    s.pull.moveUse = mode
+    if onlyIfChanged and not changed then return mode end
+
+    if isPuller then
+        if mode == 'advpath' then
+            printf('\atPULL: Using MQ2AdvPath to Pull with.')
+        elseif mode == 'nav' then
+            printf('\atPULL: The MQ2Nav mesh for %s is loaded', mq.TLO.Zone.Name() or 'this zone')
+            printf('\atPULL: Using MQ2Nav to Pull with %s', s.pull.withAlt or 'Melee')
+        else
+            printf('\atPULL: Using Line of Sight to Pull with %s', s.pull.withAlt or 'Melee')
+        end
+    elseif mode == 'nav' then
+        printf('\atThe MQ2Nav mesh for %s is loaded', mq.TLO.Zone.Name() or 'this zone')
+        printf('\atUsing MQ2Nav to Move.')
+    else
+        printf('\atUsing MoveUtil to move with.')
+    end
+    return mode
+end
+
 function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, comms)
     _state    = state
     _utils    = utils
@@ -197,7 +243,6 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
     _state.pull.ranking      = false  -- per session, always off at start (mac:14950)
     Pull.loadZoneLists()
-    _state.pull.moveUse         = Config.get('Pull', 'PullMoveUse',    'los')
     _state.pull.searchType      = Config.get('Pull', 'SearchType',     '')
     -- waypointZRange mirrors MaxZRange (used by movement nav Z-range guard)
     _state.pull.waypointZRange  = _state.pull.maxZRange
@@ -221,6 +266,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     end
 
     Pull.rangeSet()
+    Pull.pickMoveUse()
 
     _utils.debug('pull', 'Pull.init complete — on=%s with=%s range=%d maxRadius=%d',
         tostring(_state.pull.on), _state.pull.withAlt,
