@@ -7,6 +7,34 @@ local _pull  -- set by Pull.init via Movement.setPull (Pull is wired after Movem
 
 function Movement.setPull(pull) _pull = pull end
 
+-- StickHow 'auto' by role (CheckRoles, mac:8659-8743). Roles not listed get '0'.
+local AUTO_STICK = {
+    assist = 'snaproll', offtank = 'snaproll', puller = 'snaproll',
+    tank = 'snaproll front moveback', pullertank = 'snaproll front moveback',
+    hunter = 'moveback',
+}
+
+-- Work out movement.stickHow, what the stick code passes to /stick, from the
+-- INI's StickHow (movement.dStickHow, what the UI edits). Mac behavior:
+--   - with MQ2Melee, MQ2Melee does the sticking: '0' (mac:16362)
+--   - otherwise '0' or empty means 'auto' (mac:16366, 16373)
+--   - 'auto' becomes the role's stick from AUTO_STICK (mac:8659-8743)
+--   - 'auto' or 'null' left over becomes '0', a plain stick (mac:8840)
+-- Anything else ('behind', 'snaproll', 'I', ...) is used as written.
+function Movement.resolveStickHow()
+    local mv = _state.movement
+    local v  = tostring(mv.dStickHow or '0'):match('^%s*(.-)%s*$')
+    if _state.combat and _state.combat.useMQ2Melee then
+        v = '0'
+    else
+        if v == '0' or v == '' then v = 'auto' end
+        if v:lower() == 'auto' then v = AUTO_STICK[_state.session.role or ''] or '0' end
+        if v:lower() == 'null' then v = '0' end
+    end
+    mv.stickHow = v
+    return v
+end
+
 local function dist2D(y1, x1, y2, x2)
     return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
 end
@@ -42,7 +70,7 @@ function Movement.init(state, utils)
     _state.movement.stayPut          = Config.get('General', 'StayPut',          '0') == '1'
     _state.movement.stickDist        = tonumber(Config.get('General', 'StickDist',        '13')) or 13
     _state.movement.stickDistUW      = tonumber(Config.get('General', 'StickDistUW',      '10')) or 10
-    _state.movement.dStickHow        = Config.get('Melee',   'StickHow',         '0') or '0'
+    _state.movement.dStickHow        = Config.get('Melee',   'StickHow',         'snaproll') or 'snaproll'
     _state.movement.navPathHelper    = Config.get('General', 'NavPathHelper',    '1') ~= '0'
     _state.movement.locDelayCheckUW  = Config.get('General', 'LocDelayCheckUW',  '0') == '1'
     _state.movement.faceMobOn        = tonumber(Config.get('Melee', 'FaceMobOn', '1')) or 1
@@ -556,7 +584,7 @@ function Movement.checkStick(flag, useAttack)
     end
 
     -- Stick to target (the mac's MeleeDistance > CampRadius gate is dropped; see above)
-    local stickHow = mv.dStickHow
+    local stickHow = mv.stickHow or mv.dStickHow  -- resolved by Movement.resolveStickHow
     if stickHow == 'I' then return end
 
     local maxRange = mob.MaxRangeTo() or maDist

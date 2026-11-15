@@ -533,7 +533,6 @@ end
 --  - mac placeholder text ('YourPetSpell', 'Your Mez Spell|2', 'Tiny Companion',
 --    'NULL', ...) is left empty; Mez levels use 1/115 instead of placeholder text
 --  - Role is '' (the role comes from the command line)
---  - StickHow is left as is until the CheckRoles port (#276)
 --  - CastingInterruptOn is 62, what the mac turns its default 1 into (mac:14646)
 --  - keys the mac doesn't have (medleys, charm, MountOn, ...) keep the port's values
 -- Keep the Config.get fallbacks in the modules in step with these.
@@ -563,7 +562,7 @@ function Config.defaultCfg()
         },
         Melee = {
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '1', MeleeDistance = '75',
-            StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
+            StickHow = 'snaproll', AutoFireOn = '0', UseMQ2Melee = '0',
             TargetSwitchingOn = '0', ManualTargetMode = '0',
             AutoHide = isRogue and '1' or '0',  -- rogues only (mac:14689)
             MeleeTwistOn = '0',

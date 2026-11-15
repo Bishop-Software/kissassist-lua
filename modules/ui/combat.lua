@@ -3,6 +3,7 @@
 local mq = require('mq')
 local Helpers    = require('modules.ui.helpers')
 local CombatSettings = require('modules.combat.settings')
+local Movement   = require('modules.movement')
 local Config     = Helpers.Config
 local checkbox   = Helpers.checkbox
 local intInput   = Helpers.intInput
@@ -45,6 +46,7 @@ function CombatUI.drawMelee()
         end
         Config.set('Melee', 'UseMQ2Melee', v and '1' or '0')
         Config.save()
+        Movement.resolveStickHow()  -- MQ2Melee does its own sticking
     end)
 
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
@@ -83,9 +85,12 @@ function CombatUI.drawMelee()
     ImGui.PopItemWidth()
     -- Stick style
     ImGui.Spacing()
-    local stickValues = { '0', 'behind', 'front', '!front', 'moveback', 'pin', 'I' }
+    -- StickHow as written in the INI; Movement.resolveStickHow turns 'auto' (and
+    -- '0', which the mac treats as auto) into the stick for this role.
+    local stickValues = { 'auto', 'snaproll', 'behind', 'front', '!front', 'moveback', 'pin', 'I' }
     local stickLabels = {
-        'Default (plain stick)',
+        'Auto (by role)',
+        'Snap roll behind',
         'Behind target',
         'In front of target',
         'Not in front of target',
@@ -93,18 +98,29 @@ function CombatUI.drawMelee()
         'Pin (no rotation)',
         'Disabled (no stick)',
     }
-    local stickCurrent = s.movement.dStickHow or '0'
-    local stickIdx = 1
+    local stickCurrent = s.movement.dStickHow or 'auto'
+    if stickCurrent == '0' or stickCurrent == '' then stickCurrent = 'auto' end
+    local stickIdx
     for i, v in ipairs(stickValues) do
-        if v == stickCurrent then stickIdx = i break end
+        if v:lower() == stickCurrent:lower() then stickIdx = i break end
+    end
+    if not stickIdx then  -- a value typed into the INI, e.g. 'snaproll front moveback'
+        stickValues[#stickValues + 1] = stickCurrent
+        stickLabels[#stickLabels + 1] = 'Custom: ' .. stickCurrent
+        stickIdx = #stickValues
     end
     ImGui.PushItemWidth(200)
     local newIdx, changed = ImGui.Combo('Stick How##stickhow', stickIdx, stickLabels)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Sticking with: ' .. ((s.movement.stickHow or '0') == '0'
+            and 'plain stick' or s.movement.stickHow))
+    end
     if changed then
-        local newVal = stickValues[newIdx] or '0'
+        local newVal = stickValues[newIdx] or 'auto'
         s.movement.dStickHow = newVal
         Config.set('Melee', 'StickHow', newVal)
         Config.save()
+        Movement.resolveStickHow()
     end
     ImGui.PopItemWidth()
 end

@@ -133,6 +133,37 @@ function Pull.setupHunterRole()
         role, tostring(s.movement.stayPut), tostring(s.pull.pullOnReturn))
 end
 
+-- Puller role setup from CheckRoles (mac:8688-8734, 8803-8826). Runs at startup
+-- after the INI is loaded. Pullers always return to camp: executePull only walks
+-- back and waits for the mob when ReturnToCamp is on, and the INI default is 0.
+-- Main assist identity is set in init.lua (TANK_ROLES); pet taunt is handled by
+-- the pet module; the PullRoleToggle group-leader check is in Pull.init.
+function Pull.setupPullerRole()
+    local s    = _state
+    local role = s.session.role
+    if role ~= 'puller' and role ~= 'pullertank' and role ~= 'pullerpettank' then return end
+    s.movement.returnToCamp     = true
+    s.session.chaseAssist       = false
+    -- Leash: past this, ReturnToCamp turns off (mac CampRadiusExceed)
+    s.movement.campRadiusExceed = (s.pull.maxRadius or 0) + 200
+    if s.combat.useMQ2Melee then
+        mq.cmdf('/squelch /melee aggro=%d', role == 'pullertank' and 1 or 0)
+    end
+    if role ~= 'puller' then s.combat.assistAt = 100 end
+    if role == 'pullerpettank' then
+        s.combat.meleeOn = false  -- the pet does the fighting
+        s.misc.mountOn   = false
+        s.pet.assistAt   = 100
+    end
+    -- Pet: guard if it's close by, else follow (mac:8705, 8728, 8818)
+    if (mq.TLO.Me.Pet.ID() or 0) > 0 then
+        mq.cmd((mq.TLO.Me.Pet.Distance() or 999) <= (s.movement.campRadius or 30)
+            and '/pet guard' or '/pet follow')
+    end
+    _utils.debug('pull', 'setupPullerRole: role=%s campRadiusExceed=%d',
+        role, s.movement.campRadiusExceed)
+end
+
 -- Load this zone's pull/ignore lists from KissAssist_Info.ini (shared across
 -- characters). Called at startup and again after zoning.
 function Pull.loadZoneLists()
