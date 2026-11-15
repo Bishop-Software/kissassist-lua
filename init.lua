@@ -238,8 +238,11 @@ while not State.terminate do
         if not State.pull.hold and not State.pull.pauseHold and not State.misc.dragCorpse
            and not Pull.pullWaiting() and not Pull.heldByCond() and Pull.pullAbilityReady() then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
-            Pull.pullCheck()
+            local pullRet = Pull.pullCheck()
             State.pull.mob = 0
+            -- PullOnReturn: the pull failed out of range, so look for another
+            -- mob on the way back to camp (mac:426).
+            if State.pull.pullOnReturn and pullRet == 'oor' then Pull.findMobOnReturn() end
         end
     end
     -- Phase 10: combat (second pass — mac:MainLoop2, 200ms wait catches post-buff aggro)

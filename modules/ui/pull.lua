@@ -110,6 +110,10 @@ function PullUI.drawPull()
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("X|Y: pull X minutes, then rest Y minutes. X|Y|condN: also hold pulls while condition N is true. 0 = off")
     end
+    intInput('Pull Wait (s)', s.pull.pullWait, 0, 3600, 'Pull', 'PullWait', function(v) s.pull.pullWait = v end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Seconds to wait for respawns when no mob can be found. 0 = off')
+    end
     intInput('Arc Width°',  s.pull.pullArcWidth,  0,  359, 'Pull', 'PullArcWidth', function(v)
         -- Keep the current aim if an arc is already set, else aim where we face.
         local aimed  = s.pull.lSide ~= s.pull.rSide
@@ -132,6 +136,10 @@ function PullUI.drawPull()
         local left = math.floor(math.max(0, (s.timers.pullPause1 or 0) - os.clock()))
         ImGui.TextColored(1, 0.8, 0.2, 1, string.format('Pull Pause: resting, %d:%02d left',
             math.floor(left / 60), left % 60))
+    end
+    if (s.timers.pullDelay or 0) > os.clock() then
+        local left = math.ceil(s.timers.pullDelay - os.clock())
+        ImGui.TextColored(1, 0.8, 0.2, 1, string.format('Pull Wait: waiting for respawns, %ds left', left))
     end
     if s.pull.levelMode ~= 'off' then
         ImGui.Text(string.format('Pull Levels: %d to %d (%s)', s.pull.min, s.pull.max, s.pull.levelMode))

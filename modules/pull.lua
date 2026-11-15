@@ -8,6 +8,9 @@ local Config = require('modules.config')
 local Pull = {}
 local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing, _comms
 
+-- Classes whose rampage pets CheckRampPets waits on (mac:8965).
+local RAMP_PET_CLASSES = {MAG = true, NEC = true, BST = true}
+
 -- ---------------------------------------------------------------------------
 -- Local helpers
 -- ---------------------------------------------------------------------------
@@ -259,6 +262,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _bard     = bard
     _healing  = healing
     _comms    = comms
+    if movement and movement.setPull then movement.setPull(Pull) end
 
     -- [Pull] section
     _state.pull.withAlt      = Config.get('Pull', 'PullWith',      'Melee')
@@ -1455,6 +1459,8 @@ local function executePull(mobID)
     local stuckCount   = 0
     local wasInRange   = false
     local returnStat   = ''
+    -- One pull attempt per call, so the mac's TryPetFirst reset never matters here.
+    local tryPetFirst  = s.session.role == 'hunterpettank'  -- mac:9623
 
     s.pull.pulled  = false
     s.pull.tooFar  = false
@@ -1651,7 +1657,23 @@ local function executePull(mobID)
                 x2 = math.floor(mq.TLO.Me.X())
                 y2 = math.floor(mq.TLO.Me.Y())
 
-                if withAlt == 'Melee' then
+                -- hunterpettank sends the pet in first when the mob is close,
+                -- whatever PullWith says (mac:9623, 9878-9887). If the pet won't
+                -- engage, fall back to the normal pull method.
+                local petSent = false
+                if tryPetFirst and (mq.TLO.Pet.ID() or 0) > 0 and myDist3D < s.combat.meleeDistance then
+                    if withAlt ~= 'Pet' then printf('\aw====>> Sending in Pet. Ignoring PullWith.') end
+                    _combat.combatPet()
+                    mq.delay(500, function() return mq.TLO.Pet.Combat() end)
+                    petSent = mq.TLO.Pet.Combat() and true or false
+                    if not petSent and withAlt ~= 'Pet' then
+                        printf('\aw====>> Sending in Pet Failed. Trying normal PullWith Option.')
+                    end
+                end
+
+                if petSent then
+                    s.pull.pulled = true
+                elseif withAlt == 'Melee' then
                     pullWithMelee(mobID)
                 elseif withAlt == 'Ranged' and not s.movement.toClose then
                     pullWithRanged(mobID)
@@ -1689,12 +1711,13 @@ local function executePull(mobID)
             Pull.ignoreAdd(mq.TLO.Target.ID(), 'pull3')
             mq.cmd('/squelch /target clear')
         end
-        if not s.pull.pullOnReturn then
-            if s.movement.returnToCamp then
-                _movement.doWeMove(1, 'pullcheck')
-            end
+        -- PullOnReturn: hand back 'oor' so the caller looks for another mob on
+        -- the way back (mac:9944-9949). Otherwise go back to camp.
+        if s.pull.pullOnReturn then return 'oor' end
+        if s.movement.returnToCamp then
+            _movement.doWeMove(1, 'pullcheck')
         end
-        return 'oor'
+        return
     end
 
     -- Back to camp, then wait for the mob to arrive (mac:9951-9966).
@@ -1817,15 +1840,46 @@ function Pull.pullCheck()
         _bard.stopMedley()
     end
 
-    -- Wait for rampage pets to poof before executing pull (mac:8964).
-    if _pet and s.pet.on and s.pet.petRampageOn and mq.TLO.Me.CombatState() ~= 'COMBAT' then
+    -- Wait for rampage pets to poof before executing pull. Only pullerpettank
+    -- MAG/NEC/BST, as in the mac (mac:8965).
+    if _pet and s.pet.on and s.pet.petRampageOn and mq.TLO.Me.CombatState() ~= 'COMBAT'
+       and s.session.role == 'pullerpettank' and RAMP_PET_CLASSES[mq.TLO.Me.Class.ShortName() or ''] then
         _pet.checkRampPets()
     end
 
-    executePull(pullMob)
+    local ret = executePull(pullMob)
     Pull.pullPauseActive()
 
-    _utils.debug('pull', 'pullCheck: leave mob=%d', pullMob)
+    _utils.debug('pull', 'pullCheck: leave mob=%d ret=%s', pullMob, tostring(ret))
+    if ret == 'oor' then
+        s.movement.checkOnReturn = true  -- mac:9369-9371
+        return 'oor'
+    end
+end
+
+-- After a failed pull with PullOnReturn on, look for another mob on the way
+-- back to camp instead of walking all the way home first. Port of
+-- FindMobOnReturn (mac:10609-10626). Movement.doWeMove does the searching
+-- (mac:3448) and leaves any mob it finds in pull.mob.
+function Pull.findMobOnReturn()
+    local s        = _state
+    local isHunter = s.session.role:find('hunter', 1, true) ~= nil
+    _utils.debug('pull', 'findMobOnReturn: enter role=%s', s.session.role)
+    while not s.terminate do
+        s.pull.mob = 0
+        if isHunter then
+            s.movement.checkOnReturn = true
+            _movement.doWeMove(1, 'findMobOnReturn')
+        else
+            _movement.doWeMove(0, 'findMobOnReturn')
+        end
+        if s.pull.mob == 0 then break end
+        Pull.pullCheck()
+        if isHunter then break end
+        if dist2D(mq.TLO.Me.X(), mq.TLO.Me.Y(), s.movement.campX, s.movement.campY) < 16 then break end
+    end
+    s.pull.mob = 0
+    _utils.debug('pull', 'findMobOnReturn: leave')
 end
 
 return Pull
