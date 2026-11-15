@@ -606,8 +606,8 @@ function Config.defaultCfg()
         Pull = {
             PullWith = 'Melee', PullRange = '15', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
             UseWayPointZ = '0', PullWait = '5', PullRadiusToUse = '90',
-            PullRoleToggle = '0', ChainPull = '0', ChainPullHP = '80',
-            PullPause = '0', PullLevel = '0', PullArcWidth = '0',
+            PullRoleToggle = '0', ChainPull = '0', ChainPullHP = '90',
+            PullPause = '0', PullLevel = '0|0', PullArcWidth = '0',
             PullTwistOn = '0', PullOnReturn = '0',
         },
         PullAdvanced = {

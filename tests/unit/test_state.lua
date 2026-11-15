@@ -46,7 +46,8 @@ function M.run(TH, _MockMQ)
     TH.assert_false(State.pull.hold,                     'pull.hold')
     TH.assert_eq(State.pull.mob,               0,        'pull.mob')
     TH.assert_false(State.pull.pulling,                  'pull.pulling')
-    TH.assert_false(State.pull.on,                       'pull.on')
+    TH.assert_eq(State.pull.chainPullHP,       90,       'pull.chainPullHP')
+    TH.assert_eq(State.pull.levelMode,         'off',    'pull.levelMode')
 
     -- movement
     TH.assert_eq(State.movement.campRadius,    30,       'movement.campRadius')

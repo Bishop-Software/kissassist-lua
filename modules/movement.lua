@@ -50,7 +50,6 @@ function Movement.init(state, utils)
 
     -- [Pull] movement-related pull settings
     -- pull.moveUse (nav/los/advpath) is chosen by Pull.pickMoveUse.
-    _state.pull.max            = tonumber(Config.get('Pull', 'MaxRadius', '0')) or 0
     _state.pull.waypointZRange = tonumber(Config.get('Pull', 'MaxZRange', '0')) or 0
 
     -- One-time MQ2MoveUtils global settings (mac:16390-16398).
