@@ -291,6 +291,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     if _state.pull.pullArcWidth > 359 then _state.pull.pullArcWidth = 0 end  -- mac:16278
     _state.pull.pullWait     = tonumber(Config.get('Pull', 'PullWait',     '0'))  or 0
     _state.pull.chainPull    = tonumber(Config.get('Pull', 'ChainPull',    '0'))  or 0
+    -- Only the puller role chain pulls (mac:8841).
+    if _state.session.role ~= 'puller' then _state.pull.chainPull = 0 end
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
     _state.pull.ranking      = false  -- per session, always off at start (mac:14950)
     Pull.loadZoneLists()
@@ -827,6 +829,58 @@ function Pull.roleToggle(on, mobID)
         mq.delay(1000, function() return not isGroupPuller() end)
         if not isGroupPuller() then printf('\ag+ You are no longer group puller.') end
     end
+end
+
+-- Mid-fight chain pull hand-off. Mirrors Sub ChainPullNextMob (mac:15751),
+-- called from the fight loop for a chain-pulling puller. When the current mob
+-- is below ChainPullHP, the MA is in camp and nothing else is incoming, look
+-- for the next mob (findMobToPull with readyFlag 0); if one is found, stop
+-- fighting and leave it in state.pull.mob for Phase 9 to pull.
+-- Returns 1 (go pull), 'W' (MA too far from camp, message shown) or 0.
+function Pull.chainPullNextMob(echoWait)
+    local s  = _state
+    local ma = mq.TLO.Spawn('=' .. (s.session.mainAssist or ''))
+    local maDist = ma() and dist2D(s.movement.campX, s.movement.campY, ma.X() or 0, ma.Y() or 0) or 0
+    if maDist > 75 then
+        if echoWait then
+            printf('\ayHolding Pulls. Tank to far from camp.')
+            return 'W'
+        end
+        return 0
+    end
+    local tgtID = mq.TLO.Target.ID() or 0
+    local named = tgtID > 0 and _combat and _combat.isSpawnNamed and _combat.isSpawnNamed(tgtID)
+    if s.pull.hold or s.pull.pauseHold or (s.combat.mobCount or 0) >= 2
+       or (mq.TLO.Me.XTarget(s.combat.xTSlot2).ID() or 0) > 0 or named then
+        _utils.debug('pull', 'chainPullNextMob: fail 1 hold=%s mobCount=%d named=%s',
+            tostring(s.pull.hold), s.combat.mobCount or 0, tostring(named))
+        return 0
+    end
+    if tgtID == 0 or (mq.TLO.Target.PctHPs() or 100) >= (s.pull.chainPullHP or 90) then
+        _utils.debug('pull', 'chainPullNextMob: fail 2 target above ChainPullHP')
+        return 0
+    end
+    Pull.findMobToPull(0, 1, 0)
+    local mob = s.pull.mob or 0
+    local nextDist = mq.TLO.Spawn('id ' .. (tonumber(s.pull.chainPullTemp) or 0)).Distance() or 9999
+    if mob == 0 or nextDist >= (s.pull.range or 0) + 400
+       or (mq.TLO.Me.TargetOfTarget.Name() or '') == (mq.TLO.Me.CleanName() or '')
+       or (mq.TLO.Me.PctAggro() or 0) >= 50 then
+        _utils.debug('pull', 'chainPullNextMob: fail 3 mob=%d dist=%d', mob, math.floor(nextDist))
+        s.pull.mob = 0
+        return 0
+    end
+    if s.combat.useMQ2Melee then mq.cmd('/squelch /melee melee=0') end
+    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+    mq.cmd('/squelch /attack off')
+    mq.delay(1000)
+    if s.combat.useMQ2Melee then mq.cmd('/squelch /melee melee=1') end
+    s.pull.chainPull       = 2
+    s.combat.myTargetID    = 0
+    s.combat.attacking     = false
+    s.combat.combatStart   = false
+    _utils.debug('pull', 'chainPullNextMob: next mob %d', mob)
+    return 1
 end
 
 -- Chain pulling: don't pull the next mob while the current one is still

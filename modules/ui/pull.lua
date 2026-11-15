@@ -19,12 +19,15 @@ function PullUI.drawPull()
     checkbox('Pull', not s.pull.hold, function(v)
         s.pull.hold = not v
     end)
-    ImGui.SameLine(160)
-    checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v)
-        s.pull.chainPull = v and 1 or 0
-        Config.set('Pull', 'ChainPull', v and '1' or '0')
-        Config.save()
-    end)
+    -- Only the puller role chain pulls (mac:8841).
+    if s.session.role == 'puller' then
+        ImGui.SameLine(160)
+        checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v)
+            s.pull.chainPull = v and 1 or 0
+            Config.set('Pull', 'ChainPull', v and '1' or '0')
+            Config.save()
+        end)
+    end
 
     checkbox('Pull On Return', s.pull.pullOnReturn, function(v)
         s.pull.pullOnReturn = v
