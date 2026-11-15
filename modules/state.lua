@@ -130,9 +130,9 @@ local State = {
         failCounter      = 0,
         failMax          = 3,
         gemSlots         = 8,
-        miscGem          = 0,
+        miscGem          = 8,    -- INI [Spells] MiscGem (mac default 8)
         miscGemLW        = 0,
-        miscGemRemem     = 0,   -- 0=off, 1=both, 2=short only, 3=LW only
+        miscGemRemem     = 1,   -- 0=off, 1=both, 2=short only, 3=LW only
         iamCastingID     = 0,
         lastResisted     = false,
         reMemCast        = false,
@@ -172,8 +172,8 @@ local State = {
         rSide            = 0.0,
         max              = 200,    -- top of the pull level range (from [Pull] PullLevel)
         maxCount         = 500,
-        maxRadius        = 0,      -- set from INI [Pull] MaxRadius
-        maxZRange        = 0,      -- set from INI [Pull] MaxZRange
+        maxRadius        = 350,     -- set from INI [Pull] MaxRadius
+        maxZRange        = 50,      -- set from INI [Pull] MaxZRange
         meleeStick       = false,  -- set from INI [Pull] PullMeleeStick (melee pull uses /stick)
         mapSet           = false,  -- pull/camp radii drawn on the MQ2Map map (mac MapSet)
         radiusToUse      = 90,     -- [Pull] PullRadiusToUse: % of the pull method's range used (mac default 90)
@@ -194,7 +194,7 @@ local State = {
         pullLocAreas     = {},     -- parsed no-pull areas: {y, x, range}
         pullLocsOn       = false,  -- set from INI [PullAdvanced] PullLocsOn
         pullOnReturn     = false,  -- set from INI [Pull] PullOnReturn
-        pullWait         = 0,      -- set from INI [Pull] PullWait (seconds)
+        pullWait         = 5,      -- set from INI [Pull] PullWait (seconds)
         pulled           = false,
         pulling          = false,
         range            = 0,
@@ -215,7 +215,7 @@ local State = {
         advpathY        = 0.0,
         advpathZ        = 0.0,
         campRadius       = 30,
-        campRadiusExceed = 0,   -- 0=disabled; >0=leash distance that disables ReturnToCamp
+        campRadiusExceed = 400, -- leash distance that disables ReturnToCamp; 0=disabled (mac default 400)
         campX           = 0,
         campY           = 0,
         campZ           = 0,
@@ -302,7 +302,7 @@ local State = {
         buffsOn            = false,
         buffsArray         = {},
         rebuffOn           = false,
-        checkBuffsTimer    = 15,   -- seconds between buff check passes (INI CheckBuffsTimer)
+        checkBuffsTimer    = 10,   -- seconds between buff check passes (INI CheckBuffsTimer)
         powerSource        = '',
         petBuffsOn         = false,
         petBuffsArray      = {},
@@ -316,13 +316,13 @@ local State = {
 
     pet = {
         activeState   = false,
-        assistAt      = 100,   -- PetAssistAt: mob HP% threshold to send pet (set from INI)
+        assistAt      = 95,    -- PetAssistAt: mob HP% threshold to send pet (set from INI)
         attackRange   = 115,  -- PetAttackDistance default (mac:14810); overwritten by combat.lua init
-        combatOn      = false, -- PetCombatOn: actively send pet to attack mobs (set from INI)
+        combatOn      = true,  -- PetCombatOn: actively send pet to attack mobs (set from INI)
         focus         = '',    -- PetFocus: pipe-delimited focusItem|focusSlot|focusBuff (set from INI)
         focusOn       = false, -- PetFocusOn (set from INI)
         globalToysGave = '',
-        holdOn        = false, -- PetHoldOn: send /pet hold before summoning (set from INI)
+        holdOn        = 1,     -- PetHoldOn: send /pet hold before summoning (set from INI)
         on            = false, -- PetOn: pet features enabled (set from INI)
         shrinkOn      = false, -- PetShrinkOn (set from INI)
         shrinkSpell   = '',    -- PetShrinkSpell (set from INI)
@@ -354,10 +354,10 @@ local State = {
         petBreakSpell  = '',
         mezDebuffSpell = '',
         mezDebuffOnResist = false,
-        radius         = 40,
+        radius         = 50,
         minLevel       = 1,
         maxLevel       = 115,
-        stopHPs        = 50,
+        stopHPs        = 80,
     },
 
     bard = {
@@ -496,7 +496,7 @@ local State = {
 
     merc = {
         on        = 0,    -- 0=off 1=on (mac MercOn)
-        assistAt  = 100,  -- HP% threshold to send merc on target (mac MercAssistAt)
+        assistAt  = 92,   -- HP% threshold to send merc on target (mac MercAssistAt)
         assisting = 0,    -- target ID merc is currently assisting (mac MercAssisting)
         inGroup   = false, -- merc was detected Active at least once this session (mac MercInGroup)
         myMerc    = '',   -- mercenary's name (mac MyMerc)

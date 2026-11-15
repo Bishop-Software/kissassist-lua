@@ -14,7 +14,7 @@ function Afk.init(state, _utils, combat, comms, config)
     _comms  = comms
     _config = config
 
-    _state.afk.on       = tonumber(_config.get('AFKTools', 'AFKToolsOn',  '0')) or 0
+    _state.afk.on       = tonumber(_config.get('AFKTools', 'AFKToolsOn',  '1')) or 1
     _state.afk.gmAction = tonumber(_config.get('AFKTools', 'AFKGMAction', '1')) or 1
     _state.afk.pcRadius = tonumber(_config.get('AFKTools', 'AFKPCRadius', '500')) or 500
 

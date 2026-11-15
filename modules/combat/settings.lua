@@ -54,7 +54,7 @@ function Settings.load(state, utils)
     local _state = state
 
     -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
-    local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '1')) or 1
+    local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '0')) or 0
     _state.combat.dpsOn       = dpsOnVal >= 1
     _state.combat.dpsOnOoc    = dpsOnVal == 2
     _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
@@ -89,7 +89,9 @@ function Settings.load(state, utils)
     _state.combat.meleeDistance = tonumber(Config.get('Melee', 'MeleeDistance', '75')) or 75
     _state.combat.autoFireOn    = tonumber(Config.get('Melee', 'AutoFireOn',    '0'))  or 0
     -- AutoHide lives in [Melee] (mac:14689); older UI builds saved it to [General].
-    _state.misc.autoHide        = Config.get('Melee', 'AutoHide', '0') == '1'
+    -- Defaults on for rogues, as in the mac.
+    local hideDefault           = mq.TLO.Me.Class.ShortName() == 'ROG' and '1' or '0'
+    _state.misc.autoHide        = Config.get('Melee', 'AutoHide', hideDefault) == '1'
                                   or Config.get('General', 'AutoHide', '0') == '1'
 
     -- SpawnMaster mode: use Alert[5] instead of Spawn.Named for named-mob detection.
@@ -167,7 +169,7 @@ function Settings.load(state, utils)
     end
 
     -- Pet combat config
-    _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt',       '100')) or 100
+    _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt',       '95'))  or 95
     _state.pet.attackRange         = tonumber(Config.get('Pet', 'PetAttackDistance', '115')) or 115
     _state.pet.combatOn            = Config.get('Pet', 'PetCombatOn',                '1') == '1'
     _state.combat.petTargetSwitch  = Config.get('General', 'PetTargetSwitch',        '0') == '1'

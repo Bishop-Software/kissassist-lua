@@ -370,8 +370,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     local rtu = tonumber(Config.get('Pull', 'PullRadiusToUse', '90')) or 90
     if rtu == 1 then rtu = 90 elseif rtu <= 0 or rtu > 100 then rtu = 100 end
     _state.pull.radiusToUse  = rtu
-    _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '0'))  or 0
-    _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
+    _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '350')) or 350
+    _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '50'))  or 50
     Pull.setPullLevel(Config.get('Pull', 'PullLevel', '0|0'))
     _state.pull.chainPullHP  = tonumber(Config.get('Pull', 'ChainPullHP',  '90')) or 90
     -- PullRoleToggle needs the pullerpettank to lead the group (mac:8820; the
@@ -383,11 +383,11 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
         printf('\arPull role toggle is off until you lead the group and restart KissAssist.')
         _state.pull.roleToggle = false
     end
-    Pull.setPullPause(Config.get('Pull', 'PullPause', '0'))
+    Pull.setPullPause(Config.get('Pull', 'PullPause', '30|2'))
     _state.pull.hold         = Config.get('Pull', 'PullHold',      '0') == '1'
     _state.pull.pullArcWidth = tonumber(Config.get('Pull', 'PullArcWidth', '0'))  or 0
     if _state.pull.pullArcWidth > 359 then _state.pull.pullArcWidth = 0 end  -- mac:16278
-    _state.pull.pullWait     = tonumber(Config.get('Pull', 'PullWait',     '0'))  or 0
+    _state.pull.pullWait     = tonumber(Config.get('Pull', 'PullWait',     '5'))   or 5
     _state.pull.chainPull    = tonumber(Config.get('Pull', 'ChainPull',    '0'))  or 0
     -- Only the puller role chain pulls (mac:8841).
     if _state.session.role ~= 'puller' then _state.pull.chainPull = 0 end

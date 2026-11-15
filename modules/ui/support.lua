@@ -92,7 +92,7 @@ function SupportUI.drawPet()
             ImGui.Spacing()
 
             local petBuffsRaw  = Config.get('Pet', 'PetBuffs',     nil) or {}
-            local petBuffsSize = tonumber(Config.get('Pet', 'PetBuffsSize', '5')) or 5
+            local petBuffsSize = tonumber(Config.get('Pet', 'PetBuffsSize', '8')) or 8
 
             local function syncPetBuffsArray()
                 s.buffs.petBuffsArray = {}
@@ -159,7 +159,7 @@ function SupportUI.drawPet()
             ImGui.Spacing()
 
             local petToysRaw  = Config.get('Pet', 'PetToys',     nil) or {}
-            local petToysSize = tonumber(Config.get('Pet', 'PetToysSize', '5')) or 5
+            local petToysSize = tonumber(Config.get('Pet', 'PetToysSize', '6')) or 6
 
             local function syncPetToysArray()
                 s.pet.toysArray = {}

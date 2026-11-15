@@ -524,19 +524,31 @@ function Config.migrateIni(state)
     return cfg
 end
 
--- Returns a role-neutral starter config table with empty/zero values for all sections.
--- Used when no INI and no pickle exist so the character gets a persistent file on first run.
+-- Returns a role-neutral starter config table for all sections. Used when no INI
+-- and no pickle exist so the character gets a persistent file on first run. It is
+-- also the key schema purgeOrphanedFields keeps, so removing a key here deletes
+-- it from existing pickles.
+--
+-- Values follow the .mac's LoadIni defaults (mac:14555-14993, #244), except:
+--  - mac placeholder text ('YourPetSpell', 'Your Mez Spell|2', 'Tiny Companion',
+--    'NULL', ...) is left empty; Mez levels use 1/115 instead of placeholder text
+--  - Role is '' (the role comes from the command line)
+--  - StickHow is left as is until the CheckRoles port (#276)
+--  - CastingInterruptOn is 62, what the mac turns its default 1 into (mac:14646)
+--  - keys the mac doesn't have (medleys, charm, MountOn, ...) keep the port's values
+-- Keep the Config.get fallbacks in the modules in step with these.
 function Config.defaultCfg()
     local function emptyArr(n) local t = {} for i = 1, n do t[i] = 'null' end return t end
+    local isRogue = (mq.TLO.Me.Class.ShortName() or '') == 'ROG'
     return {
         General = {
             KissAssistVer    = Config.VERSION,
-            Role             = '', CampRadius = '30', CampRadiusExceed = '0',
-            ReturnToCamp     = '0', ChaseAssist = '0', ChaseDistance = '40',
-            MedOn            = '1', MedStart = '40', MedStop = '90', MedCombat = '0',
-            LootOn           = '1', RezAcceptOn = '1', AcceptInvitesOn = '0',
-            GroupWatchOn     = '0', GroupWatchCheck = '20', CorpseRecoveryOn = '0',
-            EQBCOn           = '0', DanNetOn = '1', DanNetDelay = '25',
+            Role             = '', CampRadius = '30', CampRadiusExceed = '400',
+            ReturnToCamp     = '0', ChaseAssist = '0', ChaseDistance = '25',
+            MedOn            = '1', MedStart = '20', MedStop = '100', MedCombat = '0',
+            LootOn           = '0', RezAcceptOn = '1|90', AcceptInvitesOn = '1',
+            GroupWatchOn     = '0', GroupWatchCheck = 'FALSE', CorpseRecoveryOn = '0',
+            EQBCOn           = '0', DanNetOn = '0', DanNetDelay = '20',
             IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
             DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
             UseSpawnMaster   = '0', TwistOn = '0',
@@ -544,26 +556,28 @@ function Config.defaultCfg()
             MountOn          = '0',
         },
         Spells = {
-            CastingInterruptOn = '62', CheckStuckGem = '0',
+            CastingInterruptOn = '62', CheckStuckGem = '1',
             Gems = {},
-            MiscGem = '0', MiscGemLW = '0', MiscGemRemem = '0',
-            LoadSpellSet = '0', SpellSetName = '',
+            MiscGem = '8', MiscGemLW = '0', MiscGemRemem = '1',
+            LoadSpellSet = '0', SpellSetName = 'KissAssist',
         },
         Melee = {
             AssistAt = '95', MeleeOn = '1', FaceMobOn = '1', MeleeDistance = '75',
             StickHow = 'behind', AutoFireOn = '0', UseMQ2Melee = '0',
-            TargetSwitchingOn = '0', ManualTargetMode = '0', AutoHide = '0', MeleeTwistOn = '0',
+            TargetSwitchingOn = '0', ManualTargetMode = '0',
+            AutoHide = isRogue and '1' or '0',  -- rogues only (mac:14689)
+            MeleeTwistOn = '0',
         },
         DPS = {
-            DPSOn = '1', DPSSize = '5', DPSSkip = '0', DPSInterval = '0',
-            DebuffAllOn = '0', DPS = emptyArr(5),
+            DPSOn = '0', DPSSize = '20', DPSSkip = '20', DPSInterval = '2',
+            DebuffAllOn = '0', DPS = emptyArr(20),
         },
         Debuff = {
             DebuffOn = '0', DebuffSize = '0', Debuff = emptyArr(0),
         },
         Buffs = {
-            BuffsOn = '1', BuffsSize = '5', RebuffOn = '1', CheckBuffsTimer = '60',
-            PowerSource = '', Buffs = emptyArr(5),
+            BuffsOn = '0', BuffsSize = '20', RebuffOn = '1', CheckBuffsTimer = '10',
+            PowerSource = '', Buffs = emptyArr(20),
         },
         Heals = {
             HealsOn = '0', HealsSize = '5', HealInterval = '0', AutoRezOn = '0',
@@ -575,16 +589,16 @@ function Config.defaultCfg()
         },
         Pet = {
             PetOn = '0', PetSpell = '', PetFocus = '', PetShrinkOn = '0',
-            PetShrinkSpell = '', PetBuffsOn = '0', PetBuffsSize = '5',
-            PetBuffs = emptyArr(5), PetCombatOn = '0', PetAssistAt = '100',
-            PetAttackDistance = '60', PetToysSize = '5', PetToysOn = '0',
-            PetToysGave = '0', PetToys = emptyArr(5), PetBreakMezSpell = '',
+            PetShrinkSpell = '', PetBuffsOn = '0', PetBuffsSize = '8',
+            PetBuffs = emptyArr(8), PetCombatOn = '1', PetAssistAt = '95',
+            PetAttackDistance = '115', PetToysSize = '6', PetToysOn = '0',
+            PetToysGave = '0', PetToys = emptyArr(6), PetBreakMezSpell = '',
             PetRampPullWait = '0', PetSuspend = '0', MoveWhenHit = '0',
-            PetHoldOn = '0', PetForceHealOnMed = '0', PetTauntOverride = '0',
+            PetHoldOn = '1', PetForceHealOnMed = '0', PetTauntOverride = '0',
         },
         Mez = {
-            MezOn = '0', MezRadius = '40', MezMinLevel = '1', MezMaxLevel = '115',
-            MezStopHPs = '50', MezSpell = '', MezDebuffOnResist = '0',
+            MezOn = '0', MezRadius = '50', MezMinLevel = '1', MezMaxLevel = '115',
+            MezStopHPs = '80', MezSpell = '', MezDebuffOnResist = '0',
             MezDebuffSpell = '', MezAESpell = '',
         },
         Charm = {
@@ -592,7 +606,7 @@ function Config.defaultCfg()
             CharmRadius = '50', CharmKeep = '0',
         },
         Burn = {
-            BurnOn = '1', BurnAllNamed = '0', UseTribute = '0', BurnSize = '5', Burn = emptyArr(5),
+            BurnOn = '1', BurnAllNamed = '0', UseTribute = '0', BurnSize = '15', Burn = emptyArr(15),
         },
         Aggro = {
             AggroOn = '0', AggroSize = '5', Aggro = emptyArr(5),
@@ -601,27 +615,27 @@ function Config.defaultCfg()
             GoMSize = '3', GoMSpell = emptyArr(3),
         },
         AE = {
-            AEOn = '0', AESize = '5', AERadius = '40', AE = emptyArr(5),
+            AEOn = '0', AESize = '10', AERadius = '50', AE = emptyArr(10),
         },
         Pull = {
-            PullWith = 'Melee', PullRange = '15', PullMeleeStick = '0', MaxRadius = '200', MaxZRange = '75',
+            PullWith = 'Melee', PullRange = '15', PullMeleeStick = '0', MaxRadius = '350', MaxZRange = '50',
             UseWayPointZ = '0', PullWait = '5', PullRadiusToUse = '90',
             PullRoleToggle = '0', ChainPull = '0', ChainPullHP = '90',
-            PullPause = '0', PullLevel = '0|0', PullArcWidth = '0',
+            PullPause = '30|2', PullLevel = '0|0', PullArcWidth = '0',
             PullTwistOn = '0', PullOnReturn = '0',
         },
         PullAdvanced = {
             PullLocsOn = '0',
         },
         Merc = {
-            MercOn = '0', MercAssistAt = '95',
+            MercOn = '0', MercAssistAt = '92',
         },
         AFKTools = {
-            AFKToolsOn = '0', AFKGMAction = '1', AFKPCRadius = '30',
+            AFKToolsOn = '1', AFKGMAction = '1', AFKPCRadius = '500',
             CampOnDeath = '0', ClickBacktoCamp = '0',
         },
         KConditions = {
-            ConOn = '1', CondSize = '5', Cond = emptyArr(5),
+            ConOn = '0', CondSize = '5', Cond = emptyArr(5),
         },
     }
 end

@@ -20,7 +20,11 @@ function M.run(TH, MockMQ)
     local p, t = state.pull, state.timers
 
     -- ---- parsing ----
-    TH.assert_eq(p.pauseRun, 0, 'no PullPause in config: off')
+    -- A missing key takes the mac default 30|2 (#244).
+    TH.assert_eq(p.pauseRun, 30, 'no PullPause in config: mac default, pull 30 minutes')
+    TH.assert_eq(p.pauseRest, 2, 'no PullPause in config: mac default, rest 2 minutes')
+    Pull.setPullPause('0')
+    TH.assert_eq(p.pauseRun, 0, '0: off')
     Pull.setPullPause('30|2')
     TH.assert_eq(p.pauseRun, 30, '30|2: pull 30 minutes')
     TH.assert_eq(p.pauseRest, 2, '30|2: rest 2 minutes')

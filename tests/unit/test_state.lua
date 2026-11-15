@@ -37,7 +37,7 @@ function M.run(TH, _MockMQ)
     -- cast
     TH.assert_eq(State.cast.status,            'IDLE',   'cast.status')
     TH.assert_eq(State.cast.gemSlots,          8,        'cast.gemSlots')
-    TH.assert_eq(State.cast.miscGem,           0,        'cast.miscGem')
+    TH.assert_eq(State.cast.miscGem,           8,        'cast.miscGem')
     TH.assert_eq(State.cast.failMax,           3,        'cast.failMax')
     TH.assert_false(State.cast.checkStuckGem,            'cast.checkStuckGem')
 
@@ -66,7 +66,7 @@ function M.run(TH, _MockMQ)
 
     -- buffs
     TH.assert_false(State.buffs.buffsOn,                 'buffs.buffsOn')
-    TH.assert_eq(State.buffs.checkBuffsTimer,  15,       'buffs.checkBuffsTimer')
+    TH.assert_eq(State.buffs.checkBuffsTimer,  10,       'buffs.checkBuffsTimer')
     TH.assert_eq(State.buffs.blockedBuffsCount, 30,      'buffs.blockedBuffsCount')
     -- slotTimers initialized for slots 1..20, members 0..5
     TH.assert_not_nil(State.buffs.slotTimers[1],         'buffs.slotTimers[1] exists')
@@ -75,15 +75,15 @@ function M.run(TH, _MockMQ)
 
     -- pet
     TH.assert_false(State.pet.on,                        'pet.on')
-    TH.assert_eq(State.pet.assistAt,           100,      'pet.assistAt')
-    TH.assert_false(State.pet.combatOn,                  'pet.combatOn')
+    TH.assert_eq(State.pet.assistAt,           95,       'pet.assistAt')
+    TH.assert_true(State.pet.combatOn,                   'pet.combatOn')
 
     -- mez (M12)
     TH.assert_eq(State.mez.on,                 0,        'mez.on')
-    TH.assert_eq(State.mez.radius,             40,       'mez.radius')
+    TH.assert_eq(State.mez.radius,             50,       'mez.radius')
     TH.assert_eq(State.mez.minLevel,           1,        'mez.minLevel')
     TH.assert_eq(State.mez.maxLevel,           115,      'mez.maxLevel')
-    TH.assert_eq(State.mez.stopHPs,            50,       'mez.stopHPs')
+    TH.assert_eq(State.mez.stopHPs,            80,       'mez.stopHPs')
 
     -- bard (M8)
     TH.assert_eq(State.bard.burnMedley,        'burn',   'bard.burnMedley')
@@ -113,7 +113,7 @@ function M.run(TH, _MockMQ)
 
     -- merc (M20)
     TH.assert_eq(State.merc.on,                0,        'merc.on')
-    TH.assert_eq(State.merc.assistAt,          100,      'merc.assistAt')
+    TH.assert_eq(State.merc.assistAt,          92,       'merc.assistAt')
     TH.assert_false(State.merc.inGroup,                  'merc.inGroup')
 
     -- misc

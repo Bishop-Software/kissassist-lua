@@ -34,7 +34,7 @@ function Pet.init(state, utils, cast, buffs, movement)
     _state.pet.focus         = Config.get('Pet', 'PetFocus',        '') or ''
     -- 0=off, 1=pending (send command once), 2=already sent this pet
     _state.pet.focusOn       = tonumber(Config.get('Pet', 'PetFocusOn', '0')) or 0
-    _state.pet.holdOn        = tonumber(Config.get('Pet', 'PetHoldOn',  '0')) or 0
+    _state.pet.holdOn        = tonumber(Config.get('Pet', 'PetHoldOn',  '1')) or 1
     _state.pet.suspend       = Config.get('Pet', 'PetSuspend',      '0') == '1'
     _state.pet.tauntOverride = Config.get('Pet', 'PetTauntOverride', '0') == '1'
     _state.pet.toysGave      = _state.pet.toysGave or ''

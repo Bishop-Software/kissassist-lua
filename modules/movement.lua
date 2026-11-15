@@ -27,7 +27,7 @@ function Movement.init(state, utils)
     -- [General] camp and movement settings
     _state.movement.returnToCamp     = Config.get('General', 'ReturnToCamp',     '0') == '1'
     _state.movement.campRadius       = tonumber(Config.get('General', 'CampRadius',       '30')) or 30
-    _state.movement.campRadiusExceed = tonumber(Config.get('General', 'CampRadiusExceed', '0'))  or 0
+    _state.movement.campRadiusExceed = tonumber(Config.get('General', 'CampRadiusExceed', '400')) or 400
     -- ChaseAssist is 0/1/2 in the mac: 1 stops chasing during fights, 2 keeps chasing
     -- (mac:14560, 3680). The value becomes chaseOnValue, which doWeChase checks.
     local chaseVal = tonumber(Config.get('General', 'ChaseAssist', '0')) or 0
@@ -53,7 +53,7 @@ function Movement.init(state, utils)
 
     -- [Pull] movement-related pull settings
     -- pull.moveUse (nav/los/advpath) is chosen by Pull.pickMoveUse.
-    _state.pull.waypointZRange = tonumber(Config.get('Pull', 'MaxZRange', '0')) or 0
+    _state.pull.waypointZRange = tonumber(Config.get('Pull', 'MaxZRange', '50')) or 50
 
     -- One-time MQ2MoveUtils global settings (mac:16390-16398).
     -- usefleeing on: stick pursues mobs that run away.
