@@ -9,6 +9,7 @@ local Pull     = require('modules.pull')
 
 local PullUI = {}
 local _state
+local _levelBuf  -- Pull Level text being edited
 
 function PullUI.drawPull()
     local s = _state
@@ -65,6 +66,24 @@ function PullUI.drawPull()
         s.pull.radiusToUse = v
         Pull.rangeSet()
     end)
+    if s.pull.chainPull ~= 0 then
+        intInput('Chain Pull HP %', s.pull.chainPullHP, 1, 100, 'Pull', 'ChainPullHP',
+            function(v) s.pull.chainPullHP = v end)
+    end
+    -- PullLevel: 'min|max', 'min|max|linked', 'auto' or '0|0'. Applied when
+    -- the field loses focus so partial text isn't parsed while typing.
+    _levelBuf = _levelBuf or s.pull.levelSetting
+    local lvlText = ImGui.InputText('Pull Level', _levelBuf, 0)
+    _levelBuf = lvlText
+    if ImGui.IsItemDeactivatedAfterEdit() and lvlText ~= s.pull.levelSetting then
+        Pull.setPullLevel(lvlText)
+        _levelBuf = s.pull.levelSetting
+        Config.set('Pull', 'PullLevel', s.pull.levelSetting)
+        Config.save()
+    end
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip("min|max, min|max|linked (moves up as you level), auto (your level -5 to +2), 0|0 = any")
+    end
     intInput('Arc Width°',  s.pull.pullArcWidth,  0,  359, 'Pull', 'PullArcWidth', function(v)
         -- Keep the current aim if an arc is already set, else aim where we face.
         local aimed  = s.pull.lSide ~= s.pull.rSide
@@ -83,6 +102,9 @@ function PullUI.drawPull()
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Text(string.format('Pull With: %s (range %d)', s.pull.withAlt or 'Melee', s.pull.range or 0))
+    if s.pull.levelMode ~= 'off' then
+        ImGui.Text(string.format('Pull Levels: %d to %d (%s)', s.pull.min, s.pull.max, s.pull.levelMode))
+    end
     if s.pull.pullArcWidth > 0 then
         ImGui.Text(string.format('Pull Arc: %.0f° to %.0f° (facing %.0f°)',
             s.pull.lSide, s.pull.rSide, s.pull.heading))

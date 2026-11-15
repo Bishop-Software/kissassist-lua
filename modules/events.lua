@@ -393,7 +393,10 @@ end
 local function onGainSomething(_, text)
     utils.debug('general', 'GainSomething: ' .. tostring(text))
     state.combat.eventFlag = true
-    -- Broadcast + pull range recalc for level-up in M6/M9
+    -- Level up moves an auto/linked pull level range (mac:11396).
+    if tostring(text or ''):lower():find('level', 1, true) then
+        require('modules.pull').levelGained()
+    end
 end
 
 local function onAskForBuffs(_, caller)

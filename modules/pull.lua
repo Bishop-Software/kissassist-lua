@@ -161,6 +161,48 @@ function Pull.setRanking(on, quiet)
     return p.ranking
 end
 
+-- Pull level range from [Pull] PullLevel (mac:16255):
+--   'min|max'        fixed range
+--   'min|max|linked' range moves up one level each time you level
+--   'auto'           your level -5 to +2, recalculated on level up
+--   '0|0' / '0'      off (levels 1-200)
+-- Sets pull.min, pull.max and pull.levelMode ('off'/'fixed'/'linked'/'auto').
+function Pull.setPullLevel(value)
+    local p     = _state.pull
+    local v     = tostring(value or '0')
+    local lower = v:lower()
+    local lvl   = mq.TLO.Me.Level() or 0
+    local mode, mn, mx
+    if lower:find('auto', 1, true) then
+        mode, mn, mx = 'auto', lvl - 5, lvl + 2
+    elseif v == '0|0' or v == '0' or lower == 'null' or not v:find('|', 1, true) then
+        mode, mn, mx = 'off', 1, 200
+    else
+        local a, b = v:match('^%s*([^|]*)|([^|]*)')
+        mn = math.floor(tonumber(a) or 0)
+        mx = math.floor(tonumber(b) or 0)
+        mode = lower:find('linked', 1, true) and 'linked' or 'fixed'
+    end
+    if mn > mx or mn == 0 or mx == 0 then
+        printf('\ayInvalid Pull Level Settings resetting to default.')
+        mode, mn, mx = 'off', 1, 200
+    end
+    p.levelSetting = v
+    p.levelMode, p.min, p.max = mode, mn, mx
+    return mode
+end
+
+-- Level up: move the auto/linked pull level range (mac:11400 Event_GainSomething).
+function Pull.levelGained()
+    local p = _state.pull
+    if p.levelMode == 'auto' then
+        local lvl = mq.TLO.Me.Level() or 0
+        p.min, p.max = lvl - 5, lvl + 2
+    elseif p.levelMode == 'linked' then
+        p.min, p.max = p.min + 1, p.max + 1
+    end
+end
+
 -- True when MQ2Nav is loaded with a mesh for this zone.
 local function navMeshLoaded()
     local plugin = mq.TLO.Plugin('MQ2Nav')
@@ -219,7 +261,6 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _comms    = comms
 
     -- [Pull] section
-    _state.pull.on           = Config.get('Pull', 'PullOn',        '0') == '1'
     _state.pull.withAlt      = Config.get('Pull', 'PullWith',      'Melee')
     _state.pull.meleeStick   = Config.get('Pull', 'PullMeleeStick', '0') == '1'
     -- PullRange is a fallback only: Pull.rangeSet derives it from PullWith, as the
@@ -233,8 +274,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.radiusToUse  = rtu
     _state.pull.maxRadius    = tonumber(Config.get('Pull', 'MaxRadius',    '0'))  or 0
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
-    _state.pull.min          = tonumber(Config.get('Pull', 'PullMin',      '0'))  or 0
-    _state.pull.max          = tonumber(Config.get('Pull', 'PullMax',      '0'))  or 0
+    Pull.setPullLevel(Config.get('Pull', 'PullLevel', '0|0'))
+    _state.pull.chainPullHP  = tonumber(Config.get('Pull', 'ChainPullHP',  '90')) or 90
     _state.pull.hold         = Config.get('Pull', 'PullHold',      '0') == '1'
     _state.pull.pullArcWidth = tonumber(Config.get('Pull', 'PullArcWidth', '0'))  or 0
     if _state.pull.pullArcWidth > 359 then _state.pull.pullArcWidth = 0 end  -- mac:16278
@@ -268,9 +309,9 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     Pull.rangeSet()
     Pull.pickMoveUse()
 
-    _utils.debug('pull', 'Pull.init complete — on=%s with=%s range=%d maxRadius=%d',
-        tostring(_state.pull.on), _state.pull.withAlt,
-        _state.pull.range, _state.pull.maxRadius)
+    _utils.debug('pull', 'Pull.init complete — with=%s range=%d maxRadius=%d levels=%d-%d',
+        _state.pull.withAlt,
+        _state.pull.range, _state.pull.maxRadius, _state.pull.min, _state.pull.max)
 end
 
 -- ---------------------------------------------------------------------------
@@ -660,6 +701,24 @@ function Pull.pullWaiting()
     return true
 end
 
+-- Chain pulling: don't pull the next mob while the current one is still
+-- above ChainPullHP (mac:8959). True = wait.
+function Pull.chainPullBusy()
+    local s = _state
+    if (mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0) == 0 then return false end
+    local hp    = s.pull.chainPullHP or 90
+    local myTgt = tonumber(s.combat.myTargetID) or 0
+    local tgtID = mq.TLO.Target.ID() or 0
+    if myTgt == 0 and tgtID == 0 then return true end
+    local tgtHP = tgtID > 0 and mq.TLO.Target.PctHPs() or nil
+    if tgtHP and tgtHP >= hp then return true end
+    if myTgt > 0 then
+        local myHP = mq.TLO.Spawn(myTgt).PctHPs()
+        if myHP and myHP >= hp then return true end
+    end
+    return false
+end
+
 function Pull.findMobToPull(readyFlag, a, b)
     local s    = _state
     local role = s.session.role
@@ -705,8 +764,7 @@ function Pull.findMobToPull(readyFlag, a, b)
                 mq.cmd('/squelch /target clear')
                 mq.delay(500)
             end
-            -- Simplified: if XTarget[slot] still occupied, previous chain mob live (mac:8958)
-            if (mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0) > 0 then return 0 end
+            if Pull.chainPullBusy() then return 0 end
             -- MA too far from camp (mac:8959)
             if s.session.mainAssist ~= '' then
                 local ma = mq.TLO.Spawn('=' .. s.session.mainAssist)
