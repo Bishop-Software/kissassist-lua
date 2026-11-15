@@ -103,8 +103,62 @@ end
 function Pull.loadZoneLists()
     local infoFile = _state.session.infoFileName or ''
     local zone     = _state.session.zoneName     or ''
-    _state.pull.mobsToPullFirst = _utils.zoneIniGet(infoFile, zone, 'MobsToPull')   or 'all'
-    _state.pull.mobsToIgnore    = _utils.zoneIniGet(infoFile, zone, 'MobsToIgnore') or 'null'
+    local raw = _utils.zoneIniGet(infoFile, zone, 'MobsToPull') or 'all'
+    if raw == '' or raw == 'null' or raw:lower():find('all for all', 1, true) then raw = 'all' end
+    _state.pull.mobsToPullRaw = raw
+    _state.pull.mobsToIgnore  = _utils.zoneIniGet(infoFile, zone, 'MobsToIgnore') or 'null'
+    Pull.setRanking(_state.pull.ranking, true)
+end
+
+-- Build MobsToPull / MobsToPullFirst from the raw zone list.
+-- Mac: UpdatePullRanking (mac:15064). With ranking on, entries marked with ':'
+-- go to MobsToPullFirst (pulled before anything else) and the rest stay in
+-- MobsToPull ('all' if none are left). With ranking off, the ':' marks are
+-- stripped and everything is in MobsToPull. quiet suppresses the messages.
+function Pull.setRanking(on, quiet)
+    local p   = _state.pull
+    local raw = p.mobsToPullRaw or 'all'
+    local function say(fmt, ...) if not quiet then printf(fmt, ...) end end
+
+    local entries = {}
+    if raw ~= 'all' and raw ~= 'null' and raw ~= '' then
+        for entry in (raw .. ','):gmatch('([^,]*),') do
+            entry = entry:match('^%s*(.-)%s*$')
+            if entry ~= '' then entries[#entries + 1] = entry end
+        end
+    end
+
+    local first, rest = {}, {}
+    if on and #entries == 0 then
+        on = false
+        say('\ayPull Ranking is off. You need to update MobsToPull. Normal Pulling is Enabled.')
+    elseif on then
+        for _, e in ipairs(entries) do
+            if e:find(':', 1, true) then
+                first[#first + 1] = (e:gsub(':', ''))
+            else
+                rest[#rest + 1] = e
+            end
+        end
+        if #first == 0 then
+            on = false
+            say('\ayNo mobs in MobsToPull list to Rank.')
+        end
+    end
+    if not on then
+        first, rest = {}, {}
+        for _, e in ipairs(entries) do rest[#rest + 1] = (e:gsub(':', '')) end
+    end
+
+    p.ranking         = on and true or false
+    p.mobsToPullFirst = #first > 0 and table.concat(first, ',') or 'all'
+    p.mobsToPull      = #rest  > 0 and table.concat(rest,  ',') or 'all'
+    if on then
+        say('\ayPull Ranking is Now on.')
+    elseif #entries > 0 then
+        say('\ayPull Ranking is off. Normal Pulling is Enabled.')
+    end
+    return p.ranking
 end
 
 function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, comms)
@@ -141,7 +195,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.pullWait     = tonumber(Config.get('Pull', 'PullWait',     '0'))  or 0
     _state.pull.chainPull    = tonumber(Config.get('Pull', 'ChainPull',    '0'))  or 0
     _state.pull.pullOnReturn = Config.get('Pull', 'PullOnReturn',  '0') == '1'
-    _state.pull.ranking      = tonumber(Config.get('Pull', 'PullRanking',  '0'))  or 0
+    _state.pull.ranking      = false  -- per session, always off at start (mac:14950)
     Pull.loadZoneLists()
     _state.pull.moveUse         = Config.get('Pull', 'PullMoveUse',    'los')
     _state.pull.searchType      = Config.get('Pull', 'SearchType',     '')
@@ -177,6 +231,15 @@ end
 -- Step 7.6 — Pull.pullValidate
 -- ---------------------------------------------------------------------------
 
+-- Mob-name allowed-list filter (mac:9451). A mob on MobsToPullFirst (pull
+-- ranking) is allowed; otherwise it must be on MobsToPull unless that is 'all'.
+function Pull.nameAllowed(name)
+    local p = _state.pull
+    if inNameList(p.mobsToPullFirst, name) then return true end
+    local list = p.mobsToPull or 'all'
+    return list == 'all' or inNameList(list, name)
+end
+
 -- Validate a single spawn as a pull candidate.
 -- Mac: PullValidate (mac:9443-9567)
 -- flag: spawn index from findMobToPull (>0 enables server-lag HP recheck).
@@ -188,14 +251,9 @@ function Pull.pullValidate(mobID, flag)
     local name     = sp.CleanName() or ''
     local moveUse  = _state.pull.moveUse
 
-    -- Mob-name allowed-list filter.
-    -- Mac has a two-level MobsToPullFirst/MobsToPull split; Lua port uses one merged list.
-    -- If mobsToPullFirst != 'all': mob name must appear in the list.
-    if _state.pull.mobsToPullFirst ~= 'all' then
-        if not inNameList(_state.pull.mobsToPullFirst, name) then
-            _utils.debug('pull', 'pullValidate: %s not on MobsToPull list', name)
-            return false
-        end
+    if not Pull.nameAllowed(name) then
+        _utils.debug('pull', 'pullValidate: %s not on MobsToPull list', name)
+        return false
     end
 
     -- Ignore by name.
@@ -394,7 +452,7 @@ local function findMobsFirst(filter, returnWhat, pflag)
     local total   = 0
     for entry in (list .. '|'):gmatch('([^,|]+)[,|]') do
         entry = entry:match('^%s*(.-)%s*$')
-        local name = entry:sub(1, 1) == '#' and entry:sub(2) or entry
+        local name = entry:gsub('^[#*]', '')
         local q    = name .. ' ' .. filter ..
                      ' radius '  .. radius  ..
                      ' zradius ' .. zRadius ..
