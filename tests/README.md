@@ -42,7 +42,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_ready.lua` | `Pull.pullAbilityReady()`: Melee/Pet always, Ranged via `RangedReady`, named pulls via spell/AA/disc/item readiness (#227) |
 | `unit/test_pull_wait.lua` | `Pull.startPullWait()` / `Pull.pullWaiting()`: non-blocking PullWait timer, ends on expiry or aggro, sits to med when `MedOn` (#145) |
 | `unit/test_pull_range.lua` | `Pull.rangeSet()` (the `.mac`'s `PullRangeSet`): range from Melee/Pet/spell/disc/AA/clicky/`Bow\|Arrow`, scaled by `PullRadiusToUse` (#225) |
-| `unit/test_pull_ignore.lua` | `Pull.ignoreAdd()`: ignore-by-ID pull list format `\|id\|id\|`, no duplicates, no partial-ID matches (#144) |
+| `unit/test_pull_ignore.lua` | `Pull.ignoreAdd()` / `pullIgnoreTick()`: the pull ignore list (`PullIgnore1`, `\|id\|id\|`) stays separate from MobsToIgnoreByID, no duplicates or partial-ID matches, dead entries dropped, cleared every 5 minutes (#144) |
 | `unit/test_pull_map.lua` | `Pull.paintMap()` (the `.mac`'s `PaintMap`): `/mapfilter` circles painted once in camp with MQ2Map loaded, repainted after `mapSet` clears (#259) |
 | `unit/test_pull_ranking.lua` | `Pull.setRanking()` (the `.mac`'s `UpdatePullRanking`) and `Pull.nameAllowed()`: `:`-marked MobsToPull entries become the pull-first list while ranking is on; off strips the marks (#146) |
 | `unit/test_pull_move.lua` | `Pull.pickMoveUse()` (the `.mac`'s startup pick): nav when MQ2Nav has a mesh, else los; advpath only with a loaded path; re-picked after zoning (#264) |

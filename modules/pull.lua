@@ -356,6 +356,11 @@ function Pull.pullValidate(mobID, flag)
         _utils.debug('pull', 'pullValidate: %d on MobsToIgnoreByID list', mobID)
         return false
     end
+    -- Mobs the puller gave up on (mac:9493 PullIgnore1).
+    if Pull.onPullIgnore(mobID) then
+        _utils.debug('pull', 'pullValidate: %d on the pull ignore list', mobID)
+        return false
+    end
 
     -- PullLocs proximity: reject mobs too close to any advpath waypoint location.
     if _state.pull.pullLocsOn and _state.pull.maxWpRange > 0 then
@@ -869,6 +874,7 @@ function Pull.findMobToPull(readyFlag, a, b)
 
     s.pull.pulling = false
     if s.pull.hold then return 0 end  -- GroupWatch may have set hold (mac:8985-8986)
+    Pull.pullIgnoreTick()
 
     -- Status echo (mac:8988-8994; throttled)
     if readyFlag == 1 then
@@ -1025,17 +1031,46 @@ local function pullReset()
     mq.cmd('/squelch /target clear')
 end
 
--- Add a spawn ID to the ignore-by-ID pull list ("|id|id|"). Mirrors the 'a'
--- action of Sub PullIgnoreCheck (mac:9980).
+-- Pull ignore list ("|id|id|", mac PullIgnore1): mobs the puller gave up on.
+-- Only pull searches skip them (and combat while a pull is under way,
+-- mac:994); it is cleared every 5 minutes (Pull.pullIgnoreTick). Separate
+-- from MobsToIgnoreByID, which combat always refuses.
+
+-- Add a spawn ID. Mirrors the 'a' action of Sub PullIgnoreCheck (mac:9980).
 function Pull.ignoreAdd(mobID, from)
     local id = tonumber(mobID) or 0
     if id < 1 then return end
     local p    = _state.pull
-    local list = p.mobsToIgnoreByID
+    local list = p.ignore1
     if not list or list == 'null' or list == '' then list = '|' end
     if list:find('|' .. id .. '|', 1, true) then return end
-    p.mobsToIgnoreByID = list .. id .. '|'
+    p.ignore1 = list .. id .. '|'
     printf('\awAdded %d to ignore pull list. (%s)', id, from or '')
+end
+
+function Pull.onPullIgnore(mobID)
+    local list = _state.pull.ignore1
+    if not list or list == 'null' or list == '' then return false end
+    return list:find('|' .. tostring(mobID) .. '|', 1, true) ~= nil
+end
+
+-- Each mob search (mac:8998): clear the list every 5 minutes, otherwise drop
+-- dead or despawned entries (PullIgnoreCheck 'c').
+function Pull.pullIgnoreTick()
+    local p, t = _state.pull, _state.timers
+    local now = os.clock()
+    if (t.pullAlert or 0) <= now then
+        p.ignore1   = 'null'
+        t.pullAlert = now + 300
+        return
+    end
+    if not p.ignore1 or p.ignore1 == 'null' then return end
+    local kept = {}
+    for id in p.ignore1:gmatch('|(%d+)') do
+        local sp = mq.TLO.Spawn('id ' .. id)
+        if (sp.ID() or 0) > 0 and sp.Type() ~= 'Corpse' then kept[#kept + 1] = id end
+    end
+    p.ignore1 = #kept > 0 and ('|' .. table.concat(kept, '|') .. '|') or 'null'
 end
 
 local function xtSlotID(slot)
@@ -1090,7 +1125,9 @@ local function waitForMob()
             pullReset()
             return
         end
-        if (s.combat.aggroTargetID or '') == '' or os.clock() > deadline then
+        -- The mac's AggroTargetID is live: the XTarget slot, else the radar's pick.
+        local aggro = xtSlotID(s.combat.xTSlot) > 0 or (s.combat.aggroTargetID or '') ~= ''
+        if not aggro or os.clock() > deadline then
             _utils.debug('pull', 'waitForMob: no aggro or timed out')
             local tid = mq.TLO.Target.ID() or 0
             if tid > 0 then Pull.ignoreAdd(tid, 'waitformob') end
@@ -1609,6 +1646,7 @@ function Pull.pullCheck()
         _utils.debug('pull', 'pullCheck: no valid target (failCounter=%d)', s.cast.failCounter)
         if s.cast.failCounter >= s.cast.failMax then
             s.cast.failCounter = 0
+            s.timers.pullAlert = 0  -- clear the pull ignore list next search (mac:9398)
             local role     = s.session.role
             local isHunter = (role == 'hunter' or role == 'hunterpettank')
             if isHunter then
