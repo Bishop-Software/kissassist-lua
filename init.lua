@@ -122,9 +122,12 @@ Charm.init(State, Utils, Cast, Pet, Bard, Comms)
 Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
--- Hunter role overrides (mac CheckRoles). After Combat.init, which loads
--- AssistAt and the pet settings this replaces.
+-- Hunter and puller role overrides (mac CheckRoles). After Combat.init, which
+-- loads AssistAt, MeleeOn and the pet settings these replace.
 Pull.setupHunterRole()
+Pull.setupPullerRole()
+-- StickHow 'auto' -> per-role stick (mac CheckRoles); needs the role and UseMQ2Melee.
+Movement.resolveStickHow()
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
 
