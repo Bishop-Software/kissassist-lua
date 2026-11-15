@@ -103,6 +103,36 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
+-- Hunter role setup from CheckRoles (mac:8735-8798). Runs at startup after the
+-- INI is loaded. A hunter engages at 100%. With ReturnToCamp on, it is turned
+-- off: the hunter fights where it pulls and walks back only when it runs out of
+-- mobs. With it off, the hunter stays put and pulls on its way back (StayPut +
+-- PullOnReturn). Main assist identity is set in init.lua (TANK_ROLES).
+function Pull.setupHunterRole()
+    local s    = _state
+    local role = s.session.role
+    if role ~= 'hunter' and role ~= 'hunterpettank' then return end
+    s.combat.assistAt = 100
+    if s.combat.useMQ2Melee then
+        mq.cmdf('/squelch /melee aggro=%d', role == 'hunter' and 1 or 0)
+    end
+    if s.movement.returnToCamp then
+        s.movement.returnToCamp = false
+        s.movement.stayPut      = false
+    else
+        s.movement.stayPut  = true
+        s.pull.pullOnReturn = true
+    end
+    if role == 'hunterpettank' then
+        s.session.chaseAssist = false
+        s.misc.mountOn        = false
+        s.pet.assistAt        = 100
+    end
+    if (mq.TLO.Me.Pet.ID() or 0) > 0 then mq.cmd('/pet follow') end
+    _utils.debug('pull', 'setupHunterRole: role=%s stayPut=%s pullOnReturn=%s',
+        role, tostring(s.movement.stayPut), tostring(s.pull.pullOnReturn))
+end
+
 -- Load this zone's pull/ignore lists from KissAssist_Info.ini (shared across
 -- characters). Called at startup and again after zoning.
 function Pull.loadZoneLists()

@@ -42,7 +42,8 @@ printf('\agKissAssist \aw%s starting... Role: \at%s', VERSION, State.session.rol
 -- Mirrors Sub AssignMainAssist (kissassist.mac): tank roles are their own MA.
 -- Must run before Config.load so mainAssist is set when Combat.init reads it.
 do
-    local TANK_ROLES = {tank=true, pullertank=true, pettank=true, pullerpettank=true, hunterpettank=true}
+    local TANK_ROLES = {tank=true, pullertank=true, pettank=true, pullerpettank=true,
+                        hunter=true, hunterpettank=true}  -- hunter is its own MA too (mac:8739)
     local myName = mq.TLO.Me.CleanName() or ''
     if TANK_ROLES[State.session.role] then
         State.session.iAmMA = true
@@ -121,6 +122,9 @@ Charm.init(State, Utils, Cast, Pet, Bard, Comms)
 Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
+-- Hunter role overrides (mac CheckRoles). After Combat.init, which loads
+-- AssistAt and the pet settings this replaces.
+Pull.setupHunterRole()
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
 
