@@ -274,8 +274,9 @@ local State = {
         curesOn         = 0,    -- 0=off 1=everyone 2=self-only 3=group-only
         curesArray      = {},
         healInterval    = 0,
-        xTarHeal        = false,
-        xTarHealList    = '',
+        xTarHeal        = 0,    -- XTarHeal: 0 off, 1 group + XTarget slots, 2 XTarget slots only
+        xTarHealList    = '',   -- XTarHealList as written: '5|6|7', 'all', 'auto' or 'autopc'
+        xTarToHeal      = {},   -- XTarget slot numbers XTarHeal watches (Heal.setXTargetHealList)
         healGroupPetsOn = false,
         rezMeLast       = false,
         medOn           = true,   -- mac default: 1

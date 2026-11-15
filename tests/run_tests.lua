@@ -86,6 +86,18 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_healing_xtar',
+        path         = 'tests.unit.test_healing_xtar',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
+        name         = 'test_healing_pet',
+        path         = 'tests.unit.test_healing_pet',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
         name         = 'test_comms_announce',
         path         = 'tests.unit.test_comms_announce',
         useMock      = true,

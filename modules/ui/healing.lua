@@ -4,8 +4,13 @@ local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 
+local Heal     = require('modules.healing')
+
 local HealingUI = {}
 local _state
+local _xtarBuf  -- XTarget Slots text being edited
+-- ImGui.Combo is 1-based; XTarHeal is 0-2.
+local XTAR_HEAL_LABELS = { 'Off', 'Group + XTarget', 'XTarget only' }
 
 -- ---------------------------------------------------------------------------
 -- Heal Thresholds panel
@@ -42,6 +47,45 @@ function HealingUI.drawHealThresholds()
         Config.set('Heals', 'HealsOn', v and '1' or '0')
         Config.save()
     end)
+
+    -- XTarget heals (XTarHeal / XTarHealList): heal the people in chosen XTarget slots.
+    ImGui.PushItemWidth(170)
+    local mode, changed = ImGui.Combo('XTarget Heals##xtarheal', (s.heal.xTarHeal or 0) + 1, XTAR_HEAL_LABELS)
+    ImGui.PopItemWidth()
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Also heal the people in the XTarget slots below, e.g. a tank in another group')
+    end
+    if changed then
+        s.heal.xTarHeal = mode - 1
+        Config.set('Heals', 'XTarHeal', tostring(s.heal.xTarHeal))
+        Config.save()
+        Heal.setXTargetHealList(s.heal.xTarHealList)
+    end
+    if (s.heal.xTarHeal or 0) > 0 then
+        _xtarBuf = _xtarBuf or s.heal.xTarHealList
+        ImGui.PushItemWidth(170)
+        local text = ImGui.InputText('XTarget Slots##xtarlist', _xtarBuf, 0)
+        ImGui.PopItemWidth()
+        _xtarBuf = text
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('5|6|7 = those slots, all / auto = every slot not set to Auto Hater, autopc = Specific PC slots')
+        end
+        if ImGui.IsItemDeactivatedAfterEdit() and text ~= s.heal.xTarHealList then
+            s.heal.xTarHealList = text
+            Config.set('Heals', 'XTarHealList', text)
+            Config.save()
+            Heal.setXTargetHealList(text)
+        end
+        local slots = s.heal.xTarToHeal or {}
+        if #slots > 0 then
+            ImGui.TextDisabled('Watching XTarget slots: ' .. table.concat(slots, ', '))
+        else
+            ImGui.TextColored(1, 0.8, 0.2, 1, 'No XTarget slots to heal. Set XTarget Slots.')
+        end
+        if s.heal.healsOn == 0 then
+            ImGui.TextColored(1, 0.8, 0.2, 1, 'Heals On is off, so nobody is healed.')
+        end
+    end
 
     ImGui.Spacing()
     ImGui.Separator()
