@@ -49,6 +49,17 @@ function PullUI.drawPull()
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("Pull the MobsToPull entries marked with ':' first")
     end
+    if s.session.role == 'pullerpettank' then
+        checkbox('Group Puller Role', s.pull.roleToggle, function(v)
+            s.pull.roleToggle = v
+            Config.set('Pull', 'PullRoleToggle', v and '1' or '0')
+            Config.save()
+        end)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Take the group Puller role while pulling (group leader with a merc only)')
+        end
+        if s.session.iAmABard then ImGui.SameLine(160) end
+    end
     if s.session.iAmABard then
         checkbox('Twist On Pull', s.bard.pullTwistOn, function(v)
             s.bard.pullTwistOn = v

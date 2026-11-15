@@ -276,6 +276,15 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _state.pull.maxZRange    = tonumber(Config.get('Pull', 'MaxZRange',    '0'))  or 0
     Pull.setPullLevel(Config.get('Pull', 'PullLevel', '0|0'))
     _state.pull.chainPullHP  = tonumber(Config.get('Pull', 'ChainPullHP',  '90')) or 90
+    -- PullRoleToggle needs the pullerpettank to lead the group (mac:8820; the
+    -- mac ends the macro here, the port turns the option off instead).
+    _state.pull.roleToggle   = Config.get('Pull', 'PullRoleToggle', '0') == '1'
+    if _state.pull.roleToggle and _state.session.role == 'pullerpettank'
+       and (mq.TLO.Group.Leader.ID() or 0) ~= (mq.TLO.Me.ID() or 0) then
+        printf('\arYou are set to toggle puller mode but are NOT the group leader.')
+        printf('\arPull role toggle is off until you lead the group and restart KissAssist.')
+        _state.pull.roleToggle = false
+    end
     Pull.setPullPause(Config.get('Pull', 'PullPause', '0'))
     _state.pull.hold         = Config.get('Pull', 'PullHold',      '0') == '1'
     _state.pull.pullArcWidth = tonumber(Config.get('Pull', 'PullArcWidth', '0'))  or 0
@@ -786,6 +795,38 @@ function Pull.heldByCond()
         holdSpam = os.clock() + 5
     end
     return true
+end
+
+-- PullRoleToggle (mac:10586 PullModeToggle): a pullerpettank who leads the
+-- group with a merc in it takes the EQ group Puller role (3) for a pull of a
+-- mob outside camp, and drops it again back in camp after a successful pull.
+local function isGroupPuller()
+    local myID = mq.TLO.Me.ID() or 0
+    return myID > 0 and (mq.TLO.Group.Puller.ID() or 0) == myID
+end
+
+function Pull.roleToggle(on, mobID)
+    local s = _state
+    if not s.pull.roleToggle or s.session.role ~= 'pullerpettank' then return end
+    if (mq.TLO.Group.Leader.ID() or 0) ~= (mq.TLO.Me.ID() or -1) then return end
+    if (mq.TLO.SpawnCount('group mercenary')() or 0) == 0 then return end
+    local name = mq.TLO.Me.CleanName() or ''
+    if on then
+        if isGroupPuller() then return end
+        local sp = mq.TLO.Spawn('id ' .. (mobID or 0))
+        if not sp() or dist2D(sp.X() or 0, sp.Y() or 0, s.movement.campX, s.movement.campY)
+                       <= s.movement.campRadius then
+            return
+        end
+        mq.cmdf('/grouproles set %s 3', name)
+        mq.delay(1000, isGroupPuller)
+        if isGroupPuller() then printf('\ag+ You have been set to be group puller.') end
+    else
+        if not isGroupPuller() then return end
+        mq.cmdf('/grouproles unset %s 3', name)
+        mq.delay(1000, function() return not isGroupPuller() end)
+        if not isGroupPuller() then printf('\ag+ You are no longer group puller.') end
+    end
 end
 
 -- Chain pulling: don't pull the next mob while the current one is still
@@ -1371,6 +1412,7 @@ local function executePull(mobID)
         mq.delay(200)
     end
 
+    Pull.roleToggle(true, mobID)  -- mac:9634
     s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
 
     -- Stuck-detection baseline positions.
@@ -1604,6 +1646,9 @@ local function executePull(mobID)
     -- Back to camp, then wait for the mob to arrive (mac:9951-9966).
     if s.movement.returnToCamp then
         _movement.doWeMove(1, 'pull')
+    end
+    if s.pull.pulled then Pull.roleToggle(false) end  -- back in camp (mac:9913)
+    if s.movement.returnToCamp then
         if s.pull.pulled then
             waitForMob()
             if mq.TLO.Target.ID() and (s.movement.faceMobOn or 0) == 3 then

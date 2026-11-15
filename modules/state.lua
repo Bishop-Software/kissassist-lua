@@ -157,6 +157,7 @@ local State = {
         chainPullHP      = 90,     -- [Pull] ChainPullHP: pull the next mob once the current one is below this HP%
         heading          = 0.0,
         hold             = false,
+        roleToggle       = false,  -- [Pull] PullRoleToggle: pullerpettank takes the group Puller role while pulling
         pauseHold        = false,  -- PullPause rest in progress (mac PullHold==2)
         pauseRun         = 0,      -- [Pull] PullPause X: minutes to pull before resting (0 = off)
         pauseRest        = 0,      -- [Pull] PullPause Y: minutes to rest
