@@ -3,6 +3,9 @@ local Config = require('modules.config')
 
 local Movement = {}
 local _state, _utils
+local _pull  -- set by Pull.init via Movement.setPull (Pull is wired after Movement)
+
+function Movement.setPull(pull) _pull = pull end
 
 local function dist2D(y1, x1, y2, x2)
     return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
@@ -114,6 +117,7 @@ function Movement.doWeMove(forceFlag, sentFrom)
         if _state.pull.moveUse == 'nav' and dist > mv.campRadius then
             -- MQ2Nav path back to camp (mac:3395-3490)
             local stuckCount = 0
+            local nextReturnCheck = 0
             local x1, y1 = math.floor(mq.TLO.Me.X()), math.floor(mq.TLO.Me.Y())
             while true do
                 mq.doevents()
@@ -146,8 +150,18 @@ function Movement.doWeMove(forceFlag, sentFrom)
                         end
                         x1, y1 = cx, cy
                     end
-                    -- CheckOnReturn: signal pull module when back within pull range (Step 7.8)
                     local d = dist2D(mv.campY, mv.campX, mq.TLO.Me.Y(), mq.TLO.Me.X())
+                    -- PullOnReturn: after a failed pull, look for another mob on the
+                    -- way back (mac:3446-3455). The mac checks every half second.
+                    if mv.checkOnReturn and _pull and not _state.pull.pulled
+                       and d < _state.pull.maxRadius * 0.9 and os.clock() >= nextReturnCheck then
+                        nextReturnCheck = os.clock() + 0.5
+                        if _pull.findMobToPull(0, 1, 0) > 0 then
+                            _state.combat.myTargetID = 0
+                            if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
+                            return
+                        end
+                    end
                     if not mq.TLO.Navigation.Active() or d <= mv.campRadius then break end
                     if os.clock() > timeout then break end
                 end

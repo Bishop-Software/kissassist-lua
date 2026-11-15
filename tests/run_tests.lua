@@ -181,6 +181,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.config' },
     },
+    {
+        name         = 'test_pull_on_return',
+        path         = 'tests.unit.test_pull_on_return',
+        useMock      = true,
+        clearModules = { 'modules.pull', 'modules.config' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
