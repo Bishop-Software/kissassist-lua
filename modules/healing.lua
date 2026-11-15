@@ -66,8 +66,11 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     _state.heal.healsOn         = tonumber(Config.get('Heals', 'HealsOn', '0')) or 0
     _state.heal.healInterval    = tonumber(Config.get('Heals', 'HealInterval', '0'))  or 0
     _state.heal.autoRezOn       = tonumber(Config.get('Heals', 'AutoRezOn', '0')) or 0
-    _state.heal.xTarHeal        = Config.get('Heals', 'XTarHeal',        '0') == '1'
+    -- XTarHeal: 0 off, 1 group + XTarget slots, 2 XTarget slots only (mac:6412, 6446)
+    _state.heal.xTarHeal        = tonumber(Config.get('Heals', 'XTarHeal', '0')) or 0
     _state.heal.xTarHealList    = Config.get('Heals', 'XTarHealList',    '')  or ''
+    _state.heal.xTarToHeal      = {}
+    if _state.heal.xTarHeal > 0 then Heal.setXTargetHealList(_state.heal.xTarHealList) end  -- mac:14784
     _state.heal.healGroupPetsOn = Config.get('Heals', 'HealGroupPetsOn', '0') == '1'
     _state.heal.rezMeLast       = Config.get('Heals', 'RezMeLast',       '0') == '1'
 
@@ -167,6 +170,9 @@ end
 -- Classes that can cast heals on others (mirrors mac:6393 Select list)
 local HEALING_CLASSES = {BST=true, CLR=true, ENC=true, SHM=true, DRU=true, RNG=true, PAL=true}
 
+-- Most heal passes checkHealth runs back to back (HealAgain re-scans)
+local MAX_HEAL_PASSES = 5
+
 -- Classes that can cast group heals (mac:6522)
 local GROUP_HEAL_CLASSES = {BST=true, CLR=true, SHM=true, DRU=true, PAL=true}
 
@@ -243,6 +249,10 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
         _cast.castWhat(spell, targetID, sentFrom)
         if _state.cast.castReturn == 'CAST_SUCCESS' then
             printf('\ag** %s on >> %s <<', spell, name or '')
+            -- Check health again right away, except after healing a berserker (mac:6716)
+            if tgtClass ~= 'BER' then _state.heal.healAgain = true end
+        elseif _state.cast.castReturn == 'CAST_CANCELLED' then
+            _state.heal.healAgain = true  -- mac:6718-6720
         end
         -- This heal can't be used right now: try the next one instead of giving up
         if _state.cast.castReturn == 'CAST_COND_FAILED' or _state.cast.castReturn == 'CAST_NOT_FOUND' then
@@ -253,39 +263,104 @@ local function singleHeal(name, targetID, hpPct, sentFrom)
     end
 end
 
--- Port of Sub CheckHealth (mac:6368). Identifies who needs healing and dispatches singleHeal.
--- sentFrom: caller tag ('MainLoop', 'CheckForCombat', etc.)
-function Heal.checkHealth(sentFrom)
-    if _state.heal.healsOn == 0 then return end
-    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
-    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
-    -- mac:6369 skips only when medding WITH MedCombat; a stale medding flag must not block combat heals.
-    if _state.heal.medding and _state.heal.medCombat then return end
+-- Build heal.xTarToHeal, the XTarget slots XTarHeal watches, from XTarHealList.
+-- Port of Sub SetXTargetHealList (mac:15266-15321):
+--   '5|6|7' or '5'  those slots; a 0 or non-number ends the list (so the mac's
+--                   placeholder text "Xtar slots here Example: 5|6|7" means none)
+--   'all'           every slot not set to Auto Hater (warns about those)
+--   'auto'          the same, without the warnings
+--   'autopc'        only slots set to Specific PC
+-- The mac tests Select[HealList,...] with the literal word, so auto/autopc never
+-- matched there; they're ported as intended. Returns the slot list.
+function Heal.setXTargetHealList(list)
+    local slots = {}
+    local total = (_state.combat and _state.combat.xSlotTotal) or 20
+    local v     = tostring(list or ''):match('^%s*(.-)%s*$'):lower()
+    if v == 'all' or v == 'auto' or v == 'autopc' then
+        for i = 1, total do
+            local tt = mq.TLO.Me.XTarget(i).TargetType() or ''
+            if tt == 'Auto Hater' then
+                if v == 'all' then
+                    printf('\ayXTarget %d is assigned as Auto Hater. You may want to fix this when using the ALL tag.', i)
+                end
+            elseif v ~= 'autopc' or tt == 'Specific PC' then
+                slots[#slots + 1] = i
+            end
+        end
+    elseif v ~= '' and v ~= 'null' then
+        for entry in v:gmatch('[^|]+') do
+            local n = math.floor(tonumber(entry) or 0)
+            if n == 0 then break end
+            if n > 0 and n <= total then
+                slots[#slots + 1] = n
+                if (mq.TLO.Me.XTarget(n).TargetType() or '') == 'Auto Hater' then
+                    printf('\ayXTarget %d is assigned as Auto Hater. You may want to fix this.', n)
+                end
+            end
+        end
+    end
+    _state.heal.xTarToHeal = slots
+    return slots
+end
 
-    _utils.debug('heals', 'checkHealth enter ' .. sentFrom)
+-- Heal my own pet with the heal list's 'pet' entries (e.g. 'Mend Companion|60|pet').
+-- Port of Sub DoPetHealStuff (mac:6777-6795), called from checkHealth while PetOn is
+-- set and the pet is hurt. Unlike the group scan's 'pet' entries, this doesn't need
+-- HealGroupPetsOn. Stops after the first heal that lands; the mac keeps going down
+-- the list, but HealAgain re-scans right after a heal anyway. The mac's
+-- PetHealTimer is set but never read, so it isn't ported.
+function Heal.doPetHealStuff()
+    local pet   = mq.TLO.Me.Pet
+    local petID = pet.ID() or 0
+    if petID == 0 then return end
+    local petPct  = pet.PctHPs() or 100
+    local petDist = pet.Distance() or 9999
+    for _, slot in ipairs(_state.heal.healsArray or {}) do
+        local parts = {}
+        for p in ((slot.name or '') .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spell     = parts[1] or ''
+        local threshold = tonumber(parts[2]) or 0
+        local tag       = (parts[3] or ''):lower()
+        local condNo    = slot.condNo or 0
+        if tag == 'pet' and spell ~= '' and threshold > 0 and petPct <= threshold
+                and (condNo == 0 or not _cond or _cond.eval(condNo)) then
+            local range = tonumber(mq.TLO.Spell(spell).Range()) or 0
+            if range == 0 then range = 100 end  -- as singleHeal
+            if petDist < range then
+                _utils.debug('heals', string.format('doPetHealStuff: pet %d%% -> %s', petPct, spell))
+                _cast.castWhat(spell, petID, 'Heal')
+                if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    printf('\ag** %s on >> %s <<', spell, pet.CleanName() or 'pet')
+                    _state.heal.healAgain = true
+                    return
+                end
+            end
+        end
+    end
+end
 
+-- One pass of Sub CheckHealth's heal loop (mac:6385-6532): self, MA, most hurt
+-- (group and XTarget), group heal, my pet. Returns true to end the loop early.
+local function healPass()
     local healsOnVal = _state.heal.healsOn
 
-    -- Self-heal check
+    -- Self-heal check; a self heal that lands starts the pass over (mac:6389-6391)
     local selfPct = mq.TLO.Me.PctHPs() or 100
     if selfPct < _state.heal.singleHealPoint then
         singleHeal(mq.TLO.Me.CleanName(), mq.TLO.Me.ID(), selfPct, 'SingleHeal')
+        if _state.heal.healAgain then return false end
     end
 
-    -- Self-only mode: stop here
-    if healsOnVal == 4 then
-        _utils.debug('heals', 'checkHealth leave (self-only) ' .. sentFrom)
-        return
-    end
+    -- Self-only mode: stop here (mac:6392)
+    if healsOnVal == 4 then return true end
 
-    local myClass = mq.TLO.Me.Class.ShortName() or ''
-    if not HEALING_CLASSES[myClass] then
-        _utils.debug('heals', 'checkHealth leave (non-healer class) ' .. sentFrom)
-        return
-    end
+    -- Only classes that can heal others check the MA and the group (mac:6394); the
+    -- group heal and pet heal checks below still run for everyone, as in the mac.
+    local myClass       = mq.TLO.Me.Class.ShortName() or ''
+    local canHealOthers = HEALING_CLASSES[myClass] or false
 
     -- MA out-of-group heal (healsOn 1 or 3)
-    if healsOnVal == 1 or healsOnVal == 3 then
+    if canHealOthers and (healsOnVal == 1 or healsOnVal == 3) then
         local maName = _state.session.mainAssist
         if maName ~= '' then
             ---@diagnostic disable-next-line: undefined-field
@@ -301,8 +376,11 @@ function Heal.checkHealth(sentFrom)
         end
     end
 
-    -- Group scan: find most-hurt member (healsOn 1 or 2)
-    if (healsOnVal == 1 or healsOnVal == 2) and (mq.TLO.Group.Members() or 0) > 0 then
+    -- Most-hurt scan (healsOn 1 or 2, mac:6405): group members unless XTarHeal is 2
+    -- (XTarget only), then the XTarHealList slots when XTarHeal is on.
+    local xTarHeal  = _state.heal.xTarHeal or 0
+    local inAGroup  = (mq.TLO.Group.Members() or 0) > 0
+    if canHealOthers and (healsOnVal == 1 or healsOnVal == 2) and (inAGroup or xTarHeal > 0) then
         local mostHurtName = ''
         local mostHurtID   = 0
         local mostHurtPct  = 100
@@ -312,7 +390,7 @@ function Heal.checkHealth(sentFrom)
             skipMAID = mq.TLO.Spawn('=' .. _state.session.mainAssist).ID() or 0
         end
 
-        for i = 0, 5 do
+        for i = 0, (inAGroup and xTarHeal ~= 2) and 5 or -1 do
             local m = mq.TLO.Group.Member(i)
             ---@diagnostic disable-next-line: undefined-field
             local mID   = m and m.ID()       or 0
@@ -359,6 +437,24 @@ function Heal.checkHealth(sentFrom)
             ::next_member::
         end
 
+        -- XTarget slots (mac:6446-6460, 6497-6511). The Auto Hater slot holds mobs.
+        if xTarHeal > 0 then
+            for _, slot in ipairs(_state.heal.xTarToHeal or {}) do
+                if slot ~= _state.combat.xTSlot then
+                    local x    = mq.TLO.Me.XTarget(slot)
+                    local xID  = x.ID() or 0
+                    local xPct = x.PctHPs() or 100
+                    if xID > 0 and (x.Type() or ''):lower() ~= 'corpse' and xPct >= 1
+                            and (x.Distance() or 9999) <= _state.heal.singleHealPointRange
+                            and xPct < mostHurtPct then
+                        mostHurtName = x.CleanName() or ''
+                        mostHurtID   = xID
+                        mostHurtPct  = xPct
+                    end
+                end
+            end
+        end
+
         if mostHurtID ~= 0 and mostHurtPct < _state.heal.singleHealPoint then
             singleHeal(mostHurtName, mostHurtID, mostHurtPct, 'SingleHeal')
         end
@@ -374,6 +470,35 @@ function Heal.checkHealth(sentFrom)
             Heal.doGroupHealStuff()
         end
     end
+
+    -- My own pet (mac:6531): any class with a 'pet' heal in the list.
+    if _state.pet and _state.pet.on and (mq.TLO.Me.Pet.ID() or 0) > 0
+            and (mq.TLO.Me.Pet.PctHPs() or 100) < 100 then
+        Heal.doPetHealStuff()
+    end
+    return false
+end
+
+-- Port of Sub CheckHealth (mac:6368). Identifies who needs healing and dispatches singleHeal.
+-- sentFrom: caller tag ('MainLoop', 'CheckForCombat', etc.)
+function Heal.checkHealth(sentFrom)
+    if _state.heal.healsOn == 0 then return end
+    if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
+    if mq.TLO.Me.Invis() and _state.combat.aggroTargetID == '' then return end
+    -- mac:6369 skips only when medding WITH MedCombat; a stale medding flag must not block combat heals.
+    if _state.heal.medding and _state.heal.medCombat then return end
+
+    _utils.debug('heals', 'checkHealth enter ' .. sentFrom)
+
+    -- HealAgain (mac:6383-6385): after a heal lands or a cast is cancelled, check
+    -- again straight away instead of on the next main-loop pass. The mac can also
+    -- repeat after other failed casts and has no limit; this repeats only for those
+    -- two, at most MAX_HEAL_PASSES times in a row.
+    for _ = 1, MAX_HEAL_PASSES do
+        _state.heal.healAgain = false
+        if healPass() or not _state.heal.healAgain then break end
+    end
+    _state.heal.healAgain = false
 
     -- Note: Heal.checkCures() is called from the combat loop (Step 5.6), not here,
     --       because checkCures() calls checkHealth() internally (mac:12617,12763).
