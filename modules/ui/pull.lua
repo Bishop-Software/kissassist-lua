@@ -12,6 +12,45 @@ local _state
 local _levelBuf  -- Pull Level text being edited
 local _pauseBuf  -- Pull Pause text being edited
 
+-- Split a zone list ('a,b|c') into trimmed entries; '' / 'null' -> {}.
+local function splitList(raw)
+    local out = {}
+    if not raw or raw == '' or raw:lower() == 'null' then return out end
+    for entry in raw:gmatch('[^,|]+') do
+        entry = entry:match('^%s*(.-)%s*$')
+        if entry ~= '' then out[#out + 1] = entry end
+    end
+    return out
+end
+
+-- Read-only view of this zone's MobsToPull / MobsToIgnore from
+-- KissAssist_Info.ini. Edit with /addpull and /addignore.
+local function drawWatchLists(s)
+    if not ImGui.CollapsingHeader('Watch Lists') then return end
+    local zone = s.session.zoneName or ''
+    ImGui.TextDisabled(string.format('Zone: %s  (edit with /addpull, /addignore)', zone ~= '' and zone or '?'))
+
+    local raw = s.pull.mobsToPullRaw or 'all'
+    local pulls = raw:lower() == 'all' and {} or splitList(raw)
+    ImGui.Text(string.format('Pull list (%d)', #pulls))
+    if #pulls == 0 then
+        ImGui.TextDisabled('  all mobs')
+    end
+    for _, e in ipairs(pulls) do
+        -- ':' marks a "pull first" entry (used when Pull Ranking is on).
+        local first = e:find(':', 1, true) ~= nil
+        local name  = e:gsub(':', '')
+        ImGui.BulletText(first and (name .. '  (pull first)') or name)
+    end
+
+    local ignores = splitList(s.pull.mobsToIgnore)
+    ImGui.Text(string.format('Ignore list (%d)', #ignores))
+    if #ignores == 0 then
+        ImGui.TextDisabled('  none')
+    end
+    for _, e in ipairs(ignores) do ImGui.BulletText(e) end
+end
+
 function PullUI.drawPull()
     local s = _state
 
@@ -148,6 +187,9 @@ function PullUI.drawPull()
         ImGui.Text(string.format('Pull Arc: %.0f° to %.0f° (facing %.0f°)',
             s.pull.lSide, s.pull.rSide, s.pull.heading))
     end
+
+    ImGui.Spacing()
+    drawWatchLists(s)
 end
 
 function PullUI.init(state)
