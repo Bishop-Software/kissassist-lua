@@ -8,6 +8,8 @@ local Config = require('modules.config')
 local Pull = {}
 local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing, _comms
 
+local PULL_LOC_SLOTS = 5  -- PullLocs1-5 (mac:14976)
+
 -- Classes whose rampage pets CheckRampPets waits on (mac:8965).
 local RAMP_PET_CLASSES = {MAG = true, NEC = true, BST = true}
 
@@ -111,6 +113,68 @@ function Pull.loadZoneLists()
     _state.pull.mobsToPullRaw = raw
     _state.pull.mobsToIgnore  = _utils.zoneIniGet(infoFile, zone, 'MobsToIgnore') or 'null'
     Pull.setRanking(_state.pull.ranking, true)
+    -- No-pull areas, PullLocs1-5 in the zone section (mac:14979).
+    local raws = {}
+    for i = 1, PULL_LOC_SLOTS do
+        local v = _utils.zoneIniGet(infoFile, zone, 'PullLocs' .. i)
+        if Pull.parsePullLoc(v) then
+            raws[i] = v
+        else
+            raws[i] = ''
+            local lv = v and v:lower() or ''
+            if lv ~= '' and lv ~= '0' and lv ~= 'null' then
+                printf('\ayPullLocs%d "%s" is not Y,X|Range, ignoring it.', i, v)
+            end
+        end
+    end
+    _state.pull.pullLocsRaw = raws
+    Pull.buildPullLocAreas()
+end
+
+-- Parse a PullLocs entry 'Y,X|Range' (mac:14978). Returns {y, x, range} or nil
+-- for an empty or malformed entry ('0' and 'null' are empty).
+function Pull.parsePullLoc(raw)
+    if not raw then return nil end
+    local y, x, r = tostring(raw):match('^%s*(%-?[%d%.]+)%s*,%s*(%-?[%d%.]+)%s*|%s*([%d%.]+)%s*$')
+    y, x, r = tonumber(y), tonumber(x), tonumber(r)
+    if not (y and x and r) or r <= 0 then return nil end
+    return { y = y, x = x, range = r }
+end
+
+-- Rebuild the parsed no-pull areas from pull.pullLocsRaw.
+function Pull.buildPullLocAreas()
+    local areas = {}
+    for _, raw in ipairs(_state.pull.pullLocsRaw or {}) do
+        local a = Pull.parsePullLoc(raw)
+        if a then areas[#areas + 1] = a end
+    end
+    _state.pull.pullLocAreas = areas
+end
+
+-- Set no-pull area slot i (1-5) to 'Y,X|Range', or clear it with '' / nil, and
+-- save it to the zone section of KissAssist_Info.ini. Returns false if the
+-- text is not a valid entry.
+function Pull.setPullLoc(i, raw)
+    raw = raw and raw:match('^%s*(.-)%s*$') or ''
+    if raw ~= '' and not Pull.parsePullLoc(raw) then return false end
+    local p = _state.pull
+    p.pullLocsRaw = p.pullLocsRaw or {}
+    p.pullLocsRaw[i] = raw
+    Pull.buildPullLocAreas()
+    local infoFile = _state.session.infoFileName or ''
+    local zone     = _state.session.zoneName     or ''
+    if infoFile ~= '' and zone ~= '' then
+        mq.cmdf('/ini "%s" "%s" "PullLocs%d" "%s"', infoFile, zone, i, raw ~= '' and raw or 'null')
+    end
+    return true
+end
+
+-- True if (y, x) is inside one of the no-pull areas.
+function Pull.inPullLocArea(y, x)
+    for _, a in ipairs(_state.pull.pullLocAreas or {}) do
+        if dist2D(x, y, a.x, a.y) <= a.range then return true end
+    end
+    return false
 end
 
 -- Build MobsToPull / MobsToPullFirst from the raw zone list.
@@ -314,13 +378,7 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     -- [PullAdvanced] section
     _state.pull.pullLocsOn  = Config.get('PullAdvanced', 'PullLocsOn', '0') == '1'
     _state.pull.pathWpCount = tonumber(Config.get('PullAdvanced', 'PullWpCount', '0')) or 0
-    _state.pull.maxWpRange  = tonumber(Config.get('PullAdvanced', 'MaxWpRange',  '0')) or 0
-
-    for i = 1, _state.pull.pathWpCount do
-        _state.pull.pullLocY[i] = tonumber(Config.get('PullAdvanced', 'PullLocY'..i, '0')) or 0.0
-        _state.pull.pullLocX[i] = tonumber(Config.get('PullAdvanced', 'PullLocX'..i, '0')) or 0.0
-        _state.pull.pullLocZ[i] = tonumber(Config.get('PullAdvanced', 'PullLocZ'..i, '0')) or 0.0
-    end
+    -- The no-pull areas themselves are per zone; Pull.loadZoneLists loads them.
 
     Pull.rangeSet()
     Pull.pickMoveUse()
@@ -377,16 +435,10 @@ function Pull.pullValidate(mobID, flag)
         return false
     end
 
-    -- PullLocs proximity: reject mobs too close to any advpath waypoint location.
-    if _state.pull.pullLocsOn and _state.pull.maxWpRange > 0 then
-        local mx, my = sp.X() or 0, sp.Y() or 0
-        for i = 1, #_state.pull.pullLocX do
-            if dist2D(mx, my, _state.pull.pullLocX[i], _state.pull.pullLocY[i])
-               <= _state.pull.maxWpRange then
-                _utils.debug('pull', 'pullValidate: %s near pull loc %d', name, i)
-                return false
-            end
-        end
+    -- PullLocs: skip mobs inside a no-pull area (mac:9494-9502).
+    if _state.pull.pullLocsOn and Pull.inPullLocArea(sp.Y() or 0, sp.X() or 0) then
+        _utils.debug('pull', 'pullValidate: %s is in a no-pull area', name)
+        return false
     end
 
     -- Range from camp + nav-path existence (los and nav modes only).

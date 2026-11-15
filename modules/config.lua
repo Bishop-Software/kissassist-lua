@@ -477,10 +477,10 @@ function Config.migrateIni(state)
         PullOnReturn    = r('Pull','PullOnReturn'),
     }
 
-    -- [PullAdvanced] — waypoint pull locations (numbered array)
+    -- [PullAdvanced] — PullLocsOn turns on the no-pull areas. The areas
+    -- themselves (PullLocs1-5) are per zone in KissAssist_Info.ini (mac:14979).
     cfg.PullAdvanced = {
         PullLocsOn = r('PullAdvanced','PullLocsOn'),
-        PullLocs   = ra('PullAdvanced','PullLocs', 5),
     }
 
     -- [AFKTools] — GM detection and death handling
@@ -611,7 +611,7 @@ function Config.defaultCfg()
             PullTwistOn = '0', PullOnReturn = '0',
         },
         PullAdvanced = {
-            PullLocsOn = '0', PullLocs = emptyArr(5),
+            PullLocsOn = '0',
         },
         Merc = {
             MercOn = '0', MercAssistAt = '95',

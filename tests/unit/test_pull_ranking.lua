@@ -12,7 +12,7 @@ function M.run(TH, MockMQ)
     local zoneList = 'a gnoll pup,:a gnoll shaman,*skeleton,:#Fippy Darkpaw'
     local state = {
         session = { role = 'pullertank', infoFileName = 'info.ini', zoneName = 'qeytoqrg' },
-        pull    = { pullLocY = {}, pullLocX = {}, pullLocZ = {} },
+        pull    = {},
         timers  = {},
         heal    = { medOn = false },
         combat  = { aggroTargetID = '' },
