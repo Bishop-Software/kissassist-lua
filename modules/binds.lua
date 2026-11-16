@@ -224,56 +224,189 @@ local function onAutoFireOn()
     printf('\ayAutoFireOn \ag%d', state.combat.autoFireOn)
 end
 
--- Shared sub-table list used by changevarint and togglevariable to search state.
-local function stateSubtables()
-    return {
-        state.session, state.combat, state.cast, state.pull,
-        state.movement, state.heal, state.buffs, state.pet,
-        state.loot, state.dps, state.misc, state.bard, state.mez,
-    }
-end
+-- ─── /togglevariable and /changevarint ───────────────────────────────────────
+-- Both take the mac's variable names (ChaseAssist, MeleeOn, ...), so aliases left
+-- over from kissassist.mac (/chase, /meleeon, /assistat, ...) keep working.
 
-local function onToggleVariable(varName, _val, _extra)
-    if not varName or varName == '' then
-        printf('\ay/togglevariable <varName>')
-        return
-    end
-    for _, tbl in ipairs(stateSubtables()) do
-        if tbl[varName] ~= nil then
-            local cur = tbl[varName]
-            if type(cur) == 'boolean' then
-                tbl[varName] = not cur
-                printf('\ay%s = \at%s', varName, tostring(tbl[varName]))
-            elseif type(cur) == 'number' then
-                tbl[varName] = cur == 0 and 1 or 0
-                printf('\ay%s = \at%d', varName, tbl[varName])
-            else
-                printf('\aytogglervariable: %s is not toggleable (type: %s)', varName, type(cur))
+-- State sub-tables searched for a variable, in order.
+local VAR_TABLES = {
+    'session', 'combat', 'cast', 'pull', 'movement', 'heal', 'buffs', 'pet',
+    'loot', 'dps', 'misc', 'bard', 'mez', 'afk', 'merc', 'charm', 'debuff', 'cond',
+}
+
+-- Mac names the port spells differently (lowercase mac name -> table, field).
+-- Everything else is found by a case-insensitive field search.
+local MAC_VAR_NAMES = {
+    peton      = { 'pet', 'on' },     pettoyson   = { 'pet', 'toysOn' },
+    pethold    = { 'pet', 'holdOn' }, petcombaton = { 'pet', 'combatOn' },
+    looton     = { 'loot', 'on' },    afktoolson  = { 'afk', 'on' },
+    mezon      = { 'mez', 'on' },     conon       = { 'cond', 'on' },
+    charmon    = { 'charm', 'on' },   mercon      = { 'merc', 'on' },
+    debuffon   = { 'debuff', 'on' },  pullhold    = { 'pull', 'hold' },
+    dpspaused  = { 'dps', 'paused' },
+    -- session.assistAt is only the command-line value; combat uses this one
+    assistat   = { 'combat', 'assistAt' },
+}
+
+-- Mac variables that have no counterpart in the port.
+local UNSUPPORTED_VARS = {
+    dpsmeter = true, dpsspam = true, dpswriteon = true, movewhenhit = true,
+}
+
+-- Find a variable by its mac or port name. Returns table, field (or nil).
+local function findVar(name)
+    local lname = name:lower()
+    local alias = MAC_VAR_NAMES[lname]
+    if alias and state[alias[1]] then return state[alias[1]], alias[2] end
+    for _, sub in ipairs(VAR_TABLES) do
+        local t = state[sub]
+        if t then
+            if t[name] ~= nil then return t, name end
+            for k in pairs(t) do
+                if type(k) == 'string' and k:lower() == lname then return t, k end
             end
-            return
         end
     end
-    printf('\aytogglesvariable: unknown variable \at%s', varName)
 end
 
-local function onChangeVarInt(varName, value, _c, _d)
-    if not varName or varName == '' then
-        printf('\ay/changevarint <varName> <value>')
-        return
+-- Convert a value to the field's type. on/1 = on, off/0/empty = off, another
+-- number is used as is (mac:8378-8406). Returns the new value and on/off.
+local function convertValue(cur, field, arg)
+    local a   = tostring(arg or ''):match('^%s*(.-)%s*$')
+    local la  = a:lower()
+    local num = tonumber(a)
+    local on
+    if la == 'on' then on = true
+    elseif la == 'off' or la == '' or la == 'null' then on = false
+    elseif num then on = num > 0
+    else on = true end
+    if type(cur) == 'boolean' then return on, on end
+    if type(cur) == 'number' then
+        if num then return num, num > 0 end
+        if not on then return 0, false end
+        return field == 'castingInterruptOn' and 62 or 1, true  -- 62 = the mac's "all" bitmask
     end
-    local n = tonumber(value)
-    if not n then
-        printf('\aychangevarint: value must be a number, got: %s', tostring(value))
-        return
-    end
-    for _, tbl in ipairs(stateSubtables()) do
-        if tbl[varName] ~= nil then
-            tbl[varName] = n
-            printf('\ay%s = \at%d', varName, n)
-            return
+    if on and a ~= '' and la ~= 'on' then return a, true end
+    return on and '1' or '0', on
+end
+
+local function stickOff()
+    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+end
+
+-- Side effects of turning a variable on/off (mac Bind_ToggleVariable 8406-8470,
+-- Bind_ChangeVarInt 11256-11335). persist: also write the change to the INI.
+local function varSideEffects(field, on, whoToChase, persist)
+    local mv = state.movement
+    if field == 'chaseAssist' then
+        if on then
+            if whoToChase and whoToChase ~= '' and whoToChase ~= 'null'
+               and whoToChase ~= mv.whoToChase then
+                mv.whoToChase = whoToChase
+                printf('\ayI Will Now Chase %s', whoToChase)
+            end
+            if mv.returnToCamp then
+                mv.returnToCamp = false
+                if persist then _config.set('General', 'ReturnToCamp', '0') end
+            end
+            if (mq.TLO.Me.Pet.ID() or 0) > 0 and (mq.TLO.Me.Pet.Stance() or ''):upper() ~= 'FOLLOW' then
+                mq.cmd('/pet follow')
+            end
+        else
+            stickOff()
+        end
+    elseif field == 'returnToCamp' and on then
+        -- New camp right here (mac:8417-8432)
+        mv.campX, mv.campY, mv.campZ = mq.TLO.Me.X(), mq.TLO.Me.Y(), mq.TLO.Me.FloorZ()
+        mv.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
+        mv.campZone     = mq.TLO.Zone.ID()
+        mv.campZoneName = mq.TLO.Zone.ShortName() or ''
+        state.pull.mapSet = false
+        if state.session.chaseAssist then
+            state.session.chaseAssist = false
+            _config.set('General', 'ChaseAssist', '0')  -- the mac saves this one (mac:8425)
+            _config.save()
+            stickOff()
+            printf('\ay>> ChaseAssist Off')
+        end
+        printf('\ay>> New camp set %.1f, %.1f', mv.campY or 0, mv.campX or 0)
+    elseif field == 'autoRezAll' then
+        if on then printf('\ayNow Rezing Everyone.')
+        else
+            state.heal.corpseRezCheck = 'null'
+            printf('\ayNo longer Rezing Everyone.')
+        end
+    elseif field == 'targetSwitchingOn' and on and not state.session.iAmMA then
+        state.combat.targetSwitchingOn = false  -- MA only (mac:8460)
+    elseif field == 'maxRadius' then
+        mv.campRadiusExceed = (state.pull.maxRadius or 0) + 200  -- mac:11277
+    elseif field == 'xTarHeal' then
+        if (state.heal.healsOn or 0) == 0 then
+            state.heal.xTarHeal = 0
+            printf('\ayTurn on Heals first. Setting XTarget Healing OFF!')  -- mac:11313
+        else
+            require('modules.healing').setXTargetHealList(state.heal.xTarHealList)
         end
     end
-    printf('\aychangevarint: unknown variable \at%s', varName)
+end
+
+-- /togglevariable <name> [on|off|1|0|value] [who]. Port of Bind_ToggleVariable
+-- (mac:8371). As in the mac, no value turns it off. Not saved to the INI.
+-- 'waithere' stops chasing and returning to camp.
+local function onToggleVariable(varName, val, extra)
+    if not varName or varName == '' then
+        printf('\ay/togglevariable <name> [on|off|value]')
+        return
+    end
+    if varName:lower() == 'waithere' then  -- mac:8473-8477
+        state.session.chaseAssist   = false
+        state.movement.returnToCamp = false
+        stickOff()
+        return
+    end
+    if UNSUPPORTED_VARS[varName:lower()] then
+        printf('\ay%s is not supported in the Lua port.', varName)
+        return
+    end
+    local tbl, field = findVar(varName)
+    if not tbl then
+        printf('\ay/togglevariable: unknown variable \at%s', varName)
+        return
+    end
+    local value, on = convertValue(tbl[field], field, val)
+    tbl[field] = value
+    varSideEffects(field, on, extra, false)
+    printf('\ay>> Setting: (%s) to (%s) (%s)', varName, on and 'On' or 'Off', tostring(tbl[field]))
+end
+
+-- /changevarint <Section> <Name> <value>: set a variable and save it to the INI.
+-- Port of Bind_ChangeVarInt (mac:11237). The older '/changevarint <name> <value>'
+-- form still works, without saving.
+local function onChangeVarInt(a1, a2, a3)
+    local section, name, value
+    if a3 and a3 ~= '' then
+        section, name, value = a1, a2, a3
+    else
+        name, value = a1, a2
+    end
+    if not name or name == '' or not value or value == '' then
+        printf('\ay/changevarint <Section> <Name> <value>')
+        return
+    end
+    local tbl, field = findVar(name)
+    if not tbl then
+        printf('\ay/changevarint: unknown variable \at%s', name)
+        return
+    end
+    local old = tbl[field]
+    local newValue, on = convertValue(old, field, value)
+    tbl[field] = newValue
+    printf('\ayChanging %s from %s to %s', name, tostring(old), tostring(newValue))
+    if section then
+        _config.set(section, name, tostring(value))
+    end
+    varSideEffects(field, on, nil, section ~= nil)
+    if section then _config.save() end
 end
 
 -- ─── Movement / camp ──────────────────────────────────────────────────────────
