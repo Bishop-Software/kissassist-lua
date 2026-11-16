@@ -494,6 +494,8 @@ local State = {
         on        = 0,    -- 0=off 1=both 2=stranger-only 3=GM-only (mac AFKToolsOn)
         gmAction  = 1,    -- 1=hold 2=endmacro 3=unload 4=quit (mac AFKGMAction)
         pcRadius  = 500,  -- MQ2Posse camp radius in units (mac AFKPCRadius)
+        campOnDeath = 0,  -- 0=off 1=camp after 10 min out of the camp zone 2=camp at once (mac CampOnDeath)
+        waitingToCamp = false, -- CampOnDeath 1: the "waiting" message has been printed
     },
 
     merc = {

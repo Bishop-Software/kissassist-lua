@@ -17,6 +17,7 @@ function Afk.init(state, _utils, combat, comms, config)
     _state.afk.on       = tonumber(_config.get('AFKTools', 'AFKToolsOn',  '1')) or 1
     _state.afk.gmAction = tonumber(_config.get('AFKTools', 'AFKGMAction', '1')) or 1
     _state.afk.pcRadius = tonumber(_config.get('AFKTools', 'AFKPCRadius', '500')) or 500
+    _state.afk.campOnDeath = tonumber(_config.get('AFKTools', 'CampOnDeath', '0')) or 0
 
     -- Set MQ2Posse camp radius if stranger detection is active (mac:16412-16414)
     if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
@@ -26,8 +27,46 @@ function Afk.init(state, _utils, combat, comms, config)
     end
 end
 
+-- Camp out when not in the camp zone — mirrors Sub DoICampA (mac:6199).
+-- CampOnDeath 1 waits for the 10-minute timer set on zoning (timers.campOnDeath,
+-- mac:11125) without blocking the loop; 2 camps at once. Returns true when camping.
+function Afk.doICamp()
+    local mode = _state.afk.campOnDeath
+    if mode == 1 then
+        local left = (_state.timers.campOnDeath or 0) - os.clock()
+        if left > 0 then
+            if not _state.afk.waitingToCamp then
+                printf('yCamping Due to Not in Camp Zone. Waiting for %d Seconds', math.ceil(left))
+                _state.afk.waitingToCamp = true
+            end
+            return false
+        end
+        printf('rTime Expired. Camping Now.')
+    elseif mode == 2 then
+        printf('rI am not where I am suppose to be. Time to camp out.')
+    else
+        return false
+    end
+    _state.afk.waitingToCamp = false
+    if _state.session.iAmABard then mq.cmd('/medley stop') end  -- CastBardCheck
+    mq.cmd('/camp desktop')
+    mq.delay(10000)
+    _state.terminate = true
+    return true
+end
+
 -- Main AFK safety monitor — mirrors Sub AFKTools (mac:11665).
 function Afk.check()
+    -- Out of the camp zone: only CampOnDeath runs (mac:11668-11671)
+    if _state.movement.campZone ~= mq.TLO.Zone.ID() then
+        if _state.afk.campOnDeath ~= 0 then Afk.doICamp() end
+        return
+    end
+    if _state.afk.waitingToCamp then
+        printf('gBack in the camp zone. Aborting! Camping.')
+        _state.afk.waitingToCamp = false
+    end
+
     -- Skip while in active combat with heals running (mac:11672)
     if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= '' then return end
 

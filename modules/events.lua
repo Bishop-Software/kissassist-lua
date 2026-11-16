@@ -270,6 +270,7 @@ local function onZoned(_, message)
     end
     state.combat.eventFlag  = true
     state.timers.justZoned  = os.clock() + 10  -- 200 ticks * 50ms
+    state.timers.campOnDeath = os.clock() + 600  -- CampOnDeathTimer 10m (mac:11125)
     local zoneID            = mq.TLO.Zone.ID()
     state.misc.dmz          = DMZ_ZONES[zoneID] == true
     -- Recompute the Info INI section (it can change between instanced and normal
@@ -282,6 +283,9 @@ local function onZoned(_, message)
             -- Active camp in another zone — pause RTC and remember to restore
             state.movement.returnToCamp = false
             state.movement.rememberCamp = true
+        elseif state.session.iAmDead and state.afk.campOnDeath ~= 0 then  -- luacheck: ignore 542
+            -- Died and respawned elsewhere: keep the camp zone so CampOnDeath
+            -- camps out, as the mac's CampZone never follows a zone (mac:6199)
         else
             -- No active camp — track the character to the new zone
             state.movement.campZone     = zoneID
