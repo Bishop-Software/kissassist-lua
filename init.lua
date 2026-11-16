@@ -102,6 +102,9 @@ end
 
 -- Validate required plugins; continue even if some are missing (warn only)
 Config.checkPlugins()
+-- Check the INI's spell/AA/disc/item names, as the mac does at startup (mac:285, 15009-15012)
+printf('Checking your ini file for errors.')
+Config.scanIni('all')
 
 -- Register all game text events and in-game command binds
 Events.register(State, Utils, Movement, Charm, Comms)

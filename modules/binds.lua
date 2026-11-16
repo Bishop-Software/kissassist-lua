@@ -888,7 +888,9 @@ local function onAddFriend()
     printf('>> Added %s to Posse list.', name)
 end
 
-local function onKissCheck()
+-- /kisscheck [sections]: config summary, then the mac's INI spell-name check
+-- (Bind_KissCheck -> ScanIni, mac:11464). Sections default to all.
+local function onKissCheck(...)
     printf('----------- KissAssist Config Check -----------')
     printf('Role: \at%-12s\aw  MA: \at%-20s\aw  AssistAt: \at%d%%',
         state.session.role, state.session.mainAssist, state.session.assistAt)
@@ -906,6 +908,7 @@ local function onKissCheck()
         tostring(state.session.chaseAssist), state.movement.whoToChase)
     printf('INI: \at%s', state.session.iniFileName)
     printf('-----------------------------------------------')
+    _config.scanIni(table.concat({ ... }, '|'))
 end
 
 -- The mac's /kasettings was a chat-menu settings editor; the KissAssist window

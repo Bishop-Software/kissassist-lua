@@ -763,6 +763,110 @@ function Config.load(state)
     Config.migrateDebuffSection()
 end
 
+-- ---------------------------------------------------------------------------
+-- INI spell-name check — mirrors Sub ScanIni (mac:12972-13088), run by
+-- /kisscheck and at startup (mac:285, 15009-15012).
+-- ---------------------------------------------------------------------------
+
+Config.SCAN_SECTIONS = { 'Buffs', 'DPS', 'Burn', 'Heals', 'AE', 'Cures', 'Pet', 'PetBuffs', 'GoM', 'Mez', 'Aggro', 'Pull' }
+
+local function arg(entry, n)
+    local i = 0
+    for part in (entry .. '|'):gmatch('([^|]*)|') do
+        i = i + 1
+        if i == n then return part end
+    end
+    return ''
+end
+
+-- The entries one section checks, in INI order: { {key, value}, ... }.
+local function scanEntries(section, summoned)
+    local out = {}
+    local function addArr(sec, key)
+        for i, v in ipairs(Config.get(sec, key, {}) or {}) do out[#out + 1] = { key .. i, v } end
+    end
+    local function add(sec, key) out[#out + 1] = { key, Config.get(sec, key, '') } end
+    if section == 'Buffs' then
+        for i, v in ipairs(Config.get('Buffs', 'Buffs', {}) or {}) do
+            local a2 = arg(v, 2):lower()
+            -- Summon/remove/begfor entries and the items they summon aren't
+            -- spells to look up (mac:13024-13031).
+            if a2 ~= 'summon' and a2 ~= 'remove' and a2 ~= 'begfor' and not summoned[arg(v, 1):lower()] then
+                out[#out + 1] = { 'Buffs' .. i, v }
+            end
+        end
+    elseif section == 'PetBuffs' then addArr('Pet', 'PetBuffs')
+    elseif section == 'GoM' then addArr('GoM', 'GoMSpell')
+    elseif section == 'Pet' then add('Pet', 'PetSpell'); add('Pet', 'PetShrinkSpell'); add('Pet', 'PetBreakMezSpell')
+    elseif section == 'Mez' then add('Mez', 'MezSpell'); add('Mez', 'MezAESpell')
+    elseif section == 'Pull' then add('Pull', 'PullWith')
+    else addArr(section, section)
+    end
+    return out
+end
+
+-- Is name something this character can use: spell (any rank), AA, disc, item or skill?
+local function canUse(name)
+    local me = mq.TLO.Me
+    local base = name:match('^(.-) Rk%.') or name
+    local rankName = mq.TLO.Spell(base).RankName() or base
+    if (me.Book(base)() or 0) ~= 0 or (me.Book(rankName)() or 0) ~= 0 then return true end
+    if (me.AltAbility(base).ID() or 0) ~= 0 then return true end
+    if me.CombatAbility(base)() ~= nil or me.CombatAbility(rankName)() ~= nil then return true end
+    if (mq.TLO.FindItem('=' .. name).ID() or 0) ~= 0 then return true end
+    if name:lower() == 'banestrike' then return true end
+    return (me.Skill(name)() or 0) > 0
+end
+
+-- sections: nil/'all' for every section, else names separated by '|' or spaces.
+-- Returns the total number of errors found.
+-- Unit tests: replace the loaded config table.
+function Config._setCfg(cfg) _cfg = cfg end
+
+function Config.scanIni(sections)
+    local list = Config.SCAN_SECTIONS
+    if sections and sections ~= '' and sections:lower() ~= 'all' and sections:lower() ~= 'null' then
+        list = {}
+        for s in sections:gmatch('[^|%s]+') do
+            for _, known in ipairs(Config.SCAN_SECTIONS) do
+                if known:lower() == s:lower() then list[#list + 1] = known end
+            end
+        end
+    end
+    local summoned = {}
+    for _, v in ipairs(Config.get('Buffs', 'Buffs', {}) or {}) do
+        if arg(v, 2):lower() == 'summon' and arg(v, 3) ~= '' then summoned[arg(v, 3):lower()] = true end
+    end
+    local total = 0
+    for _, section in ipairs(list) do
+        printf('---------------->> Scanning %s <<----------------', section)
+        local entries, errors = 0, 0
+        for _, kv in ipairs(scanEntries(section, summoned)) do
+            local key, raw = kv[1], tostring(kv[2] or '')
+            local name = arg(raw, 1)
+            local low = name:lower()
+            if name == '' or low == 'null' or name:sub(1, 1) == ';' then goto continue end
+            entries = entries + 1
+            if low:find('command:', 1, true) then goto continue end
+            if section == 'GoM' and low:find('gift of mana', 1, true) then goto continue end
+            if section == 'AE' and low:find('burn', 1, true) then goto continue end
+            if section == 'Pull' and (low == 'melee' or low == 'pet') then goto continue end
+            if not canUse(name) then
+                printf('\ar...ERROR: %s=%s unable to find as a AA, Combat Ability, Item, Skill, or Spell', key, name)
+                errors = errors + 1
+            end
+            ::continue::
+        end
+        if entries == 0 then
+            printf('-- Nothing defined in this section')
+        elseif errors == 0 then
+            printf('-- No Spelling Errors or Missing Items Detected')
+        end
+        total = total + errors
+    end
+    return total
+end
+
 -- Load and validate required plugins.
 local REQUIRED_PLUGINS = {
     'MQ2Exchange', 'MQ2MoveUtils', 'MQ2Posse', 'MQ2Rez',

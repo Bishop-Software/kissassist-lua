@@ -223,6 +223,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.afk' },
     },
+    {
+        name         = 'test_config_scan_ini',
+        path         = 'tests.unit.test_config_scan_ini',
+        useMock      = true,
+        clearModules = { 'modules.config' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
