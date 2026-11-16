@@ -217,6 +217,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.movement', 'modules.config' },
     },
+    {
+        name         = 'test_afk_camp_on_death',
+        path         = 'tests.unit.test_afk_camp_on_death',
+        useMock      = true,
+        clearModules = { 'modules.afk' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
