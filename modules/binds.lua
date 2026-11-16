@@ -490,6 +490,7 @@ local function onSetPullArc(width, fdir)
     if w <= 0 or w > 359 then
         if state.pull.pullArcWidth > 0 then printf('\ayTurning off Directional Pulling.') end
         state.pull.pullArcWidth = 0
+        require('modules.pull').clearArc()
         save()
         return
     end
@@ -503,6 +504,7 @@ local function onSetPullArc(width, fdir)
         if not facing then
             printf('\arInvalid Direction. Turning off Directional Pulling.')
             state.pull.pullArcWidth = 0
+            require('modules.pull').clearArc()
             save()
             return
         end

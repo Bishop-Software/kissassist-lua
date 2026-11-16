@@ -177,6 +177,7 @@ local State = {
         maxZRange        = 50,      -- set from INI [Pull] MaxZRange
         meleeStick       = false,  -- set from INI [Pull] PullMeleeStick (melee pull uses /stick)
         mapSet           = false,  -- pull/camp radii drawn on the MQ2Map map (mac MapSet)
+        arcMarks         = {},     -- "y x" of the pull arc's /maploc markers (Pull.drawArc)
         radiusToUse      = 90,     -- [Pull] PullRadiusToUse: % of the pull method's range used (mac default 90)
         min              = 1,      -- bottom of the pull level range (from [Pull] PullLevel)
         levelMode        = 'off',  -- PullLevel mode: off/fixed/linked/auto

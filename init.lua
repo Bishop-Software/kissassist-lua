@@ -274,5 +274,6 @@ end
 
 Events.unregister()
 Binds.unregister()
+Pull.clearArc()  -- remove the pull arc's map markers
 if State.session.iAmABard then Bard.stopMedley() end
 printf('\ayKissAssist \aw%s stopped.', VERSION)
