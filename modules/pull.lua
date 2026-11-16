@@ -47,12 +47,17 @@ local function inNameList(list, name)
     return false
 end
 
--- Heading in degrees from (fromY, fromX) to (toY, toX), same convention as MQ's
--- Spawn.HeadingTo / Me.Heading (0 = north, clockwise).
+-- Compass heading in degrees from (fromY, fromX) to (toY, toX): 0 = north,
+-- clockwise (90 = east), the same as Me.Heading.Degrees and the arc facing.
+-- MQ's raw HeadingTo value (MQ2SpawnType.cpp) runs counter-clockwise; its
+-- .Degrees member, which the mac reads (mac:14515), is 360 minus that. EQ's +X
+-- is west, so the raw value alone mirrors east and west.
 function Pull.headingTo(fromY, fromX, toY, toX)
+    -- Computed directly (east = fromX - toX, north = toY - fromY) rather than as
+    -- 360 - raw, which leaves 360 instead of 0 due north from rounding.
     ---@diagnostic disable-next-line: deprecated
-    local deg = math.deg(math.atan2(fromY - toY, toX - fromX)) + 90
-    if deg < 0 then deg = deg + 360 elseif deg >= 360 then deg = deg - 360 end
+    local deg = math.deg(math.atan2(fromX - toX, toY - fromY))
+    if deg < 0 then deg = deg + 360 end
     return deg
 end
 

@@ -1,6 +1,7 @@
 -- tests/unit/test_pull_arc.lua
 -- Pull arc math (#226): Pull.pullAngles mirrors Sub SetPullAngles (mac:14490);
--- Pull.headingTo uses MQ's HeadingTo convention (0 = +Y, 90 = +X, clockwise).
+-- Pull.headingTo returns MQ's HeadingTo.Degrees: compass, clockwise (0 = north
+-- = +Y, 90 = east = -X; EQ's +X is west).
 local M = {}
 
 function M.run(TH, MockMQ)
@@ -10,10 +11,10 @@ function M.run(TH, MockMQ)
 
     -- headingTo: camp at origin.
     TH.assert_near(Pull.headingTo(0, 0, 100, 0),    0, 0.001, 'headingTo: +Y -> 0')
-    TH.assert_near(Pull.headingTo(0, 0, 0, 100),   90, 0.001, 'headingTo: +X -> 90')
-    TH.assert_near(Pull.headingTo(0, 0, -100, 0), 180, 0.001, 'headingTo: -Y -> 180')
-    TH.assert_near(Pull.headingTo(0, 0, 0, -100), 270, 0.001, 'headingTo: -X -> 270')
-    TH.assert_near(Pull.headingTo(0, 0, 100, 100), 45, 0.001, 'headingTo: +Y+X -> 45')
+    TH.assert_near(Pull.headingTo(0, 0, 0, 100),  270, 0.001, 'headingTo: +X (west) -> 270')
+    TH.assert_near(Pull.headingTo(0, 0, -100, 0), 180, 0.001, 'headingTo: -Y (south) -> 180')
+    TH.assert_near(Pull.headingTo(0, 0, 0, -100),  90, 0.001, 'headingTo: -X (east) -> 90')
+    TH.assert_near(Pull.headingTo(0, 0, 100, 100), 315, 0.001, 'headingTo: +Y+X (northwest) -> 315')
     TH.assert_near(Pull.headingTo(50, 50, 150, 50), 0, 0.001, 'headingTo: offset camp')
 
     -- pullAngles: no wrap.
