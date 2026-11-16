@@ -826,15 +826,20 @@ function Pull.rangeSet()
         elseif second == '' then
             set((item.Spell.Range() or 0) * pct, with)
         end
-    elseif me.CombatAbility(with)() or me.Book(with)() or me.AltAbility(with)() then
-        if me.AltAbility(with)() then
-            set((me.AltAbility(with).Spell.Range() or 0) * pct, with)
-        else
-            set((mq.TLO.Spell(with).MyRange() or 0) * pct, with)
+    elseif me.AltAbility(with)() then
+        set((me.AltAbility(with).Spell.Range() or 0) * pct, with)
+    else
+        -- A base name like 'Terror of Ander' may only be in the book as Rk. II/III.
+        -- Resolve to the owned rank and keep that as PullWith, so the ready check
+        -- and the cast use the exact name too.
+        local ranked = _utils.resolveSpellRank(with)
+        if ranked == with then ranked = mq.TLO.Spell(with).RankName() or with end
+        if me.CombatAbility(ranked)() or me.Book(ranked)() then
+            set((mq.TLO.Spell(ranked).MyRange() or 0) * pct, ranked)
+        elseif _lastRange ~= 'unknown|' .. with then
+            _lastRange = 'unknown|' .. with
+            printf('\arUnknown PullWith setting: %s', with)
         end
-    elseif _lastRange ~= 'unknown|' .. with then
-        _lastRange = 'unknown|' .. with
-        printf('\arUnknown PullWith setting: %s', with)
     end
 end
 
