@@ -191,6 +191,12 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
+-- Open the KissAssist window (used by /kasettings, which replaces the mac's
+-- chat-menu settings editor).
+function UI.show()
+    _open = true
+end
+
 function UI.init(state)
     _state = state
 

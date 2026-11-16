@@ -393,9 +393,20 @@ end
 local function onGainSomething(_, text)
     utils.debug('general', 'GainSomething: ' .. tostring(text))
     state.combat.eventFlag = true
+    local t = tostring(text or ''):lower()
     -- Level up moves an auto/linked pull level range (mac:11396).
-    if tostring(text or ''):lower():find('level', 1, true) then
+    if t:find('level', 1, true) then
         require('modules.pull').levelGained()
+    end
+    -- Tell the group (mac:11392-11404). The mac only does this with a chat relay
+    -- on (EQBC/IRC/DanNet); in the port that's DanNet.
+    if _comms and state.session.danNetOn then
+        local me = mq.TLO.Me.Name() or ''
+        if t:find('ability point', 1, true) then
+            _comms.announce(string.format('%s gained an AA, now has %d unspent', me, mq.TLO.Me.AAPoints() or 0))
+        elseif t:find('level', 1, true) then
+            _comms.announce(string.format('%s gained a level, now is Level %d', me, mq.TLO.Me.Level() or 0))
+        end
     end
 end
 
@@ -574,7 +585,7 @@ end
 local function onTaskUpdate(_, name)
     utils.debug('general', 'TaskUpdate: ' .. tostring(name))
     state.combat.eventFlag = true
-    -- Broadcast in M9 (comms.lua)
+    if _comms then _comms.announce(string.format('Task updated...(%s)', tostring(name or '')), 't') end  -- mac:11385
 end
 
 local function onMLogOff()
