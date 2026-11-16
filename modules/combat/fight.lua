@@ -133,6 +133,19 @@ local function firstEngage(myID, role)
         end
     end
 
+    -- Face the mob once on engage, not every tick: the mac does it before its
+    -- fight loop (mac:1094). Facing every tick fought a snaproll/behind stick
+    -- and spun the character. Skipped when MQ2Melee handles facing.
+    local faceMob = _state.movement.faceMobOn or 0
+    if faceMob > 0 and not _state.combat.useMQ2Melee then
+        local meState = mq.TLO.Me.State() or ''
+        if meState == 'STAND' or (mq.TLO.Me.Mount.ID() or 0) ~= 0 then
+            local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
+            local fsp = mq.TLO.Spawn('id ' .. myID)
+            mq.cmdf('/squelch /face %s loc %f,%f', faceMode, fsp.Y() or 0, fsp.X() or 0)
+        end
+    end
+
     -- Look level when not underwater (mac:1095)
     if not mq.TLO.Me.FeetWet() then mq.cmd('/squelch /look 0') end
 
@@ -233,21 +246,6 @@ local function tickPreamble(myID, fromWhere)
                  or mq.TLO.Window('CastingWindow').Open()) then
         mq.delay(50)
         return CONTINUE
-    end
-
-    -- Face mob every tick when enabled (mac:1094); skip when MQ2Melee handles facing
-    do
-        local faceMob = _state.movement.faceMobOn or 0
-        if faceMob > 0 and myID ~= 0 and not _state.combat.useMQ2Melee then
-            local meState = mq.TLO.Me.State() or ''
-            if meState == 'STAND' or (mq.TLO.Me.Mount.ID() or 0) ~= 0 then
-                local faceMode = (faceMob == 2) and 'nolook' or 'fast nolook'
-                local fsp = mq.TLO.Spawn('id ' .. myID)
-                local mobY = fsp and fsp.Y() or 0
-                local mobX = fsp and fsp.X() or 0
-                mq.cmdf('/squelch /face %s loc %f,%f', faceMode, mobY, mobX)
-            end
-        end
     end
 
     -- Burn if flagged (mac:1139-1141)
