@@ -1671,7 +1671,7 @@ local function executePull(mobID)
                 -- Extend timer while actively navigating.
                 if moveUse == 'nav' then
                     if mq.TLO.Navigation.PathExists('id ' .. mobID)() then
-                        mq.cmd('/nav id ' .. mobID)
+                        mq.cmd('/squelch /nav id ' .. mobID)  -- re-issued every pass (mac:10434)
                     end
                     if mq.TLO.Navigation.Active() then
                         s.timers.pullTimer = s.timers.pullTimer + 0.5
