@@ -612,9 +612,12 @@ function Pet.petToys(petName)
         local rawEntry = s.pet.toysArray[i] or ''
         if rawEntry == 'Null' or rawEntry == '' then goto continue end
 
-        -- condNo / |cond evaluation deferred to M10 — skip |cond entries silently
+        -- A |condN entry is only given while condition N is true (mac:5639-5652);
+        -- Cond.eval is true for everything when ConOn is off, as in the mac.
+        local condNo = tonumber(rawEntry:lower():match('|cond(%d+)')) or 0
+        if condNo > 0 and not require('modules.cond').eval(condNo) then goto continue end
         -- Strip |cond... suffix
-        local fullText = rawEntry:match('^(.-)%|cond') or rawEntry
+        local fullText = rawEntry:match('^(.-)%|[Cc][Oo][Nn][Dd]') or rawEntry
 
         -- Parse pipe-delimited: PetToySpell|Item1|Item2...
         local parts = {}

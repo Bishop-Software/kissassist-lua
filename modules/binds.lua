@@ -648,7 +648,23 @@ end
 
 -- Mirrors Bind_AddToIgnore (kissassist.mac:8266). Appends name to zone-scoped MobsToIgnore
 -- in KissAssist_Info.ini (shared across all characters in the zone), comma-delimited.
-local function onAddIgnore(name, _byID)
+-- '/addignore <id> 1' instead ignores that one spawn ID for this session (mac:8303-8310).
+local function onAddIgnore(name, byID)
+    if tonumber(byID) == 1 then
+        local id = math.floor(tonumber(name) or 0)
+        local sp = mq.TLO.Spawn('id ' .. id)
+        if id <= 0 or (sp.Type() or ''):upper() ~= 'NPC' then
+            printf('\ayNo NPCs with ID: (%s) detected. Nothing added to list.', tostring(name))
+            return
+        end
+        local list = state.pull.mobsToIgnoreByID or 'null'
+        if list == 'null' or list == '' then list = '|' end
+        if not list:find('|' .. id .. '|', 1, true) then
+            state.pull.mobsToIgnoreByID = list .. id .. '|'
+            printf('\ayIgnoring \at%s\ay (ID %d) for this session.', sp.CleanName() or '?', id)
+        end
+        return
+    end
     if not name or name == '' then
         name = mq.TLO.Target.CleanName() or ''
         if name == '' then
@@ -892,8 +908,11 @@ local function onKissCheck()
     printf('-----------------------------------------------')
 end
 
+-- The mac's /kasettings was a chat-menu settings editor; the KissAssist window
+-- replaces it, so this just opens the window (/kaui toggles it).
 local function onKaSettings(_cmd1, _cmd2, _skipIni)
-    printf('>> KaSettings — M11 (ImGui UI)')
+    require('modules.ui').show()
+    printf('\ay>> Settings are in the KissAssist window (/kaui to toggle it).')
 end
 
 local function onWriteSpells(_quiet)
