@@ -16,13 +16,18 @@ function M.run(TH, MockMQ)
         combat  = { aggroTargetID = '' },
         pet     = { attackRange = 100 },
     }
-    Pull.init(state, { debug = function() end, zoneIniGet = function() return nil end })
+    Pull.init(state, {
+        debug = function() end,
+        zoneIniGet = function() return nil end,
+        resolveSpellRank = require('modules.utils').resolveSpellRank,
+    })
     local p = state.pull
 
     local function callable(v) return function() return v end end
 
     -- env = { items = { [name] = {type=, range=, spellRange=, ammo=bool, count=} },
-    --         book = { [name]=myRange }, aa = { [name]=range }, disc = { [name]=myRange } }
+    --         book = { [name]=myRange }, aa = { [name]=range }, disc = { [name]=myRange },
+    --         rank = { [baseName]=rankName } }
     local function setEnv(env)
         MockMQ.reset()
         local items = env.items or {}
@@ -39,7 +44,7 @@ function M.run(TH, MockMQ)
                 Spell    = { Range = callable(it.spellRange) },
             }
         end)
-        local book, aa, disc = env.book or {}, env.aa or {}, env.disc or {}
+        local book, aa, disc, rank = env.book or {}, env.aa or {}, env.disc or {}, env.rank or {}
         MockMQ.set('TLO.Me.Book', function(n) return callable(book[n] and 1 or nil) end)
         MockMQ.set('TLO.Me.CombatAbility', function(n) return callable(disc[n] and 1 or nil) end)
         MockMQ.set('TLO.Me.AltAbility', function(n)
@@ -47,7 +52,7 @@ function M.run(TH, MockMQ)
                 { __call = function() return aa[n] and 1 or nil end })
         end)
         MockMQ.set('TLO.Spell', function(n)
-            return { MyRange = callable(book[n] or disc[n]) }
+            return { MyRange = callable(book[n] or disc[n]), RankName = callable(rank[n]) }
         end)
     end
 
@@ -74,6 +79,14 @@ function M.run(TH, MockMQ)
     check('Throw', 90, 90, 'Throw', 'disc MyRange x 90%')
     setEnv({ aa = { ['Dire Charm'] = 250 } })
     check('Dire Charm', 100, 250, 'Dire Charm', 'AA spell range x 100%')
+
+    -- Base name with only a ranked version owned: resolve to that rank.
+    setEnv({ book = { ['Terror of Ander Rk. II'] = 200 } })
+    check('Terror of Ander', 90, 180, 'Terror of Ander Rk. II', 'spell Rk. II from base name')
+    setEnv({ book = { ['Terror of Ander Rk. III'] = 200 } })
+    check('Terror of Ander', 90, 180, 'Terror of Ander Rk. III', 'spell Rk. III from base name')
+    setEnv({ disc = { ['Throw Rk. II'] = 100 }, rank = { Throw = 'Throw Rk. II' } })
+    check('Throw', 90, 90, 'Throw Rk. II', 'disc rank via Spell.RankName')
 
     -- Bow|Arrow: bow + arrow range, PullWith becomes Ranged.
     setEnv({ items = {
