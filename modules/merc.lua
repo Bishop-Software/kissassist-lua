@@ -56,14 +56,16 @@ function Merc.check()
     end
 
     local myTargetID = _state.combat.myTargetID or 0
-    local isPuller   = (_state.session.role or ''):find('puller')
+    -- Only the plain puller role, and only once a mob is pulled (mac:8578
+    -- Select[${Role},Puller] && ${Pulled}); waitForMob calls this as the mob arrives.
+    local isPuller   = (_state.session.role or '') == 'puller'
 
     if _state.merc.assisting == 0 then
         -- Not yet assisting: engage when target HP is at or below threshold (mac:8577)
         local mobPct = myTargetID ~= 0 and (mq.TLO.Spawn('id ' .. myTargetID).PctHPs() or 100) or 100
         if mobPct <= _state.merc.assistAt
            and mercState == 'ACTIVE'
-           and (_state.combat.combatStart or (isPuller and (_state.pull.mob or 0) ~= 0)) then
+           and (_state.combat.combatStart or (isPuller and _state.pull.pulled)) then
             mq.cmd('/mercassist')
             _utils.debug('merc', 'MercsDoWhat1: assisting on %d', myTargetID)
             _state.merc.assisting = myTargetID

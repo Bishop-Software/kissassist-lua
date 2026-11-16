@@ -143,6 +143,24 @@ function M.run(TH, MockMQ)
         TH.assert_eq(clicks(), 2, 'cooldown elapsed and still DEAD → retry click')
     end
 
+    -- Puller out of combat: merc assists only for the plain puller role, and only
+    -- once a mob is pulled (mac:8578 Select[${Role},Puller] && ${Pulled}) ---------
+    local function pullerCase(role, pulled)
+        seedInitTLOs(MockMQ, 'ACTIVE')
+        local s = makeState()
+        Merc.init(s, utils)
+        s.merc.on, s.merc.assistAt = 1, 100
+        s.session.role, s.pull.pulled = role, pulled
+        s.pull.mob = 777  -- a mob picked but not pulled doesn't count any more
+        s.combat.myTargetID = 555
+        Merc.check()
+        return MockMQ.cmdCalled('/mercassist')
+    end
+    TH.assert_true(pullerCase('puller', true), 'puller, mob pulled: merc assists')
+    TH.assert_false(pullerCase('puller', false), 'puller, mob picked but not pulled: merc waits')
+    TH.assert_false(pullerCase('pullertank', true), 'pullertank, out of combat: merc waits (mac: puller only)')
+    TH.assert_false(pullerCase('pullerpettank', true), 'pullerpettank, out of combat: merc waits')
+
     package.loaded['modules.merc'] = nil
 end
 
