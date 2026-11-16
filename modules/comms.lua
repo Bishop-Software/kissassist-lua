@@ -7,6 +7,41 @@ local MAILBOX = 'kissassist'
 local _state, _utils
 local _actor = nil
 
+-- Guild/fellowship chat relay (Event_GUEQBC / Event_FSEQBC, mac:11589-11607).
+-- The mac relayed over EQBC; the port uses the actor mailbox, switched by its
+-- own [General] ChatRelay: 0 off, 1 guild, 2 fellowship, 3 both.
+local RELAY_LABEL  = { guild = 'Guild', fellowship = 'Fellowship' }
+local RELAY_DEDUPE = 3      -- seconds: several boxes relaying the same line print it once
+local _relaySeen   = {}     -- [channel|speaker|text] = os.clock() first printed
+
+local function relayOn(channel)
+    local v = _state.session.chatRelay or 0
+    if channel == 'guild' then return v == 1 or v == 3 end
+    if channel == 'fellowship' then return v == 2 or v == 3 end
+    return false
+end
+
+-- Print a relayed line unless we already see it ourselves or just printed it.
+local function onChatRelay(data)
+    local channel = data.channel
+    if not RELAY_LABEL[channel] then return end
+    if channel == 'guild' then
+        local myGuild = mq.TLO.Me.Guild() or ''
+        if myGuild ~= '' and myGuild == (data.guild or '') then return end
+    else
+        local myFs = mq.TLO.Me.Fellowship.ID() or 0
+        if myFs ~= 0 and myFs == (data.fellowship or 0) then return end
+    end
+    local now = os.clock()
+    for k, t in pairs(_relaySeen) do
+        if now - t > RELAY_DEDUPE then _relaySeen[k] = nil end
+    end
+    local key = channel .. '|' .. tostring(data.speaker) .. '|' .. tostring(data.text)
+    if _relaySeen[key] then return end
+    _relaySeen[key] = now
+    printf('\ap%s tells %s: %s', tostring(data.speaker), RELAY_LABEL[channel], tostring(data.text))
+end
+
 -- Build an outbound message table; mutates data in place, returns it.
 local function payload(msgType, data)
     data.msgType = msgType
@@ -115,6 +150,9 @@ local function onMessage(message)
             _utils.debug('comms', 'BUFFSTATE from id=%s buffs=%d', tostring(spawnID), count)
         end
 
+    elseif msgType == 'CHATRELAY' then
+        onChatRelay(data)
+
     elseif msgType == 'PULL' then
         local mob  = data.mob  or '?'
         local dist = data.dist or 0
@@ -125,6 +163,8 @@ end
 function Comms.init(s, u)
     _state = s
     _utils = u
+
+    _state.session.chatRelay = tonumber(require('modules.config').get('General', 'ChatRelay', '0')) or 0
 
     _actor = actors.register(MAILBOX, onMessage)
     _utils.debug('comms', 'Comms.init: mailbox [%s] registered', MAILBOX)
@@ -203,6 +243,28 @@ function Comms.announce(msg, color)
         mq.cmd('/echo ' .. msg)
     end
 end
+
+-- Relay a guild or fellowship line to the other KissAssist characters
+-- (Event_GUEQBC / Event_FSEQBC, mac:11589-11607). channel: 'guild'|'fellowship'.
+function Comms.relayChat(channel, speaker, text)
+    if not relayOn(channel) then return end
+    speaker = tostring(speaker or '')
+    if speaker == '' or speaker == (mq.TLO.Me.CleanName() or '') then return end
+    -- EQ quotes the text: Name tells the guild, 'hello'
+    text = tostring(text or ''):gsub("^'(.*)'$", '%1')
+    local msg = payload('CHATRELAY', {
+        channel    = channel,
+        speaker    = speaker,
+        text       = text,
+        guild      = mq.TLO.Me.Guild() or '',
+        fellowship = mq.TLO.Me.Fellowship.ID() or 0,
+    })
+    if _actor then _actor:send(msg) end
+    _utils.debug('comms', 'relayChat %s: %s', channel, speaker)
+end
+
+-- Test hook: the CHATRELAY receive path.
+Comms._onChatRelay = onChatRelay
 
 -- Called each main loop iteration. Actors are event-driven via mq.doevents(),
 -- so no polling is needed; this is a placeholder for future DanNet-specific polling.

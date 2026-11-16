@@ -229,6 +229,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.config' },
     },
+    {
+        name         = 'test_comms_chat_relay',
+        path         = 'tests.unit.test_comms_chat_relay',
+        useMock      = true,
+        clearModules = { 'modules.comms', 'modules.config' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

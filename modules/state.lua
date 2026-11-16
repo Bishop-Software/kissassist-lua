@@ -33,6 +33,7 @@ local State = {
         forceAlias      = true,
         broadcastSay    = 'bc',
         danNetOn        = false,
+        chatRelay       = 0,      -- [General] ChatRelay: 1 guild, 2 fellowship, 3 both, relayed over actors (mac:11589-11607)
         useSpawnMaster  = false,
         groupEscapeOn   = 0,
         bindActive      = false,

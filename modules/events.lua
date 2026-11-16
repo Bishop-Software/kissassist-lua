@@ -543,14 +543,16 @@ local function onEQBCIRC()
     state.combat.eventFlag = true
 end
 
-local function onGUEQBC()
-    utils.debug('comms', 'GUEQBC (stub — EQBC deprecated)')
+-- Guild/fellowship chat relay to the other KissAssist characters over actors
+-- (Event_GUEQBC / Event_FSEQBC, mac:11589-11607); gated by [General] ChatRelay.
+local function onGUEQBC(_, speaker, text)
     state.combat.eventFlag = true
+    if _comms then _comms.relayChat('guild', speaker, text) end
 end
 
-local function onFSEQBC()
-    utils.debug('comms', 'FSEQBC (stub — EQBC deprecated)')
+local function onFSEQBC(_, speaker, text)
     state.combat.eventFlag = true
+    if _comms then _comms.relayChat('fellowship', speaker, text) end
 end
 
 local function onKTDismount()

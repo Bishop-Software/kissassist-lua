@@ -260,6 +260,7 @@ function Config.migrateIni(state)
         GroupWatchCheck  = r('General','GroupWatchCheck'),
         CorpseRecoveryOn = r('General','CorpseRecoveryOn'),
         EQBCOn           = r('General','EQBCOn'),
+        ChatRelay        = r('General','ChatRelay'),
         DanNetOn         = r('General','DanNetOn'),
         DanNetDelay      = r('General','DanNetDelay'),
         IRCOn            = r('General','IRCOn'),
@@ -548,6 +549,7 @@ function Config.defaultCfg()
             LootOn           = '0', RezAcceptOn = '1|90', AcceptInvitesOn = '1',
             GroupWatchOn     = '0', GroupWatchCheck = 'FALSE', CorpseRecoveryOn = '0',
             EQBCOn           = '0', DanNetOn = '0', DanNetDelay = '20',
+            ChatRelay        = '0',  -- Lua port only: guild/fellowship relay over actors
             IRCOn            = '0', CampfireOn = '0', GroupEscapeOn = '0',
             DPSMeter         = '0', ScatterOn = '0', LOSBeforeCombat = '0',
             UseSpawnMaster   = '0', TwistOn = '0',
