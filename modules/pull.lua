@@ -1359,6 +1359,11 @@ local function waitForMob()
                 local nearMA = ma() and (mq.TLO.SpawnCount(string.format('xtarhater loc %s %s radius 20 zradius %d',
                     ma.X() or 0, ma.Y() or 0, zr))() or 0) or 0
                 keepWaiting = mobsInCamp == 0 and nearMA == 0
+                -- The mob's in camp: send the merc in (mac:10525)
+                if not keepWaiting and (s.merc.on or 0) > 0 and s.merc.assisting ~= s.combat.myTargetID
+                   and (mq.TLO.Mercenary.State() or '') == 'ACTIVE' then
+                    require('modules.merc').check()
+                end
             else
                 if mobsInCamp > 1 or s.combat.myTargetID == 0 or
                    (xtSlotID(s.combat.xTSlot) > 0 and xtSlotID(s.combat.xTSlot2) > 0) then
