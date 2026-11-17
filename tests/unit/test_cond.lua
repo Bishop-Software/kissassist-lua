@@ -66,6 +66,26 @@ function M.run(TH, MockMQ)
     MockMQ.set('parse:${Me.PctHPs}!=100 && !0', '90!=100 && !0')
     TH.assert_true(Cond.evalStr('${Me.PctHPs}!=100 && !0'), 'evalStr != mixed with !0 → true')
 
+    -- '!(' negates a group (#297). It used to fail to load and fall through to true.
+    MockMQ.set('parse:!(${Me.Combat} && ${Me.Moving})', '!(TRUE && FALSE)')
+    TH.assert_true(Cond.evalStr('!(${Me.Combat} && ${Me.Moving})'), 'evalStr !(TRUE && FALSE) → true')
+    MockMQ.set('parse:!(${Me.Combat} && ${Me.Moving})', '!(TRUE && TRUE)')
+    TH.assert_false(Cond.evalStr('!(${Me.Combat} && ${Me.Moving})'), 'evalStr !(TRUE && TRUE) → false')
+    MockMQ.set('parse:!( ${Me.PctHPs} < 50 )', '! ( 80 < 50 )')
+    TH.assert_true(Cond.evalStr('!( ${Me.PctHPs} < 50 )'), 'evalStr spaced ! ( 80 < 50 ) → true')
+    MockMQ.set('parse:${Me.XTarget} > 0 && !(${Me.PctHPs} > 90 || ${Me.Invis})',
+        '3 > 0 && !(95 > 90 || FALSE)')
+    TH.assert_false(Cond.evalStr('${Me.XTarget} > 0 && !(${Me.PctHPs} > 90 || ${Me.Invis})'),
+        'evalStr && !( ... || ... ) → false')
+    MockMQ.set('parse:!(${Me.PctHPs}!=100)', '!(100!=100)')
+    TH.assert_true(Cond.evalStr('!(${Me.PctHPs}!=100)'), 'evalStr !( != ) keeps != intact → true')
+
+    -- An expression that still can't be evaluated fails closed (false), not open.
+    MockMQ.set('parse:${Target.CleanName} < 5', 'a decaying skeleton < 5')
+    TH.assert_false(Cond.evalStr('${Target.CleanName} < 5'), 'evalStr unloadable → false')
+    MockMQ.set('parse:${Me.Song[Foo]} > 1', 'Foo > 1')
+    TH.assert_false(Cond.evalStr('${Me.Song[Foo]} > 1'), 'evalStr runtime error → false')
+
     -- Cond.eval — cond.on = false: bypass regardless of slot content -----------
     MockMQ.reset()
     state.cond.on = false
