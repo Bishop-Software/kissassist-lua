@@ -1346,6 +1346,61 @@ local function mashButtons()
     end
 end
 
+local function hasWeave()
+    local w = state.arrays.weaveArray[1]
+    return w ~= nil and w ~= 'null'
+end
+
+-- Mirrors CastWeave (kissassist.mac:3004). Fires the first ready |weave entry
+-- (AA, item or disc; spells are excluded because this runs during the spell global
+-- cooldown) at tarID. Returns true when one was cast.
+-- The mac's CombatTargetCheck on a target switch is simplified to using the
+-- current myTargetID, like mashButtons.
+function Cast.castWeave(tarID)
+    local meState = mq.TLO.Me.State() or ''
+    if meState ~= 'STAND' and meState ~= 'MOUNT' then return false end
+    -- mac: DPSWeaveDelay timer starts at sub entry and is waited out after a cast.
+    local delayEnd = os.clock() + 0.2
+    local weaveArr = state.arrays.weaveArray
+    for i = 1, #weaveArr do
+        local entry = weaveArr[i]
+        if not entry or entry == 'null' then return false end
+        local name, atStr = entry:match('^([^|]*)|?([^|]*)')
+        local at = tonumber(atStr) or 0
+        -- mac:3017 — an entry without HP%, no target, or a corpse ends the pass.
+        if at == 0 or not tarID or tarID == 0 then return false end
+        local spawn = mq.TLO.Spawn('id ' .. tarID)
+        if (spawn.ID() or 0) == 0 or (spawn.Type() or ''):lower() == 'corpse' then return false end
+        -- mac:3018 — DPSOn==1 respects each entry's HP%; DPSOn==2 ignores it.
+        if state.combat.dpsOn and not state.combat.dpsOnOoc and at < (spawn.PctHPs() or 0) then
+            goto next_weave
+        end
+        do
+            local condNo = tonumber(entry:lower():match('|cond(%d+)')) or 0
+            if condNo > 0 and _cond and not _cond.eval(condNo) then goto next_weave end
+            if name:find('%$%{') then
+                name = mq.parse(name)
+                if name == 'NULL' or name == '' then goto next_weave end
+            end
+            local discName = utils.resolveCastRank(name)
+            if mq.TLO.Me.AltAbilityReady(name)() or mq.TLO.Me.ItemReady(name)()
+                    or mq.TLO.Me.CombatAbilityReady(discName)() then
+                local result = Cast.castWhat(name, tarID, 'weave')
+                while os.clock() < delayEnd do
+                    mq.doevents()
+                    mq.delay(10)
+                end
+                if result == 'CAST_SUCCESS' then
+                    printf('-- Weaving: %s', name)
+                    return true
+                end
+            end
+        end
+        ::next_weave::
+    end
+    return false
+end
+
 -- ─── Combat Cast (DPS Rotation) ───────────────────────────────────────────────
 
 -- Mirrors CombatCast (kissassist.mac:1616).
@@ -1393,8 +1448,8 @@ local function setSlotTimer(spellName, tType, daMod)
 end
 
 -- Iterates the DPS array (starting after debuff slots), casts each ready spell/AA/disc,
--- then calls mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
--- Deferred: WeaveArray.
+-- weaves |weave entries during the spell global cooldown (castWeave), then calls
+-- mashButtons. Returns 'tcnc' if a cast signals no-combat restart.
 function Cast.combatCast()
     utils.debug('cast', 'combatCast enter')
     -- Don't attempt to cast while dead or hovering as a corpse ("too distracted").
@@ -1418,7 +1473,11 @@ function Cast.combatCast()
     if (mq.TLO.Target.ID() or 0) ~= 0 and mq.TLO.Target.ID() ~= myID then
         if myID == 0 then return end
     end
+    local weaveCheck = false
     for i = 1, #dpsArr do
+      -- Entry body is a do-block so the ::next_dps:: label below sits outside its locals
+      -- (Lua forbids a goto jumping into a local's scope once the label isn't last).
+      do
         -- Drain all pending events before each entry (mirrors inner EventFlag while loop)
         repeat
             state.combat.eventFlag = false
@@ -1544,6 +1603,11 @@ function Cast.combatCast()
 
         -- Skip gem-spell if under global spell cooldown (DPSOn==2 wait mode deferred)
         if mq.TLO.Me.SpellInCooldown() and not state.session.iAmABard then
+            -- Only weave entries fire during the global cooldown (mac:1742-1747).
+            if hasWeave() then
+                Cast.castWeave(myID)
+                weaveCheck = true
+            end
             if mq.TLO.Me.Gem(spellName)() and (mq.TLO.Spawn('id ' .. myID).ID() or 0) ~= 0 then
                 goto next_dps
             end
@@ -1652,7 +1716,14 @@ function Cast.combatCast()
             end
         end
 
+      end
         ::next_dps::
+        -- Bottom of each entry: weave if still in the global cooldown, or if nothing
+        -- was woven for this entry yet (mac:1870-1872).
+        if hasWeave() and (mq.TLO.Me.SpellInCooldown() or not weaveCheck) then
+            Cast.castWeave(state.combat.myTargetID)
+        end
+        weaveCheck = false
     end
 
     mashButtons()

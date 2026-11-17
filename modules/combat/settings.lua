@@ -8,6 +8,63 @@ local Utils  = require('modules.utils')
 
 local Settings = {}
 
+-- Remove the first case-insensitive occurrence of tag ('|mash' etc.) from raw.
+-- Returns nil when the tag isn't present. The mac matches tags with ${String.Find[]},
+-- which ignores case (mac:1666), so 'Foo|99|Weave' is a weave entry.
+local function stripTag(raw, tag)
+    local p = raw:lower():find(tag, 1, true)
+    if not p then return nil end
+    return raw:sub(1, p - 1) .. raw:sub(p + #tag)
+end
+
+local function resetArr(arr)
+    for k = 1, #arr do arr[k] = 'null' end
+end
+
+-- Split the raw [DPS] entries into the rotation and the tag arrays (mac Bind_Settings):
+--   |mash   -> arrays.mashArray   (fired every pass via mashButtons)
+--   |ambush -> arrays.beforeArray (fired pre-combat via beforeAttack)
+--   |weave  -> arrays.weaveArray  (fired during the spell global cooldown via castWeave)
+--   rest    -> combat.dpsArray    (CombatCast rotation)
+-- Tag arrays keep the entry text minus the tag, |cond suffix included. Called at load
+-- and by the DPS editor, so edits keep the arrays in sync.
+function Settings.splitDps(state, rawDps)
+    local arrays = state.arrays
+    state.combat.dpsArray = {}
+    resetArr(arrays.mashArray); resetArr(arrays.beforeArray); resetArr(arrays.weaveArray)
+    if type(rawDps) ~= 'table' then return end
+    local mashIdx, ambushIdx, weaveIdx = 1, 1, 1
+    local parsed = Config.parseCondArray(rawDps)
+    for i, rawEntry in ipairs(rawDps) do
+        if not rawEntry or rawEntry == '' or rawEntry == 'null' then goto next_dps_entry end
+        local stripped = stripTag(rawEntry, '|mash')
+        if stripped then
+            arrays.mashArray[mashIdx] = stripped
+            mashIdx = mashIdx + 1
+            goto next_dps_entry
+        end
+        stripped = stripTag(rawEntry, '|ambush')
+        if stripped then
+            arrays.beforeArray[ambushIdx] = stripped
+            ambushIdx = ambushIdx + 1
+            goto next_dps_entry
+        end
+        stripped = stripTag(rawEntry, '|weave')
+        if stripped then
+            arrays.weaveArray[weaveIdx] = stripped
+            weaveIdx = weaveIdx + 1
+            goto next_dps_entry
+        end
+        do
+            local slot = parsed[i]
+            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
+                state.combat.dpsArray[#state.combat.dpsArray + 1] = slot
+            end
+        end
+        ::next_dps_entry::
+    end
+end
+
 -- Named-mob watch list: this zone's MobsToBurn from KissAssist_Info.ini (shared
 -- across characters). Called at startup and again after zoning.
 function Settings.loadNamedList(state)
@@ -110,32 +167,7 @@ function Settings.load(state, utils)
     _state.combat.losBeforeCombat = Config.get('General', 'LOSBeforeCombat', '0') == '1'
 
     -- DPS array: state.debuff.* is now loaded by Debuff.init()
-    -- |mash-tagged entries go to mashArray (fired every tick via mashButtons).
-    -- |ambush-tagged entries go to beforeArray (fired pre-combat via beforeAttack).
-    -- |weave-tagged entries are skipped (weave not yet ported).
-    -- Raw strings are used for tag detection so |cond suffixes are preserved.
-    local rawDps = Config.get('DPS', 'DPS', nil)
-    if type(rawDps) == 'table' then
-        local mashIdx   = 1
-        local ambushIdx = 1
-        local parsed    = Config.parseCondArray(rawDps)
-        for i, rawEntry in ipairs(rawDps) do
-            if not rawEntry or rawEntry == '' then goto next_dps_entry end
-            if rawEntry:find('|mash', 1, true) then
-                _state.arrays.mashArray[mashIdx] = rawEntry:gsub('|mash', '', 1)
-                mashIdx = mashIdx + 1
-            elseif rawEntry:find('|ambush', 1, true) then
-                _state.arrays.beforeArray[ambushIdx] = rawEntry:gsub('|ambush', '', 1)
-                ambushIdx = ambushIdx + 1
-            elseif not rawEntry:find('|weave', 1, true) then
-                local slot = parsed[i]
-                if slot and slot.name and slot.name ~= '' then
-                    _state.combat.dpsArray[#_state.combat.dpsArray + 1] = slot
-                end
-            end
-            ::next_dps_entry::
-        end
-    end
+    Settings.splitDps(_state, Config.get('DPS', 'DPS', nil))
 
     -- Burn spell/disc array
     local burnArr = Config.get('Burn', 'Burn', nil)
