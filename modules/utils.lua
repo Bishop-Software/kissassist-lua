@@ -116,4 +116,23 @@ function Utils.resolveSpellRank(name)
     return name
 end
 
+-- Resolve a castWhat name to the rank the character owns. Unlike resolveSpellRank,
+-- this also matches a memorized gem and a combat ability: discs are not in the
+-- spellbook, and Me.CombatAbility needs the exact ranked name, so a config entry
+-- of 'Fyrthek Mantle' must become 'Fyrthek Mantle Rk. II' to be found.
+-- Returns name unchanged for AAs, items, skills, or anything not owned.
+function Utils.resolveCastRank(name)
+    local me = mq.TLO.Me
+    local function owned(n)
+        return (me.Book(n)() or 0) ~= 0
+            or me.Gem(n)() ~= nil
+            or me.CombatAbility(n)() ~= nil
+    end
+    if owned(name) then return name end
+    for _, suffix in ipairs({ ' Rk. II', ' Rk. III' }) do
+        if owned(name .. suffix) then return name .. suffix end
+    end
+    return name
+end
+
 return Utils
