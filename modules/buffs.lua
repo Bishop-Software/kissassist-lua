@@ -8,7 +8,49 @@ local _state, _utils, _cast, _heal, _comms, _cond
 local DUAL_TAGS = {
     dual=true, dualma=true, dualmelee=true, dualcaster=true,
     dualclass=true, ['dual!class']=true, dualmgb=true, dualme=true,
+    dualmana=true, dualend=true,   -- Item|Dual|<buff>|Mana|<pct> / |End|<pct> (#298, not in the mac)
 }
+
+-- Split a [Buffs] entry (|cond already stripped) into spellToCast, p2..p5, mirroring
+-- the mac's parse and Dual normalization (mac:4233-4272). p2 and p4 are lowercased;
+-- p2 == 'alias' means skip the entry.
+function Buffs._parseEntry(entry)
+    local spellToCast, p2, p3, p4, p5 = entry, '', '', '', ''
+    local parts = {}
+    for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
+    if #parts >= 2 and (parts[2] or '') ~= '' then
+        spellToCast = parts[1] or ''
+        p2          = (parts[2] or ''):lower()
+        p3          = parts[3] or ''
+        p4          = (parts[4] or ''):lower()
+        p5          = parts[5] or ''
+        if p2 == 'dual' then
+            if     p4 == 'ma'     then p2 = 'dualma'
+            elseif p4 == 'melee'  then p2 = 'dualmelee'
+            elseif p4 == 'caster' then p2 = 'dualcaster'
+            elseif p4 == 'class'  then p2 = 'dualclass'
+            elseif p4 == '!class' then p2 = 'dual!class'
+            elseif p4 == 'mgb'    then p2 = 'dualmgb'
+            elseif p4 == 'me'     then p2 = 'dualme'
+            -- Not in the mac (#298): Dual with a self mana/endurance threshold in p5.
+            elseif p4 == 'mana'   then p2 = 'dualmana'
+            elseif p4 == 'end'    then p2 = 'dualend'
+            end
+        elseif p2 == 'class' or p2 == '!class' then
+            p5 = p3
+        elseif p2:sub(1, 4) == 'cond' then
+            p2 = ''
+        end
+    end
+    return spellToCast, p2, p3, p4, p5
+end
+
+-- #298: decide a dualmana/dualend entry. Returns nil while the Dual buff is on me
+-- (skip), else the plain tag ('mana' / 'end') and the threshold to hand to it.
+function Buffs._dualRegen(p2, threshold, buffOnMe)
+    if buffOnMe then return nil end
+    return (p2 == 'dualmana') and 'mana' or 'end', threshold
+end
 
 -- Class sets for |caster / |Melee filter tags (mac:4538).
 local CASTER_CLASSES = { CLR=true, DRU=true, SHM=true, BST=true, ENC=true, MAG=true, NEC=true, PAL=true, SHD=true, RNG=true, WIZ=true }
@@ -571,34 +613,8 @@ function Buffs.checkBuffs(forceGroup)
         if entry == 'null' or entry == 'NULL' then goto continue end
 
         -- Entry parsing: |pipe-split, Dual normalization, alias/cond skip (mac:4233-4272)
-        local spellToCast, p2, p3, p4, p5 = entry, '', '', '', ''
-        local parts = {}
-        for part in (entry .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = part end
-
-        if #parts >= 2 and (parts[2] or '') ~= '' then
-            spellToCast = parts[1] or ''
-            p2          = (parts[2] or ''):lower()
-            p3          = parts[3] or ''
-            p4          = (parts[4] or ''):lower()
-            p5          = parts[5] or ''
-
-            if p2 == 'dual' then
-                if     p4 == 'ma'     then p2 = 'dualma'
-                elseif p4 == 'melee'  then p2 = 'dualmelee'
-                elseif p4 == 'caster' then p2 = 'dualcaster'
-                elseif p4 == 'class'  then p2 = 'dualclass'
-                elseif p4 == '!class' then p2 = 'dual!class'
-                elseif p4 == 'mgb'    then p2 = 'dualmgb'
-                elseif p4 == 'me'     then p2 = 'dualme'
-                end
-            elseif p2 == 'class' or p2 == '!class' then
-                p5 = p3
-            elseif p2 == 'alias' then
-                goto continue
-            elseif p2:sub(1, 4) == 'cond' then
-                p2 = ''
-            end
-        end
+        local spellToCast, p2, p3, p4, p5 = Buffs._parseEntry(entry)
+        if p2 == 'alias' then goto continue end
 
         -- Evaluate embedded TLO expressions before any spell lookups.
         -- Mac auto-expands ${...} in variables; Lua requires an explicit mq.parse() call.
@@ -674,6 +690,20 @@ function Buffs.checkBuffs(forceGroup)
             for j = 0, 5 do _state.buffs.slotTimers[i][j] = 0 end
         end
         local timers_i = _state.buffs.slotTimers[i]
+
+        -- |Dual|<buff>|Mana|<pct> and |Dual|<buff>|End|<pct> (#298, not in the mac):
+        -- skip while <buff> (buffToCheck) is on me, else behave as |Mana|<pct> / |End|<pct>
+        -- on the cast name. e.g. 'Unified Phoenix Feather|Dual|Grace of Unity|Mana|80'.
+        if p2 == 'dualmana' or p2 == 'dualend' then
+            local onMe = (mq.TLO.Me.Buff(buffToCheck).ID() or 0) ~= 0
+                      or (mq.TLO.Me.Song(buffToCheck).ID() or 0) ~= 0
+            local tag, thresh = Buffs._dualRegen(p2, p5, onMe)
+            if not tag then goto continue end
+            -- Dual entries resolve the rank of p3, not the cast name; |End's ready
+            -- check needs the cast name's owned rank.
+            spellToCast = _utils.resolveSpellRank(spellToCast)
+            p2, p3, p4 = tag, thresh, ''
+        end
 
         -- Special action tag chain (mac:4319-4403).
         -- Mirrors the mac's big if-elseif in CheckBuffs; each branch ends with goto continue

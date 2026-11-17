@@ -44,6 +44,12 @@ local unitTests = {
         clearModules = { 'modules.utils' },
     },
     {
+        name         = 'test_buffs_parse',
+        path         = 'tests.unit.test_buffs_parse',
+        useMock      = true,
+        clearModules = { 'modules.buffs' },
+    },
+    {
         name         = 'test_weave',
         path         = 'tests.unit.test_weave',
         useMock      = true,
