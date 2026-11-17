@@ -38,6 +38,12 @@ local unitTests = {
         clearModules = {},
     },
     {
+        name         = 'test_cast_rank',
+        path         = 'tests.unit.test_cast_rank',
+        useMock      = true,
+        clearModules = { 'modules.utils' },
+    },
+    {
         name         = 'test_helpers',
         path         = 'tests.unit.test_helpers_module',
         useMock      = false,
