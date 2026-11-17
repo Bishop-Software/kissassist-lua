@@ -7,6 +7,9 @@ local Config = require('modules.config')
 
 local Pull = {}
 local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing, _comms
+local _groupWatch  -- modules/groupwatch.lua, set by Pull.setGroupWatch
+
+function Pull.setGroupWatch(gw) _groupWatch = gw end
 
 local PULL_LOC_SLOTS = 5  -- PullLocs1-5 (mac:14976)
 
@@ -957,7 +960,8 @@ function Pull.pullPauseCheck()
         p.pauseHold  = false
         t.pullPause1 = now + p.pauseRun  * 60
         t.pullPause2 = now + p.pauseRest * 60
-        if mq.TLO.Me.Sitting() and not _state.heal.medding then mq.cmd('/stand') end
+        if mq.TLO.Me.Sitting() and not _state.heal.medding
+           and (_state.heal.gwWatchID or 0) == 0 then mq.cmd('/stand') end
     end
 end
 
@@ -1037,7 +1041,7 @@ function Pull.chainPullNextMob(echoWait)
     end
     local tgtID = mq.TLO.Target.ID() or 0
     local named = tgtID > 0 and _combat and _combat.isSpawnNamed and _combat.isSpawnNamed(tgtID)
-    if s.pull.hold or s.pull.pauseHold or (s.combat.mobCount or 0) >= 2
+    if s.pull.hold or s.pull.pauseHold or s.pull.watchHold or (s.combat.mobCount or 0) >= 2
        or (mq.TLO.Me.XTarget(s.combat.xTSlot2).ID() or 0) > 0 or named then
         _utils.debug('pull', 'chainPullNextMob: fail 1 hold=%s mobCount=%d named=%s',
             tostring(s.pull.hold), s.combat.mobCount or 0, tostring(named))
@@ -1102,7 +1106,7 @@ function Pull.findMobToPull(readyFlag, a, b)
        (s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) then
         return 0
     end
-    if mq.TLO.Me.Invis() or s.pull.hold or s.pull.pauseHold or s.dps.paused or
+    if mq.TLO.Me.Invis() or s.pull.hold or s.pull.pauseHold or s.pull.watchHold or s.dps.paused or
        (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 or
        (mq.TLO.Me.Buff('Revival Sickness').ID()         or 0) > 0 then
         return 0
@@ -1155,7 +1159,8 @@ function Pull.findMobToPull(readyFlag, a, b)
     mq.doevents()  -- drain pending events (mac:8968-8972)
 
     s.pull.pulling = false
-    if s.pull.hold then return 0 end  -- GroupWatch may have set hold (mac:8985-8986)
+    if _groupWatch then _groupWatch.check() end  -- mac:8986
+    if s.pull.hold or s.pull.watchHold then return 0 end  -- mac:8987
     Pull.pullIgnoreTick()
 
     -- Status echo (mac:8988-8994; throttled)
@@ -1940,7 +1945,7 @@ function Pull.pullCheck()
     end
 
     -- Guards (mac:9313).
-    if s.pull.hold   then return end
+    if s.pull.hold or s.pull.watchHold then return end
     if s.dps.paused  then return end
     if (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 then return end
     if (mq.TLO.Me.Buff('Revival Sickness').ID()       or 0) > 0 then return end

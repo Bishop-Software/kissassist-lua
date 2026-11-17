@@ -27,6 +27,7 @@ local Debuff   = require('modules.debuff')
 local Charm    = require('modules.charm')
 local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
+local GroupWatch = require('modules.groupwatch')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -125,6 +126,8 @@ Charm.init(State, Utils, Cast, Pet, Bard, Comms)
 Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
 Afk.init(State, Utils, Combat, Comms, Config)
+GroupWatch.init(State, Utils, Cond, Comms, Combat)
+Pull.setGroupWatch(GroupWatch)
 -- Hunter and puller role overrides (mac CheckRoles). After Combat.init, which
 -- loads AssistAt, MeleeOn and the pet settings these replace.
 Pull.setupHunterRole()
@@ -197,6 +200,9 @@ while not State.terminate do
     Heal.checkCures()
     Heal.checkHealth('MainLoop')
     Buffs.castMount()  -- post-rez mount attempt (mac:6906/6968)
+    -- GroupWatch (mac:411). While the main assist is missing, only events and
+    -- combat run, as in the mac's wait loop (mac:10646-10659).
+    if GroupWatch.check() then goto groupwatch_paused end
     -- Phase 3.5: charm
     if State.session.iAmACharmClass and State.charm.on then Charm.check('MainLoop') end
     -- Phase 4: movement
@@ -235,8 +241,7 @@ while not State.terminate do
     -- Phase 8: med (only out of combat — mac:409-410)
     Heal.doWeMed()
     -- Phase 9: pull
-    local campSet = (State.movement.campX ~= 0 or State.movement.campY ~= 0)
-    if PULLER_ROLES[State.session.role] and campSet then
+    if PULLER_ROLES[State.session.role] and (State.movement.campX ~= 0 or State.movement.campY ~= 0) then
         -- Draw the pull/camp radii on the map once we're in camp (mac:8494).
         Pull.paintMap()
         Pull.pullPauseCheck()  -- PullPause cycle (mac:8502)
@@ -245,7 +250,8 @@ while not State.terminate do
         -- during a PullPause rest or while the PullPause hold condition is true.
         -- pullCheck runs even when no mob was found (mac:424): that is where the
         -- fail counter, hunter return-to-camp and PullWait live.
-        if not State.pull.hold and not State.pull.pauseHold and not State.misc.dragCorpse
+        if not State.pull.hold and not State.pull.pauseHold and not State.pull.watchHold
+           and not State.misc.dragCorpse
            and not Pull.pullWaiting() and not Pull.heldByCond() and Pull.pullAbilityReady() then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
             local pullRet = Pull.pullCheck()
@@ -255,6 +261,7 @@ while not State.terminate do
             if State.pull.pullOnReturn and pullRet == 'oor' then Pull.findMobOnReturn() end
         end
     end
+    ::groupwatch_paused::
     -- Phase 10: combat (second pass — mac:MainLoop2, 200ms wait catches post-buff aggro)
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main2', 200)

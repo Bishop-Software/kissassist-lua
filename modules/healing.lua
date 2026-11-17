@@ -34,7 +34,7 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     _movement = movement
     _comms    = comms
 
-    -- [General] medding + group-watch (GroupWatchOn may encode pct as "1|20")
+    -- [General] medding (GroupWatchOn/GroupWatchCheck are read by modules/groupwatch.lua)
     _state.heal.medOn           = Config.get('General', 'MedOn',     '1') == '1'
     _state.heal.medStart        = tonumber(Config.get('General', 'MedStart',   '20'))  or 20
     _state.heal.medStop         = tonumber(Config.get('General', 'MedStop',    '100')) or 100
@@ -52,15 +52,6 @@ function Heal.init(state, utils, cast, cond, movement, comms)
         end
     end
     _state.heal.corpsRecoveryOn = rawCRO
-
-    local gwRaw = Config.get('General', 'GroupWatchOn', '0') or '0'
-    if gwRaw:find('|', 1, true) then
-        local gwOn, gwPct = gwRaw:match('^([^|]+)|(.+)$')
-        _state.heal.groupWatchOn  = (gwOn or '0') ~= '0'
-        _state.heal.groupWatchPct = tonumber(gwPct) or _state.heal.groupWatchPct
-    else
-        _state.heal.groupWatchOn = gwRaw ~= '0'
-    end
 
     -- [Heals]
     _state.heal.healsOn         = tonumber(Config.get('Heals', 'HealsOn', '0')) or 0
@@ -579,8 +570,10 @@ function Heal.doWeMed()
         if pct >= _state.heal.medStop then
             _state.heal.medding = false
             _utils.debug('heals', string.format('doWeMed: done medding %s at %d%%', stat, pct))
-            -- Stay seated through a PullPause rest (Pull.pullPauseCheck stands us).
-            if mq.TLO.Me.Sitting() and not _state.pull.pauseHold then
+            -- Stay seated through a PullPause rest (Pull.pullPauseCheck stands us)
+            -- or while GroupWatch waits on a member (it stands us when done).
+            if mq.TLO.Me.Sitting() and not _state.pull.pauseHold
+               and (_state.heal.gwWatchID or 0) == 0 then
                 mq.cmd('/stand')
             end
         elseif not mq.TLO.Me.Sitting() then

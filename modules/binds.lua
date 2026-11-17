@@ -393,6 +393,18 @@ local function onChangeVarInt(a1, a2, a3)
         printf('\ay/changevarint <Section> <Name> <value>')
         return
     end
+    -- GroupWatchOn "1|20", GroupWatchPct, GroupWatchCheck "condN" (mac:14569-14587)
+    local GroupWatch = require('modules.groupwatch')
+    if GroupWatch.isVar(name) then
+        local shown = GroupWatch.setVar(name, value)
+        if not shown then
+            printf('\ay/changevarint: bad value \at%s\ay for \at%s', value, name)
+            return
+        end
+        printf('\ayChanging %s to %s', name, shown)
+        if section then GroupWatch.save() end
+        return
+    end
     local tbl, field = findVar(name)
     if not tbl then
         printf('\ay/changevarint: unknown variable \at%s', name)
