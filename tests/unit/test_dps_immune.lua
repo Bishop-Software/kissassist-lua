@@ -16,6 +16,8 @@ local function makeState(targetID)
         },
         dps  = { paused = false },
         cast = {},
+        -- combatCast reads the weave array (|weave, #296); empty here.
+        arrays = { mashArray = { 'null' }, weaveArray = { 'null' } },
     }
 end
 

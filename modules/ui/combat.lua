@@ -455,13 +455,9 @@ function CombatUI.drawDPS()
     local dpsRaw  = Config.get('DPS', 'DPS',     nil) or {}
     local dpsSize = tonumber(Config.get('DPS', 'DPSSize', '20')) or 20
 
+    -- Rebuild the rotation and the mash/ambush/weave arrays from the edited entries.
     local function syncDpsArray()
-        s.combat.dpsArray = {}
-        for _, slot in ipairs(Config.parseCondArray(dpsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                s.combat.dpsArray[#s.combat.dpsArray + 1] = slot
-            end
-        end
+        CombatSettings.splitDps(s, dpsRaw)
     end
 
     local condLabels = { '(none)' }

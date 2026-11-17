@@ -44,6 +44,12 @@ local unitTests = {
         clearModules = { 'modules.utils' },
     },
     {
+        name         = 'test_weave',
+        path         = 'tests.unit.test_weave',
+        useMock      = true,
+        clearModules = { 'modules.combat.settings', 'modules.cast', 'modules.config', 'modules.utils' },
+    },
+    {
         name         = 'test_helpers',
         path         = 'tests.unit.test_helpers_module',
         useMock      = false,
