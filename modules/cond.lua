@@ -45,6 +45,15 @@ function Cond.load()
     end
 end
 
+-- Warn once per distinct expression that couldn't be evaluated (it's treated as false).
+local _warned = {}
+local function warnUnevaluable(expr, parsed)
+    if _warned[expr] then return end
+    _warned[expr] = true
+    printf('\ayKissAssist \arCondition could not be evaluated, treating as false: \aw%s \ar(parsed: \aw%s\ar)',
+        expr, parsed)
+end
+
 -- Evaluate an arbitrary TLO expression string. Returns true if the result is truthy.
 -- mq.parse only expands TLOs — it does not evaluate comparison operators.
 -- '${Me.PctHPs} < 75' with HP=100 yields '100 < 75', not 'FALSE'.
@@ -65,6 +74,9 @@ function Cond.evalStr(expr)
     result = result:gsub('!=', '~=')  -- before the !<x> rewrites below
     result = result:gsub('!(%d+)', function(n) return tonumber(n) == 0 and 'true' or 'false' end)
     result = result:gsub('!TRUE', 'false'):gsub('!FALSE', 'true')
+    -- Any '!' left negates a group, e.g. '!(TRUE && FALSE)' (#297). '!=' is already '~=',
+    -- so every remaining '!' is a logical not.
+    result = result:gsub('!', ' not ')
     result = result:gsub('TRUE', 'true'):gsub('FALSE', 'false')
     result = result:gsub('&&', ' and '):gsub('||', ' or ')
     local fn = load('return ' .. result)
@@ -72,7 +84,9 @@ function Cond.evalStr(expr)
         local ok, val = pcall(fn)
         if ok then return val ~= nil and val ~= false and val ~= 0 end
     end
-    return result ~= ''
+    -- Fail closed: an expression we can't evaluate must not fire its entry every time.
+    warnUnevaluable(expr, result)
+    return false
 end
 
 -- Memoized variant of evalStr for live UI previews (the Conditions "Now" column
