@@ -86,6 +86,52 @@ function M.run(TH, MockMQ)
     MockMQ.set('parse:${Me.Song[Foo]} > 1', 'Foo > 1')
     TH.assert_false(Cond.evalStr('${Me.Song[Foo]} > 1'), 'evalStr runtime error → false')
 
+    -- Mac variables (#295) ------------------------------------------------
+    -- Resolved from State before mq.parse; the mock parse key is the substituted text.
+    state.combat  = { burnOn = true, burnActive = false, combatStart = true,
+                      myTargetID = 4242, aggroTargetID = '' }
+    state.session = { role = 'pullertank', mainAssist = 'Tankone', iAmMA = true }
+    state.dps     = { paused = false }
+
+    MockMQ.set('parse:1 > 0', '1 > 0')
+    TH.assert_true(Cond.evalStr('${BurnOn} > 0'), 'macvar: ${BurnOn} > 0 with burn on → true')
+    state.combat.burnOn = false
+    MockMQ.set('parse:0 > 0', '0 > 0')
+    TH.assert_false(Cond.evalStr('${BurnOn} > 0'), 'macvar: ${BurnOn} > 0 after /burn off → false')
+
+    MockMQ.set('parse:1', '1')
+    state.combat.burnActive = true
+    TH.assert_true(Cond.evalStr('${BurnActive}'), 'macvar: ${BurnActive} active → true')
+    state.combat.burnActive = false
+    TH.assert_false(Cond.evalStr('${BurnActive}'), 'macvar: ${BurnActive} inactive → false')
+
+    MockMQ.set('parse:${Target.PctHPs} > 85 && FALSE', '90 > 85 && FALSE')
+    TH.assert_false(Cond.evalStr('${Target.PctHPs} > 85 && ${Role.NotEqual[pullertank]}'),
+        'macvar: ${Role.NotEqual[pullertank]} as pullertank → false')
+    state.session.role = 'tank'
+    MockMQ.set('parse:${Target.PctHPs} > 85 && TRUE', '90 > 85 && TRUE')
+    TH.assert_true(Cond.evalStr('${Target.PctHPs} > 85 && ${Role.NotEqual[pullertank]}'),
+        'macvar: ${Role.NotEqual[pullertank]} as tank → true')
+
+    state.session.role = 'pullertank'
+    MockMQ.set('parse:TRUE', 'TRUE')
+    TH.assert_true(Cond.evalStr('${role.Equal[PULLERTANK]}'), 'macvar: name and Equal ignore case')
+    MockMQ.set('parse:7', '7')
+    TH.assert_true(Cond.evalStr('${Role.Find[tank]}'), 'macvar: ${Role.Find[tank]} → position')
+    state.session.role = 'assist'
+    MockMQ.set('parse:NULL', 'NULL')
+    TH.assert_false(Cond.evalStr('${Role.Find[tank]}'), 'macvar: ${Role.Find[tank]} as assist → NULL')
+    TH.assert_true(Cond.evalStr('${MainAssist.Equal[TANKONE]}'), 'macvar: ${MainAssist.Equal[..]}')
+
+    MockMQ.set('parse:!1', '!1')
+    TH.assert_false(Cond.evalStr('!${IAmMA}'), 'macvar: !${IAmMA} as MA → false')
+    MockMQ.set('parse:4242 > 0 && 0 == 0', '4242 > 0 && 0 == 0')
+    TH.assert_true(Cond.evalStr('${MyTargetID} > 0 && ${AggroTargetID} == 0'),
+        'macvar: ${MyTargetID} / empty ${AggroTargetID} → 0')
+
+    -- Unknown member on a mac var is left for mq.parse (unmocked → '0' → false).
+    TH.assert_false(Cond.evalStr('${Role.Foo}'), 'macvar: unknown member left alone')
+
     -- Cond.eval — cond.on = false: bypass regardless of slot content -----------
     MockMQ.reset()
     state.cond.on = false

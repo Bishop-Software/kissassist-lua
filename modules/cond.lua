@@ -54,6 +54,53 @@ local function warnUnevaluable(expr, parsed)
         expr, parsed)
 end
 
+-- Mac outer variables that [KConditions] expressions may read (#295). In the mac,
+-- conditions run in the macro's context and can see these; they aren't MQ TLOs, so
+-- mq.parse would return NULL. Keys are lowercase (macro variable names ignore case).
+-- Ints/bools become numbers the way the mac declares them (int, 0/1).
+local function b2n(v) return v and 1 or 0 end
+local MAC_VARS = {
+    burnon        = function(s) return b2n(s.combat.burnOn) end,         -- mac:16714
+    burnactive    = function(s) return b2n(s.combat.burnActive) end,     -- mac:16712
+    combatstart   = function(s) return b2n(s.combat.combatStart) end,    -- mac:16734
+    dpspaused     = function(s) return b2n(s.dps.paused) end,            -- mac:16745
+    iamma         = function(s) return b2n(s.session.iAmMA) end,         -- mac:16773
+    mytargetid    = function(s) return s.combat.myTargetID or 0 end,     -- mac:16826
+    aggrotargetid = function(s)                                          -- mac:16699
+        local v = s.combat.aggroTargetID
+        return (v == nil or v == '') and 0 or v
+    end,
+    role          = function(s) return s.session.role or '' end,
+    mainassist    = function(s) return s.session.mainAssist or '' end,   -- mac:16793
+}
+
+-- Replace ${Var} and ${Var.Equal[x]} / .NotEqual[x] / .Find[x] / .Length for the
+-- MAC_VARS above. String compares ignore case, like MQ's string members. Anything
+-- else (TLOs, unknown members) is left for mq.parse.
+local function resolveMacVars(expr)
+    if not _state then return expr end
+    return (expr:gsub('%${([%a_][%w_]*)([^${}]*)}', function(name, rest)
+        local get = MAC_VARS[name:lower()]
+        if not get then return nil end
+        local ok, v = pcall(get, _state)
+        if not ok then return nil end
+        v = tostring(v)
+        if rest == '' then return v end
+        local member, arg = rest:match('^%.(%a+)%[(.*)%]$')
+        if not member then member = rest:match('^%.(%a+)$') end
+        member = member and member:lower()
+        local lv, la = v:lower(), (arg or ''):lower()
+        if member == 'equal'    then return lv == la and 'TRUE' or 'FALSE' end
+        if member == 'notequal' then return lv ~= la and 'TRUE' or 'FALSE' end
+        if member == 'find' then
+            local p = lv:find(la, 1, true)
+            return p and tostring(p) or 'NULL'
+        end
+        if member == 'length' then return tostring(#v) end
+        return nil
+    end))
+end
+
 -- Evaluate an arbitrary TLO expression string. Returns true if the result is truthy.
 -- mq.parse only expands TLOs — it does not evaluate comparison operators.
 -- '${Me.PctHPs} < 75' with HP=100 yields '100 < 75', not 'FALSE'.
@@ -64,6 +111,8 @@ function Cond.evalStr(expr)
     expr = expr:gsub('%${Cond%[(%d+)%]}', function(n)
         return Cond.eval(tonumber(n)) and 'TRUE' or 'FALSE'
     end)
+    -- Resolve mac variables (${BurnOn}, ${Role.NotEqual[x]}, ...) — not TLOs either.
+    expr = resolveMacVars(expr)
     local result = mq.parse(expr)
     if result == nil then return false end
     if result == 'FALSE' or result == '0' or result == 'NULL' then return false end
