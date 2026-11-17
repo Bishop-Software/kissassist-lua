@@ -253,6 +253,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.comms', 'modules.config' },
     },
+    {
+        name         = 'test_groupwatch',
+        path         = 'tests.unit.test_groupwatch',
+        useMock      = true,
+        clearModules = { 'modules.groupwatch', 'modules.config' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

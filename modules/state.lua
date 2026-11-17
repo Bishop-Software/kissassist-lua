@@ -160,6 +160,7 @@ local State = {
         hold             = false,
         roleToggle       = false,  -- [Pull] PullRoleToggle: pullerpettank takes the group Puller role while pulling
         pauseHold        = false,  -- PullPause rest in progress (mac PullHold==2)
+        watchHold        = false,  -- GroupWatch is holding pulls (mac PullHold==1, set by GroupWatch/CheckStats)
         pauseRun         = 0,      -- [Pull] PullPause X: minutes to pull before resting (0 = off)
         pauseRest        = 0,      -- [Pull] PullPause Y: minutes to rest
         pauseCond        = 0,      -- [Pull] PullPause |condN: hold pulls while condition N is true
@@ -286,7 +287,13 @@ local State = {
         medStart        = 20,
         medStop         = 100,
         medCombat       = false,
-        groupWatchOn    = false,
+        groupWatchOn    = 0,      -- [General] GroupWatchOn: 0 off, 1 whole group, 2 CLR/DRU/SHM only
+        groupWatchCond  = 0,      -- [General] GroupWatchCheck condN: hold pulls while condition N is true
+        gwWaitMA        = false,  -- GroupWatch: waiting for the main assist to show up
+        gwWatchID       = 0,      -- GroupWatch: spawn ID of the member we wait on to med (0 = none)
+        gwWatchName     = '',
+        gwWatchStat     = '',     -- 'Mana' or 'Endurance'
+        gwCondWait      = false,  -- GroupWatch: GroupWatchCheck condition is holding pulls
         corpsRecoveryOn = 0,
         groupDebuffs    = {},  -- [spawnID string] = {poison,disease,curse,corrupt,mezzed}; set by DEBUFFS actor broadcast
     },
