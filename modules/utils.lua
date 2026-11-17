@@ -104,15 +104,20 @@ function Utils.zoneIniGet(infoFile, zoneKey, key)
 end
 function Utils.setTimer(seconds) return os.clock() + seconds end
 
--- Resolve a spell name to the highest rank in the character's spellbook.
--- Handles INI entries like 'Foo|Aura' where only 'Foo Rk. II' is in the book.
--- Returns name unchanged for AAs, items, discs, or spells already at base rank.
+-- Resolve a spell or disc name to the rank the character owns, checking the
+-- spellbook and combat abilities. Handles INI entries like 'Foo|Aura' where only
+-- 'Foo Rk. II' is in the book, and 'Night's Calming|End|25' where the disc is
+-- owned at a rank (Me.CombatAbility/CombatAbilityReady need the exact ranked name).
+-- Returns name unchanged for AAs, items, or names already at base rank.
 function Utils.resolveSpellRank(name)
-    if (mq.TLO.Me.Book(name)() or 0) ~= 0 then return name end
-    local rk2 = name .. ' Rk. II'
-    if (mq.TLO.Me.Book(rk2)() or 0) ~= 0 then return rk2 end
-    local rk3 = name .. ' Rk. III'
-    if (mq.TLO.Me.Book(rk3)() or 0) ~= 0 then return rk3 end
+    local me = mq.TLO.Me
+    local function owned(n)
+        return (me.Book(n)() or 0) ~= 0 or me.CombatAbility(n)() ~= nil
+    end
+    if owned(name) then return name end
+    for _, suffix in ipairs({ ' Rk. II', ' Rk. III' }) do
+        if owned(name .. suffix) then return name .. suffix end
+    end
     return name
 end
 

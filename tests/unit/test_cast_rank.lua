@@ -1,7 +1,8 @@
 -- tests/unit/test_cast_rank.lua
--- Utils.resolveCastRank: castWhat's rank lookup. A disc entry like 'Fyrthek Mantle'
--- must resolve to the owned 'Fyrthek Mantle Rk. II'; discs are not in the spellbook,
--- so a book/gem-only lookup left the base name and castWhat reported "not found".
+-- Utils.resolveCastRank (castWhat) and Utils.resolveSpellRank (buffs, pull).
+-- A disc entry like 'Fyrthek Mantle' must resolve to the owned 'Fyrthek Mantle Rk. II';
+-- discs are not in the spellbook, so a book/gem-only lookup left the base name and
+-- castWhat reported "not found" (and buff |End readiness checks never passed).
 local M = {}
 
 function M.run(TH, MockMQ)
@@ -52,6 +53,30 @@ function M.run(TH, MockMQ)
     -- Not owned anywhere (AA, item, skill, typo): unchanged.
     setEnv({})
     TH.assert_eq(Utils.resolveCastRank('Harm Touch'), 'Harm Touch', 'unowned name unchanged')
+
+    -- Utils.resolveSpellRank (buffs, pull): book and combat abilities, no gem check.
+    -- A buff entry like "Night's Calming|End|25" feeds Me.CombatAbilityReady, which
+    -- needs the exact ranked name.
+    setEnv({ disc = { ["Night's Calming Rk. II"] = true } })
+    TH.assert_eq(Utils.resolveSpellRank("Night's Calming"), "Night's Calming Rk. II",
+        'resolveSpellRank: disc base name -> Rk. II')
+
+    setEnv({ disc = { ['Spite of Mirenilla'] = true } })
+    TH.assert_eq(Utils.resolveSpellRank('Spite of Mirenilla'), 'Spite of Mirenilla',
+        'resolveSpellRank: unranked disc unchanged')
+
+    setEnv({ book = { ['Xenacious\' Skin Rk. III'] = true } })
+    TH.assert_eq(Utils.resolveSpellRank('Xenacious\' Skin'), 'Xenacious\' Skin Rk. III',
+        'resolveSpellRank: book spell base name -> Rk. III')
+
+    -- Gem-only match is deliberately not used here (buff target-type lookup reads the book).
+    setEnv({ gem = { ['Dire Censure Rk. II'] = true } })
+    TH.assert_eq(Utils.resolveSpellRank('Dire Censure'), 'Dire Censure',
+        'resolveSpellRank: gem-only spell unchanged')
+
+    setEnv({})
+    TH.assert_eq(Utils.resolveSpellRank('Harm Touch'), 'Harm Touch',
+        'resolveSpellRank: unowned name unchanged')
 end
 
 return M
