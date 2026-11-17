@@ -45,6 +45,13 @@ function Cond.load()
     end
 end
 
+-- Macro variables that .mac conditions reference as ${Name}. They are not MQ
+-- TLOs, so mq.parse would turn them into NULL; resolve them from State first.
+local MACRO_VARS = {
+    -- /burn on|off toggle (mac:16714, Bind_Burn mac:11746).
+    BurnOn = function() return (_state and _state.combat.burnOn) and '1' or '0' end,
+}
+
 -- Evaluate an arbitrary TLO expression string. Returns true if the result is truthy.
 -- mq.parse only expands TLOs — it does not evaluate comparison operators.
 -- '${Me.PctHPs} < 75' with HP=100 yields '100 < 75', not 'FALSE'.
@@ -54,6 +61,10 @@ function Cond.evalStr(expr)
     -- Resolve ${Cond[N]} before mq.parse — Cond is not an MQ TLO.
     expr = expr:gsub('%${Cond%[(%d+)%]}', function(n)
         return Cond.eval(tonumber(n)) and 'TRUE' or 'FALSE'
+    end)
+    expr = expr:gsub('%${(%w+)}', function(name)
+        local fn = MACRO_VARS[name]
+        if fn then return fn() end
     end)
     local result = mq.parse(expr)
     if result == nil then return false end

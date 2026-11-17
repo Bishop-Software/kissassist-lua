@@ -12,7 +12,8 @@ function M.run(TH, MockMQ)
             on          = false,
             size        = 5,
             expressions = {},
-        }
+        },
+        combat = { burnOn = true },
     }
     local utils = { debug = function() end }
     Cond.init(state, utils)
@@ -65,6 +66,18 @@ function M.run(TH, MockMQ)
     TH.assert_true(Cond.evalStr('${Me.PctHPs}!=100'), 'evalStr != different → true')
     MockMQ.set('parse:${Me.PctHPs}!=100 && !0', '90!=100 && !0')
     TH.assert_true(Cond.evalStr('${Me.PctHPs}!=100 && !0'), 'evalStr != mixed with !0 → true')
+
+    -- ${BurnOn} is a .mac variable, resolved from State before mq.parse
+    MockMQ.set('parse:1 > 0', '1 > 0')
+    MockMQ.set('parse:0 > 0', '0 > 0')
+    state.combat.burnOn = true
+    TH.assert_true(Cond.evalStr('${BurnOn} > 0'), 'evalStr ${BurnOn} with burn on → true')
+    state.combat.burnOn = false
+    TH.assert_false(Cond.evalStr('${BurnOn} > 0'), 'evalStr ${BurnOn} with burn off → false')
+    MockMQ.set('parse:${Me.Buff[Spire].ID} && 1 > 0', '123 && 1 > 0')
+    state.combat.burnOn = true
+    TH.assert_true(Cond.evalStr('${Me.Buff[Spire].ID} && ${BurnOn} > 0'),
+        'evalStr ${BurnOn} mixed with a TLO → true')
 
     -- Cond.eval — cond.on = false: bypass regardless of slot content -----------
     MockMQ.reset()
