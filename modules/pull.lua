@@ -1672,6 +1672,7 @@ local function executePull(mobID)
     local x1 = math.floor(mq.TLO.Me.X())
     local y1 = math.floor(mq.TLO.Me.Y())
     local x2, y2 = 0, 0
+    local nextTick = os.clock() + 1  -- next once-a-second pull check
 
     ::outer::
     do
@@ -1729,6 +1730,8 @@ local function executePull(mobID)
             elseif os.clock() > s.timers.pullTimer or
                    (pullAttempts >= 7 and not sp.LineOfSight()) then
                 pullStatusFlag = 4
+            elseif pullAttempts >= 7 then
+                pullAttempts = 0  -- still in sight: the mac starts a new round of tries (mac:9690)
             elseif meCamp3D >= s.pull.maxRadius * 0.95 then
                 pullStatusFlag = 5
             end
@@ -1774,6 +1777,11 @@ local function executePull(mobID)
                             mq.cmd('/squelch /moveto off')
                             returnStat     = 'btcr'
                             pullStatusFlag = 4
+                        elseif (not mq.TLO.Me.Moving() or not mq.TLO.MoveTo.Moving())
+                               and pullDist < (sp.Distance() or 0) then
+                            -- Keep closing in to find LOS again (mac:9743-9750).
+                            local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''
+                            mq.cmdf('/moveto id %d mdist %d%s', mobID, math.floor(pullDist), uwSuffix)
                         end
                     end
                     if mq.TLO.Me.Moving() or mq.TLO.MoveTo.Moving() then
@@ -1782,34 +1790,58 @@ local function executePull(mobID)
                     mq.delay(100)
                 end
 
-                -- Stuck detection (mac:9807–9825).
-                local cx = math.floor(mq.TLO.Me.X())
-                local cy = math.floor(mq.TLO.Me.Y())
-                if cx == x1 and cy == y1 then
-                    stuckCount = stuckCount + 1
-                    if stuckCount >= 2 and not mq.TLO.Me.Hovering() then
-                        _movement.stuck('pull')
-                    end
-                    if stuckCount >= 7 and not hasAggro() then
-                        printf('\awI am stuck, aborting pull.')
-                        stopMoving()
-                        returnStat     = 'btcr'
-                        pullStatusFlag = 4
-                    end
-                else
-                    stuckCount = 0
-                end
-                x1, y1 = cx, cy
+                -- Once a second, as the mac's pull loop (its /delay 10, mac:9806):
+                -- stuck check, attempt count and creeping closer.
+                if os.clock() >= nextTick then
+                    nextTick = os.clock() + 1
 
-                pullAttempts = pullAttempts + 1
-                -- Creep pullDist smaller on repeated failures (mac:9791–9800).
-                myDist3D = sp.Distance3D() or 999
-                if myDist3D <= pullDist and not sp.LineOfSight() and withAlt ~= 'Pet' then
-                    if pullAttempts >= 7 then pullDist = pullDist * 0.6 end
-                end
-                if pullAttempts >= 3 and (sp.Speed() or 0) > 25 and wasInRange and myDist3D > pullDist then
-                    pullDist   = pullDist * 0.6
-                    wasInRange = false
+                    -- Stuck detection (mac:9807–9825).
+                    local cx = math.floor(mq.TLO.Me.X())
+                    local cy = math.floor(mq.TLO.Me.Y())
+                    if cx == x1 and cy == y1 then
+                        stuckCount = stuckCount + 1
+                        if stuckCount >= 2 and not mq.TLO.Me.Hovering() then
+                            _movement.stuck('pull')
+                        end
+                        if stuckCount >= 7 and not hasAggro() then
+                            printf('\awI am stuck, aborting pull.')
+                            stopMoving()
+                            returnStat     = 'btcr'
+                            pullStatusFlag = 4
+                        end
+                    else
+                        stuckCount = 0
+                    end
+                    x1, y1 = cx, cy
+
+                    -- The mac's nav step doesn't return until the mob is in
+                    -- range and in sight (PullUsingNav, mac:10420), so a try
+                    -- only counts once nav has stopped moving us.
+                    local navigating = moveUse == 'nav' and mq.TLO.Navigation.Active()
+                    if not navigating then pullAttempts = pullAttempts + 1 end
+
+                    myDist3D = sp.Distance3D() or 999
+                    local los = sp.LineOfSight()
+                    if myDist3D <= pullDist and (sp.FeetWet() == mq.TLO.Me.FeetWet() or withAlt == 'Pet') then
+                        wasInRange = true  -- mac:9764
+                    end
+                    -- Creep pullDist smaller on repeated failures (mac:9791–9800).
+                    -- Not while nav is still walking us in (the mac is still
+                    -- inside PullUsingNav then).
+                    if not navigating and pullAttempts >= 7 and myDist3D <= pullDist
+                       and not los and withAlt ~= 'Pet' then
+                        pullDist = pullDist * 0.6
+                    elseif not navigating and pullAttempts >= 3 and (sp.Speed() or 0) > 25
+                           and wasInRange and myDist3D > pullDist then
+                        pullDist   = pullDist * 0.6
+                        wasInRange = false
+                    elseif not navigating and (myDist3D > s.pull.range or not los)
+                           and (withAlt ~= 'Pet' or myDist3D > s.pull.range)
+                           and (not mq.TLO.Me.Moving() or wasInRange) then
+                        -- Out of range or sight and not closing in: move in
+                        -- closer next time (mac:9832-9836).
+                        pullDist = pullDist * 0.8
+                    end
                 end
             elseif myDist3D <= pullDist and hasLOS then
                 pullStatusFlag = 2
