@@ -12,8 +12,9 @@
 -- loop and from Pull.findMobToPull (mac:411, 8986, 9625), and pulling stops
 -- while State.pull.watchHold is set. It is a separate flag from pull.hold,
 -- which in the port is the user's PullHold setting.
-local mq     = require('mq')
-local Config = require('modules.config')
+local mq       = require('mq')
+local Config   = require('modules.config')
+local PullUtil = require('modules.pull.util')
 
 local GroupWatch = {}
 
@@ -23,10 +24,6 @@ local RESUME_PCT = 90  -- CheckStats resume level (mac:10679)
 
 local TANK_ROLES = {
     tank = true, pullertank = true, pettank = true, pullerpettank = true,
-    hunter = true, hunterpettank = true,
-}
-local ANNOUNCE_ROLES = {
-    puller = true, pullertank = true, pullerpettank = true,
     hunter = true, hunterpettank = true,
 }
 local ENDURANCE_CLASSES = { BER = true, MNK = true, ROG = true, WAR = true }
@@ -121,7 +118,7 @@ end
 
 -- Puller roles tell the group; everyone else echoes (mac:10733-10737).
 local function say(msg)
-    if ANNOUNCE_ROLES[_state.session.role or ''] and _comms then
+    if PullUtil.isPullerRole(_state.session.role) and _comms then
         _comms.announce(msg, 't')
     else
         printf('%s', msg)

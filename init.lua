@@ -143,8 +143,8 @@ printf('\agKissAssist ready. \awEntering main loop.')
 --   require('tests.integration.test_debug_cmds').run(mq, KAState, TH)
 _G.KAState = State
 
-local PULLER_ROLES = {puller=true, pullertank=true, pullerpettank=true, hunter=true, hunterpettank=true}
-if PULLER_ROLES[State.session.role] then
+local isPullerRole = require('modules.pull.util').isPullerRole
+if isPullerRole(State.session.role) then
     printf('\ayCamp not set — run \at/makecamphere\ay before pulling.')
 end
 
@@ -241,7 +241,7 @@ while not State.terminate do
     -- Phase 8: med (only out of combat — mac:409-410)
     Heal.doWeMed()
     -- Phase 9: pull
-    if PULLER_ROLES[State.session.role] and (State.movement.campX ~= 0 or State.movement.campY ~= 0) then
+    if isPullerRole(State.session.role) and (State.movement.campX ~= 0 or State.movement.campY ~= 0) then
         -- Draw the pull/camp radii on the map once we're in camp (mac:8494).
         Pull.paintMap()
         Pull.pullPauseCheck()  -- PullPause cycle (mac:8502)
