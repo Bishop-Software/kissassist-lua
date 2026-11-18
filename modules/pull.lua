@@ -4,9 +4,10 @@
 
 local mq     = require('mq')
 local Config = require('modules.config')
+local Util   = require('modules.pull.util')
 
 local Pull = {}
-local _state, _utils, _cast, _movement, _combat, _pet, _bard, _healing, _comms
+local _state, _utils, _cast, _movement, _combat, _pet, _bard, _comms
 local _groupWatch  -- modules/groupwatch.lua, set by Pull.setGroupWatch
 
 function Pull.setGroupWatch(gw) _groupWatch = gw end
@@ -17,38 +18,18 @@ local PULL_LOC_SLOTS = 5  -- PullLocs1-5 (mac:14976)
 local RAMP_PET_CLASSES = {MAG = true, NEC = true, BST = true}
 
 -- ---------------------------------------------------------------------------
--- Local helpers
+-- Shared helpers (modules/pull/util.lua)
 -- ---------------------------------------------------------------------------
 
--- 2D XY distance.
-local function dist2D(x1, y1, x2, y2)
-    local dx, dy = x1 - x2, y1 - y2
-    return math.sqrt(dx * dx + dy * dy)
-end
-
--- True once the pull has drawn aggro (live XTarget check; see Utils.pullAggroID).
-local function hasAggro()
-    return _utils.pullAggroID() > 0
-end
-
--- Case-insensitive name search in a comma/pipe-separated list.
--- '*' prefix = substring match; '#' prefix = strip then exact; plain = exact.
-local function inNameList(list, name)
-    if not list or list == 'null' or list == 'all' or list == '' then return false end
-    local lname = name:lower()
-    for entry in (list..'|'):gmatch('([^,|]+)[,|]') do
-        entry = entry:match('^%s*(.-)%s*$')
-        local ch = entry:sub(1, 1)
-        if ch == '*' then
-            if lname:find(entry:sub(2):lower(), 1, true) then return true end
-        elseif ch == '#' then
-            if lname == entry:sub(2):lower() then return true end
-        else
-            if lname == entry:lower() then return true end
-        end
-    end
-    return false
-end
+local dist2D        = Util.dist2D
+local distToCamp3D  = Util.distToCamp3D
+local hasAggro      = Util.hasAggro
+local inNameList    = Util.inNameList
+local stopMoving    = Util.stopMoving
+local pullReset     = Util.pullReset
+local xtSlotID      = Util.xtSlotID
+local moveToMob     = Util.moveToMob
+local grabOwnCorpse = Util.grabOwnCorpse
 
 -- Compass heading in degrees from (fromY, fromX) to (toY, toX): 0 = north,
 -- clockwise (90 = east), the same as Me.Heading.Degrees and the arc facing.
@@ -452,8 +433,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _combat   = combat
     _pet      = pet
     _bard     = bard
-    _healing  = healing
     _comms    = comms
+    Util.init(state, utils, healing)
     if movement and movement.setPull then movement.setPull(Pull) end
 
     -- [Pull] section
@@ -991,10 +972,6 @@ function Pull.heldByCond(quiet)
     return true
 end
 
-local PULLER_ROLES = {
-    puller = true, pullertank = true, pullerpettank = true, hunter = true, hunterpettank = true,
-}
-
 local function pctText(stat, cur, target)
     return string.format('%s %d%% -> %d%%', stat, math.floor(cur or 0), math.floor(target or 0))
 end
@@ -1008,7 +985,7 @@ function Pull.holdReasons()
     local h  = s.heal or {}
     local me = mq.TLO.Me
 
-    if not PULLER_ROLES[s.session.role or ''] then
+    if not Util.isPullerRole(s.session.role) then
         add(string.format('%s role does not pull', s.session.role or '?'))
     end
     if (s.movement.campX or 0) == 0 and (s.movement.campY or 0) == 0 then
@@ -1144,9 +1121,7 @@ function Pull.findMobToPull(readyFlag, _a, b)
     local s    = _state
     local role = s.session.role
 
-    local isPullerRole = role == 'puller'    or role == 'pullertank'    or
-                         role == 'hunter'    or role == 'hunterpettank' or
-                         role == 'pullerpettank'
+    local isPullerRole = Util.isPullerRole(role)
 
     -- Entry guards (mac:8947-8948)
     if (s.misc.dmz and not mq.TLO.Me.InInstance()) or
@@ -1349,25 +1324,6 @@ end
 -- Step 7.8 — local helpers for pull execution
 -- ---------------------------------------------------------------------------
 
-local function stopMoving()
-    mq.cmd('/squelch /moveto off')
-    mq.cmd('/squelch /nav stop')
-    mq.cmd('/squelch /stick off')
-end
-
--- Mirrors Sub PullReset (mac:10565).
-local function pullReset()
-    local s = _state
-    s.pull.pulling        = false
-    s.pull.pulled         = false
-    s.combat.myTargetID   = 0
-    s.combat.myTargetName = '0'
-    s.movement.toClose    = false
-    mq.cmd('/attack off')
-    stopMoving()
-    mq.cmd('/squelch /target clear')
-end
-
 -- Pull ignore list ("|id|id|", mac PullIgnore1): mobs the puller gave up on.
 -- Only pull searches skip them (and combat while a pull is under way,
 -- mac:994); it is cleared every 5 minutes (Pull.pullIgnoreTick). Separate
@@ -1408,11 +1364,6 @@ function Pull.pullIgnoreTick()
         if (sp.ID() or 0) > 0 and sp.Type() ~= 'Corpse' then kept[#kept + 1] = id end
     end
     p.ignore1 = #kept > 0 and ('|' .. table.concat(kept, '|') .. '|') or 'null'
-end
-
-local function xtSlotID(slot)
-    if (slot or 0) == 0 then return 0 end
-    return mq.TLO.Me.XTarget(slot).ID() or 0
 end
 
 -- After a successful pull, wait in camp for the mob to arrive. Mirrors
@@ -1497,7 +1448,7 @@ local function waitForMob()
                 end
                 local mob = mq.TLO.Spawn('id ' .. s.combat.myTargetID)
                 if mob() and ma() then
-                    local d = math.sqrt(((mob.Y() or 0) - (ma.Y() or 0))^2 + ((mob.X() or 0) - (ma.X() or 0))^2)
+                    local d = dist2D(mob.Y() or 0, mob.X() or 0, ma.Y() or 0, ma.X() or 0)
                     keepWaiting = d > 20 and (mq.TLO.Target.ID() or 0) == s.combat.myTargetID
                         and (me.TargetOfTarget.ID() or 0) == (me.ID() or -1)
                 end
@@ -1505,8 +1456,8 @@ local function waitForMob()
         elseif role == 'pullerpettank' then
             local pet = me.Pet
             if (pet.ID() or 0) > 0 and
-               math.sqrt(((pet.Y() or 0) - campY)^2 + ((pet.X() or 0) - campX)^2) > s.movement.campRadius and
-               math.sqrt(((pet.Y() or 0) - (me.Y() or 0))^2 + ((pet.X() or 0) - (me.X() or 0))^2) > 20 then
+               dist2D(pet.Y() or 0, pet.X() or 0, campY, campX) > s.movement.campRadius and
+               dist2D(pet.Y() or 0, pet.X() or 0, me.Y() or 0, me.X() or 0) > 20 then
                 mq.cmd('/pet back off')
                 mq.delay(500)
                 mq.cmd('/pet follow')
@@ -1732,14 +1683,7 @@ local function executePull(mobID)
         mq.doevents()
 
         -- GrabCorpse: own corpse within MaxRadius during pull (mac:9645)
-        if (_state.heal.corpsRecoveryOn or 0) > 0 and _healing then
-            local selfName = mq.TLO.Me.CleanName() or ''
-            if not s.misc.dragCorpse and
-               (mq.TLO.SpawnCount('pccorpse ' .. selfName .. ' radius ' .. s.pull.maxRadius)() or 0) > 0 then
-                _healing.grabCorpse(1)
-                if s.misc.dragCorpse then returnStat = 'btcr'; goto done end
-            end
-        end
+        if grabOwnCorpse(s.pull.maxRadius, 1) then returnStat = 'btcr'; goto done end
 
         -- Something already has aggro on us (mac:9658). The .mac retargets
         -- AggroTargetID, i.e. the mob in the first Auto Hater XTarget slot.
@@ -1769,12 +1713,8 @@ local function executePull(mobID)
 
         -- Evaluate pull status flag.
         if sp() then
-            local mobCamp3D = math.sqrt(
-                (sp.Y()-s.movement.campY)^2 + (sp.X()-s.movement.campX)^2 + (sp.Z()-s.movement.campZ)^2)
-            local meCamp3D  = math.sqrt(
-                (mq.TLO.Me.Y()-s.movement.campY)^2 +
-                (mq.TLO.Me.X()-s.movement.campX)^2 +
-                (mq.TLO.Me.Z()-s.movement.campZ)^2)
+            local mobCamp3D = distToCamp3D(sp.Y(), sp.X(), sp.Z())
+            local meCamp3D  = distToCamp3D(mq.TLO.Me.Y(), mq.TLO.Me.X(), mq.TLO.Me.Z())
             if mobCamp3D > (s.pull.maxRadius + s.pull.range) then
                 pullStatusFlag = 4
             elseif os.clock() > s.timers.pullTimer or
@@ -1806,18 +1746,10 @@ local function executePull(mobID)
                     end
                     mq.delay(100)
                     -- GrabCorpse: own corpse found on nav path (mac:10370)
-                    if (_state.heal.corpsRecoveryOn or 0) > 0 and _healing then
-                        local selfName = mq.TLO.Me.CleanName() or ''
-                        if not s.misc.dragCorpse and
-                           (mq.TLO.SpawnCount('pccorpse ' .. selfName .. ' radius 89')() or 0) > 0 then
-                            _healing.grabCorpse(2)
-                            if s.misc.dragCorpse then returnStat = 'btcr'; goto done end
-                        end
-                    end
+                    if grabOwnCorpse(89, 2) then returnStat = 'btcr'; goto done end
                 elseif moveUse == 'los' then
                     if hasLOS then
-                        local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''
-                        mq.cmdf('/moveto id %d mdist %d%s', mobID, math.floor(pullDist), uwSuffix)
+                        moveToMob(mobID, pullDist)
                         x2 = math.floor(mq.TLO.Me.X())
                         y2 = math.floor(mq.TLO.Me.Y())
                     elseif x2 ~= 0 then
@@ -1830,8 +1762,7 @@ local function executePull(mobID)
                         elseif (not mq.TLO.Me.Moving() or not mq.TLO.MoveTo.Moving())
                                and pullDist < (sp.Distance() or 0) then
                             -- Keep closing in to find LOS again (mac:9743-9750).
-                            local uwSuffix = mq.TLO.Me.FeetWet() and ' uw' or ''
-                            mq.cmdf('/moveto id %d mdist %d%s', mobID, math.floor(pullDist), uwSuffix)
+                            moveToMob(mobID, pullDist)
                         end
                     end
                     if mq.TLO.Me.Moving() or mq.TLO.MoveTo.Moving() then
