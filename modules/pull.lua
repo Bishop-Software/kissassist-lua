@@ -5,10 +5,14 @@
 local mq       = require('mq')
 local Util     = require('modules.pull.util')
 local Settings = require('modules.pull.settings')
+local Arc      = require('modules.pull.arc')
+local Roles    = require('modules.pull.roles')
 
 local Pull = {}
 
--- Settings (modules/pull/settings.lua), re-exported so callers keep using Pull.*.
+-- Submodule functions are re-exported so callers keep using Pull.*.
+
+-- Settings (modules/pull/settings.lua)
 Pull.loadZoneLists     = Settings.loadZoneLists
 Pull.parsePullLoc      = Settings.parsePullLoc
 Pull.buildPullLocAreas = Settings.buildPullLocAreas
@@ -19,6 +23,21 @@ Pull.setPullLevel      = Settings.setPullLevel
 Pull.levelGained       = Settings.levelGained
 Pull.pickMoveUse       = Settings.pickMoveUse
 Pull.rangeSet          = Settings.rangeSet
+
+-- Pull arc and map drawing (modules/pull/arc.lua)
+Pull.headingTo         = Arc.headingTo
+Pull.pullAngles        = Arc.pullAngles
+Pull.clearArc          = Arc.clearArc
+Pull.arcPoint          = Arc.arcPoint
+Pull.drawArc           = Arc.drawArc
+Pull.setPullAngles     = Arc.setPullAngles
+Pull.paintMap          = Arc.paintMap
+
+-- Role setup and the group Puller role toggle (modules/pull/roles.lua)
+Pull.setupHunterRole   = Roles.setupHunterRole
+Pull.setupPullerRole   = Roles.setupPullerRole
+Pull.roleToggle        = Roles.roleToggle
+
 local _state, _utils, _cast, _movement, _combat, _pet, _bard, _comms
 local _groupWatch  -- modules/groupwatch.lua, set by Pull.setGroupWatch
 
@@ -41,186 +60,11 @@ local xtSlotID      = Util.xtSlotID
 local moveToMob     = Util.moveToMob
 local grabOwnCorpse = Util.grabOwnCorpse
 
--- Compass heading in degrees from (fromY, fromX) to (toY, toX): 0 = north,
--- clockwise (90 = east), the same as Me.Heading.Degrees and the arc facing.
--- MQ's raw HeadingTo value (MQ2SpawnType.cpp) runs counter-clockwise; its
--- .Degrees member, which the mac reads (mac:14515), is 360 minus that. EQ's +X
--- is west, so the raw value alone mirrors east and west.
-function Pull.headingTo(fromY, fromX, toY, toX)
-    -- Computed directly (east = fromX - toX, north = toY - fromY) rather than as
-    -- 360 - raw, which leaves 360 instead of 0 due north from rounding.
-    ---@diagnostic disable-next-line: deprecated
-    local deg = math.deg(math.atan2(fromX - toX, toY - fromY))
-    if deg < 0 then deg = deg + 360 end
-    return deg
-end
-
--- Left/right edges of a pull arc of `width` degrees centred on `facing`, wrapped
--- into 0-360. Mirrors Sub SetPullAngles (mac:14490).
-function Pull.pullAngles(facing, width)
-    local half  = width * 0.5
-    local lSide = facing - half
-    if lSide < 0 then lSide = 360 + lSide end
-    local rSide = facing + half
-    if rSide > 360 then rSide = rSide - 360 end
-    return lSide, rSide
-end
-
--- ---------------------------------------------------------------------------
--- Pull arc on the MQ2Map map (Lua port addition). MQ2Map can't draw lines, so
--- each edge of the arc is a dotted line of /maploc markers from the camp out to
--- MaxRadius; with the PullRadius circle (paintMap) that outlines the wedge.
--- ---------------------------------------------------------------------------
-local ARC_DOTS = 4   -- markers per edge, evenly spaced out to MaxRadius
-
-local function mapLoaded()
-    local plugin = mq.TLO.Plugin('MQ2Map')
-    return plugin ~= nil and plugin.IsLoaded() == true
-end
-
-local function isArcRole()
-    local role = _state.session.role or ''
-    return role:find('puller', 1, true) ~= nil or role:find('hunter', 1, true) ~= nil
-end
-
--- Remove the arc markers this session placed (never a bare "/maploc remove",
--- which deletes every map loc).
-function Pull.clearArc()
-    local marks = _state.pull.arcMarks or {}
-    if #marks > 0 and mapLoaded() then
-        for _, loc in ipairs(marks) do mq.cmdf('/squelch /maploc remove %s', loc) end
-    end
-    _state.pull.arcMarks = {}
-end
-
--- Point `dist` from camp on compass heading `deg` (0 north = +Y, 90 east = -X).
-function Pull.arcPoint(campY, campX, deg, dist)
-    local r = math.rad(deg)
-    return campY + dist * math.cos(r), campX - dist * math.sin(r)
-end
-
--- Redraw the arc's edges around the camp. Clears them when the arc is off,
--- there's no camp, or this isn't a puller/hunter role.
-function Pull.drawArc()
-    Pull.clearArc()
-    local p, mv = _state.pull, _state.movement
-    if (p.pullArcWidth or 0) <= 0 or not isArcRole() then return end
-    if (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then return end
-    if not mapLoaded() then return end
-    local radius = p.maxRadius or 0
-    if radius <= 0 then return end
-    local marks = {}
-    for _, side in ipairs({ { p.lSide, 'Pull arc L' }, { p.rSide, 'Pull arc R' } }) do
-        for i = 1, ARC_DOTS do
-            local y, x = Pull.arcPoint(mv.campY, mv.campX, side[1], radius * i / ARC_DOTS)
-            -- MQ2Map tags map locs by whole-number loc, so place and remove by that.
-            local loc = string.format('%d %d', math.floor(y + 0.5), math.floor(x + 0.5))
-            local label = (i == ARC_DOTS) and (' label ' .. side[2]) or ''
-            mq.cmdf('/squelch /maploc size 10 color 255 200 0 %s%s', loc, label)
-            marks[#marks + 1] = loc
-        end
-    end
-    p.arcMarks = marks
-end
-
--- Aim the pull arc: store its edges and facing in State.pull (mac:14490).
--- A width of 0 turns it off and clears the map markers.
-function Pull.setPullAngles(facing, width, quiet)
-    if not width or width <= 0 then Pull.clearArc() return end
-    facing = facing or 0
-    local p = _state.pull
-    p.lSide, p.rSide = Pull.pullAngles(facing, width)
-    p.heading = facing
-    if not quiet then
-        printf('\aySetting Pull Angles. Facing: \at%.2f\ay Left Side: \at%.2f\ay Right Side: \at%.2f\ay Width: \at%d',
-            facing, p.lSide, p.rSide, width)
-    end
-    Pull.drawArc()
-end
-
--- Check whether mobID falls within the configured pull arc.
--- Mac: FigureMobAngle (mac:14511-14520)
--- The .mac reads Spawn[mob].HeadingTo[CampY,CampX], but MQ's HeadingTo ignores its
--- argument and measures from the player, so it only matches the camp while the
--- puller stands there. Measure from the camp itself.
-local function figureMobAngle(mobID)
-    local sp = mq.TLO.Spawn('id ' .. mobID)
-    if not sp() then return false end
-    local dir = Pull.headingTo(_state.movement.campY, _state.movement.campX, sp.Y() or 0, sp.X() or 0)
-    local lSide, rSide = _state.pull.lSide, _state.pull.rSide
-    -- lSide >= rSide means the arc wraps through 0/360.
-    if lSide >= rSide then
-        if dir < lSide and dir > rSide then return false end
-    else
-        if dir < lSide or dir > rSide then return false end
-    end
-    return true
-end
+local figureMobAngle = Arc.figureMobAngle  -- in-arc test for pullValidate
 
 -- ---------------------------------------------------------------------------
 -- Init
 -- ---------------------------------------------------------------------------
-
--- Hunter role setup from CheckRoles (mac:8735-8798). Runs at startup after the
--- INI is loaded. A hunter engages at 100%. With ReturnToCamp on, it is turned
--- off: the hunter fights where it pulls and walks back only when it runs out of
--- mobs. With it off, the hunter stays put and pulls on its way back (StayPut +
--- PullOnReturn). Main assist identity is set in init.lua (TANK_ROLES).
-function Pull.setupHunterRole()
-    local s    = _state
-    local role = s.session.role
-    if role ~= 'hunter' and role ~= 'hunterpettank' then return end
-    s.combat.assistAt = 100
-    if s.combat.useMQ2Melee then
-        mq.cmdf('/squelch /melee aggro=%d', role == 'hunter' and 1 or 0)
-    end
-    if s.movement.returnToCamp then
-        s.movement.returnToCamp = false
-        s.movement.stayPut      = false
-    else
-        s.movement.stayPut  = true
-        s.pull.pullOnReturn = true
-    end
-    if role == 'hunterpettank' then
-        s.session.chaseAssist = false
-        s.misc.mountOn        = false
-        s.pet.assistAt        = 100
-    end
-    if (mq.TLO.Me.Pet.ID() or 0) > 0 then mq.cmd('/pet follow') end
-    _utils.debug('pull', 'setupHunterRole: role=%s stayPut=%s pullOnReturn=%s',
-        role, tostring(s.movement.stayPut), tostring(s.pull.pullOnReturn))
-end
-
--- Puller role setup from CheckRoles (mac:8688-8734, 8803-8826). Runs at startup
--- after the INI is loaded. Pullers always return to camp: executePull only walks
--- back and waits for the mob when ReturnToCamp is on, and the INI default is 0.
--- Main assist identity is set in init.lua (TANK_ROLES); pet taunt is handled by
--- the pet module; the PullRoleToggle group-leader check is in Pull.init.
-function Pull.setupPullerRole()
-    local s    = _state
-    local role = s.session.role
-    if role ~= 'puller' and role ~= 'pullertank' and role ~= 'pullerpettank' then return end
-    s.movement.returnToCamp     = true
-    s.session.chaseAssist       = false
-    -- Leash: past this, ReturnToCamp turns off (mac CampRadiusExceed)
-    s.movement.campRadiusExceed = (s.pull.maxRadius or 0) + 200
-    if s.combat.useMQ2Melee then
-        mq.cmdf('/squelch /melee aggro=%d', role == 'pullertank' and 1 or 0)
-    end
-    if role ~= 'puller' then s.combat.assistAt = 100 end
-    if role == 'pullerpettank' then
-        s.combat.meleeOn = false  -- the pet does the fighting
-        s.misc.mountOn   = false
-        s.pet.assistAt   = 100
-    end
-    -- Pet: guard if it's close by, else follow (mac:8705, 8728, 8818)
-    if (mq.TLO.Me.Pet.ID() or 0) > 0 then
-        mq.cmd((mq.TLO.Me.Pet.Distance() or 999) <= (s.movement.campRadius or 30)
-            and '/pet guard' or '/pet follow')
-    end
-    _utils.debug('pull', 'setupPullerRole: role=%s campRadiusExceed=%d',
-        role, s.movement.campRadiusExceed)
-end
 
 function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, comms)
     _state    = state
@@ -233,6 +77,8 @@ function Pull.init(state, utils, cast, movement, combat, pet, bard, healing, com
     _comms    = comms
     Util.init(state, utils, healing)
     if movement and movement.setPull then movement.setPull(Pull) end
+    Arc.init(state, Pull)     -- before Settings.load, which aims the arc
+    Roles.init(state, utils)
 
     -- [Pull] / [PullAdvanced] INI settings (modules/pull/settings.lua).
     Settings.init(state, utils, Pull)
@@ -481,26 +327,6 @@ local function findMobsFirst(filter, returnWhat, pflag)
     return total  -- 0 when returnWhat=true and none found
 end
 
--- Draw the pull and camp radii on the MQ2Map map. Mirrors Sub PaintMap
--- (mac:8917), run once while the puller stands in camp (mac:8494, MapSet).
--- MQ2Map anchors CampRadius/PullRadius at the player's position when they are
--- set, so this only paints from inside the camp radius. CastRadius follows the
--- player and shows the pull range. /makecamphere clears mapSet to repaint.
-function Pull.paintMap()
-    local s = _state
-    if s.pull.mapSet then return end
-    if s.movement.campX == 0 and s.movement.campY == 0 then return end
-    if not mq.TLO.Plugin('MQ2Map').IsLoaded() then return end
-    local d = dist2D(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0, s.movement.campY, s.movement.campX)
-    if d > (s.movement.campRadius or 0) then return end
-    mq.cmdf('/squelch /mapfilter CastRadius %d', s.pull.range or 0)
-    mq.cmdf('/squelch /mapfilter SpellRadius %d', s.pull.maxRadius or 0)
-    mq.cmdf('/squelch /mapfilter PullRadius %d', s.pull.maxRadius or 0)
-    mq.cmdf('/squelch /mapfilter CampRadius %d', s.movement.campRadius or 0)
-    Pull.drawArc()  -- the arc's edges, around the (new) camp
-    s.pull.mapSet = true
-end
-
 -- True when the PullWith method can be used right now (mac:418): Melee and Pet
 -- always; Ranged when the ranged attack is ready; otherwise the named spell, AA,
 -- combat ability or item must be ready. Checked before searching so the puller
@@ -667,38 +493,6 @@ function Pull.holdReasons()
     if s.misc and s.misc.dragCorpse then add('dragging a corpse') end
     if Pull.pullWaiting() then add('waiting for respawns') end
     return out
-end
-
--- PullRoleToggle (mac:10586 PullModeToggle): a pullerpettank who leads the
--- group with a merc in it takes the EQ group Puller role (3) for a pull of a
--- mob outside camp, and drops it again back in camp after a successful pull.
-local function isGroupPuller()
-    local myID = mq.TLO.Me.ID() or 0
-    return myID > 0 and (mq.TLO.Group.Puller.ID() or 0) == myID
-end
-
-function Pull.roleToggle(on, mobID)
-    local s = _state
-    if not s.pull.roleToggle or s.session.role ~= 'pullerpettank' then return end
-    if (mq.TLO.Group.Leader.ID() or 0) ~= (mq.TLO.Me.ID() or -1) then return end
-    if (mq.TLO.SpawnCount('group mercenary')() or 0) == 0 then return end
-    local name = mq.TLO.Me.CleanName() or ''
-    if on then
-        if isGroupPuller() then return end
-        local sp = mq.TLO.Spawn('id ' .. (mobID or 0))
-        if not sp() or dist2D(sp.X() or 0, sp.Y() or 0, s.movement.campX, s.movement.campY)
-                       <= s.movement.campRadius then
-            return
-        end
-        mq.cmdf('/grouproles set %s 3', name)
-        mq.delay(1000, isGroupPuller)
-        if isGroupPuller() then printf('\ag+ You have been set to be group puller.') end
-    else
-        if not isGroupPuller() then return end
-        mq.cmdf('/grouproles unset %s 3', name)
-        mq.delay(1000, function() return not isGroupPuller() end)
-        if not isGroupPuller() then printf('\ag+ You are no longer group puller.') end
-    end
 end
 
 -- Mid-fight chain pull hand-off. Mirrors Sub ChainPullNextMob (mac:15751),
