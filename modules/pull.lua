@@ -1140,7 +1140,7 @@ function Pull.chainPullBusy()
     return false
 end
 
-function Pull.findMobToPull(readyFlag, a, b)
+function Pull.findMobToPull(readyFlag, _a, b)
     local s    = _state
     local role = s.session.role
 
@@ -1701,7 +1701,7 @@ local function executePull(mobID)
     local pullAttempts = 0
     local stuckCount   = 0
     local wasInRange   = false
-    local returnStat   = ''
+    local returnStat
     -- One pull attempt per call, so the mac's TryPetFirst reset never matters here.
     local tryPetFirst  = s.session.role == 'hunterpettank'  -- mac:9623
 
@@ -1928,9 +1928,6 @@ local function executePull(mobID)
                     returnStat = 'btcr'
                     goto done
                 end
-                wasInRange = true
-                x2 = math.floor(mq.TLO.Me.X())
-                y2 = math.floor(mq.TLO.Me.Y())
 
                 -- hunterpettank sends the pet in first when the mob is close,
                 -- whatever PullWith says (mac:9623, 9878-9887). If the pet won't

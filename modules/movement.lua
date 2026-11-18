@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Movement = {}
-local _state, _utils
+local _state
 local _pull  -- set by Pull.init via Movement.setPull (Pull is wired after Movement)
 
 function Movement.setPull(pull) _pull = pull end
@@ -48,9 +48,8 @@ local function isPullerOrHunterRole(role)
         or role == 'hunter' or role == 'hunterpettank'
 end
 
-function Movement.init(state, utils)
+function Movement.init(state, _utils)  -- utils: unused, kept for the init.lua call
     _state = state
-    _utils = utils
 
     -- [General] camp and movement settings
     _state.movement.returnToCamp     = Config.get('General', 'ReturnToCamp',     '0') == '1'
@@ -99,7 +98,7 @@ end
 
 -- Port of DoWeMove (kissassist.mac:3342-3663).
 -- forceFlag=1: move back to camp even when stayPut/ReturnToCamp is off.
-function Movement.doWeMove(forceFlag, sentFrom)
+function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unused (mac debug only)
     local mv   = _state.movement
     local role = _state.session.role
 

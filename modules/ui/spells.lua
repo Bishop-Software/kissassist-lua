@@ -194,8 +194,7 @@ function SpellsUI.drawBuffs()
             local raw     = buffsRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
             local spell, tag, cond = splitBuff(isEmpty and '' or raw)
-            local sc, tc, cc = false, false, false
-            local newSpell, newTag, newCond = spell, tag, cond
+            local sc, tc, cc, newSpell, newTag, newCond
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -286,8 +285,7 @@ function SpellsUI.drawGoM()
         for i = 1, gomSize do
             local raw          = gomRaw[i] or 'null'
             local spell, tgt   = splitGom(raw)
-            local sc, tc       = false, false
-            local newSpell, newTgt = spell, tgt
+            local sc, tc, newSpell, newTgt
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)

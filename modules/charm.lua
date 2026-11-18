@@ -2,7 +2,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Charm = {}
-local _state, _utils, _cast, _pet, _bard, _comms
+local _state, _utils, _cast, _comms
 
 -- Classes that can use charm: Druid (animals), Enchanter (any), Necro (undead), Bard (any).
 local CHARM_CLASSES = { DRU = true, ENC = true, NEC = true, BRD = true }
@@ -19,12 +19,10 @@ function Charm.loadZoneLists()
 end
 
 -- Port of Sub DoCharmStuff / CreateTimersCharm / CharmRadar (KS_Charm.inc).
-function Charm.init(state, utils, cast, pet, bard, comms)
+function Charm.init(state, utils, cast, _pet, _bard, comms)  -- pet, bard: unused, kept for the init.lua call
     _state = state
     _utils = utils
     _cast  = cast
-    _pet   = pet
-    _bard  = bard
     _comms = comms
 
     local class = (mq.TLO.Me.Class.ShortName() or ''):upper()

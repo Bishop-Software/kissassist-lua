@@ -227,7 +227,7 @@ local function castSpell(spellName, sentFrom)
     end
 
     -- Stuck-gem check (mac:16013-16025 translated to re-mem approach)
-    if state.cast.checkStuckGem and not (sentFrom == 'bard') then
+    if state.cast.checkStuckGem and sentFrom ~= 'bard' then
         local gemNum = mq.TLO.Me.Gem(spellName)()
         ---@diagnostic disable-next-line: undefined-field
         if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then

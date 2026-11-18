@@ -2,11 +2,10 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Cond = {}
-local _state, _utils
+local _state
 
-function Cond.init(state, utils)
+function Cond.init(state, _utils)  -- utils: unused, kept for callers
     _state = state
-    _utils = utils
 end
 
 -- Reads [KConditions] INI section into state.cond.

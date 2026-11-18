@@ -138,15 +138,15 @@ function Pet.doPetStuff()
         -- Focus item equip before summoning (mac:5245-5258)
         if focusPet ~= '' and (mq.TLO.FindItemCount('=' .. focusPet)() or 0) > 0 then
             if focusSlot ~= 'buff' then
-                if not ((mq.TLO.Cursor.ID() or 0) > 0) and focusPet ~= focusCurrent then
+                if (mq.TLO.Cursor.ID() or 0) <= 0 and focusPet ~= focusCurrent then
                     mq.cmd(string.format('/exchange "%s" %s', focusPet, focusSlot))
                     focusSwitch = true
                     mq.delay(1000)
                 end
             else
                 if focusBuff ~= '' and focusBuff ~= 'null' then
-                    if not ((mq.TLO.Me.Buff(focusBuff).ID() or 0) > 0)
-                       and not ((mq.TLO.Me.Song(focusBuff).ID() or 0) > 0) then
+                    if (mq.TLO.Me.Buff(focusBuff).ID() or 0) <= 0
+                       and (mq.TLO.Me.Song(focusBuff).ID() or 0) <= 0 then
                         _cast.castWhat(focusPet, mq.TLO.Me.ID(), 'DoPetStuff')
                     end
                 end
@@ -208,7 +208,7 @@ function Pet.doPetStuff()
                     s.pet.activeState = true
                 end
                 -- Focus swap-back (mac:5324-5327)
-                if focusSwitch and not ((mq.TLO.Cursor.ID() or 0) > 0) then
+                if focusSwitch and (mq.TLO.Cursor.ID() or 0) <= 0 then
                     mq.cmd(string.format('/exchange "%s" %s', focusCurrent, focusSlot))
                     mq.delay(1000)
                 end
@@ -625,7 +625,7 @@ function Pet.petToys(petName)
         local pCount1     = #parts
         local petToySpell = parts[1] or ''
         local pIdx        = 1
-        local secondPart, lastPart, petToyCheck = '', '', ''
+        local secondPart, lastPart, petToyCheck
 
         if pCount1 > 1 then
             pIdx       = 2
@@ -641,7 +641,6 @@ function Pet.petToys(petName)
             secondPart  = ''
             petToyCheck = petToySpell .. ':'
         end
-        lastPart = ''
 
         -- Skip-already-given and level-76 auto-equip guards (isMyPet only)
         if isMyPet then
@@ -661,7 +660,7 @@ function Pet.petToys(petName)
                             and (mq.TLO.FindItemCount('=' .. secondPart)() or 0) > 0
 
         if spellInBook or invItem then
-            local castFlag1 = 0
+            local castFlag1
 
             if spellInBook then
                 if castPetToys(petToySpell) then goto continue end
@@ -736,7 +735,6 @@ function Pet.petToys(petName)
                 if isMyPet then s.pet.toysGave = toysTemp end
 
                 -- Advance to next pipe segment; skip already-given or auto-equipped items
-                local keepGiving = true
                 lastPart   = secondPart
                 secondPart = ''
                 while pIdx < pCount1 do
@@ -771,10 +769,9 @@ function Pet.petToys(petName)
                 -- Summoned-item path: flush window then re-cast for next item
                 if castFlag1 == 1 then
                     if mq.TLO.Window('GiveWnd').Open() then giveTo('giveitems', petID, true) end
-                    if castPetToys(petToySpell) then keepGiving = false; break end
+                    if castPetToys(petToySpell) then break end
                     mq.delay(15000, function() return (mq.TLO.Cursor.ID() or 0) > 0 end)
                 end
-                if not keepGiving then break end
             end
 
             -- castFlag1==2: heirloom-bag path — give everything in the bag slot (mac:5796-5810)

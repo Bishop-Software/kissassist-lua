@@ -228,8 +228,8 @@ local function onTooFar()
     end
 end
 
-local function onMezBroke(_, mob, _breaker)
-    utils.debug('mez', 'MezBroke: %s by %s', tostring(mob), tostring(_breaker))
+local function onMezBroke(_, mob, breaker)
+    utils.debug('mez', 'MezBroke: %s by %s', tostring(mob), tostring(breaker))
     state.combat.eventFlag = true
     state.mez.broke        = true
     if state.mez.on == 0 then return end

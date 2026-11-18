@@ -515,10 +515,10 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     Combat.checkForAdds(fromWhere)
 
     -- Tank/pullertank: camp movement and mob-count gating (mac:587–599)
+    -- (The tank branch's DoWeChase, DoWeMove, EnduranceCheck are deferred —
+    -- movement/buffs modules.)
     local role = _state.session.role
-    if role == 'tank' or role == 'pullertank' then
-        -- DoWeChase, DoWeMove, EnduranceCheck (deferred — movement/buffs modules)
-    elseif role ~= 'manual' then
+    if role ~= 'tank' and role ~= 'pullertank' and role ~= 'manual' then
         -- Non-manual non-tank: CombatReset if our target died (mac:601)
         local myID = _state.combat.myTargetID
         if myID ~= 0 then

@@ -145,7 +145,6 @@ local function getCombatTarget()
     if aggroID2 ~= 0 then
         if isDeadOrGone(aggroID2) then
             _state.combat.aggroTargetID2 = '0'
-            aggroID2 = 0
         end
     end
 
