@@ -542,10 +542,18 @@ end
 -- Full MeddingInterrupted state machine and bard twist-med are deferred (Step 5.6).
 -- Called from the main loop out-of-combat (init.lua, Step 5.6).
 function Heal.doWeMed()
-    if not _state.heal.medOn then return end
+    if not _state.heal.medOn then
+        _state.heal.medding = false  -- MedOn turned off mid-med: don't keep holding pulls
+        return
+    end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
-    -- Only med in combat if medCombat is on (mac:3838)
-    if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then return end
+    -- Only med in combat if medCombat is on (mac:3838). A mob on us ends a med
+    -- in progress, as the mac's med loop does (mac:4042-4053); otherwise a stale
+    -- medding flag would keep holding pulls (chain pulls) through the fight.
+    if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then
+        _state.heal.medding = false
+        return
+    end
     if mq.TLO.Me.Moving() then return end
 
     local stat = _state.heal.medStat

@@ -116,6 +116,18 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_healing_med',
+        path         = 'tests.unit.test_healing_med',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
+        name         = 'test_pull_hold',
+        path         = 'tests.unit.test_pull_hold',
+        useMock      = true,
+        clearModules = { 'modules.pull', 'modules.config' },
+    },
+    {
         name         = 'test_comms_announce',
         path         = 'tests.unit.test_comms_announce',
         useMock      = true,
