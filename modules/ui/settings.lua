@@ -5,9 +5,6 @@ local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local intInput = Helpers.intInput
-local GroupWatch = require('modules.groupwatch')
-
-local GW_MODE_LABELS = { 'Off', 'Whole group', 'Healers only' }
 
 local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
 local AFK_ACTION_LABELS = { 'Hold until GM leaves', 'End macro', 'Unload MQ2', 'Quit EQ' }
@@ -32,37 +29,6 @@ function Settings.drawControls()
     intInput('Chase Distance', s.movement.chaseDistance, 1, 500, 'General', 'ChaseDistance', function(v) s.movement.chaseDistance = v end)
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
-
-    -- Group Watch: hold pulls while group members med (GroupWatchOn "1|20",
-    -- GroupWatchCheck "condN"); saved together by GroupWatch.save().
-    ImGui.Spacing()
-    ImGui.Separator()
-    local h = s.heal
-    ImGui.PushItemWidth(200)
-    local mode, modeChanged = ImGui.Combo('Group Watch##gwmode', (h.groupWatchOn or 0) + 1, GW_MODE_LABELS)
-    if modeChanged then
-        h.groupWatchOn = mode - 1
-        GroupWatch.save()
-    end
-    ImGui.PopItemWidth()
-    if ImGui.IsItemHovered() then
-        ImGui.SetTooltip('Hold pulls while a group member is low on mana or endurance,\nuntil they med back to 90 percent.')
-    end
-    if (h.groupWatchOn or 0) > 0 then
-        local pct = ImGui.InputInt('Group Watch %##gwpct', h.groupWatchPct or 20)
-        if pct ~= (h.groupWatchPct or 20) then
-            h.groupWatchPct = math.max(1, math.min(100, pct))
-            GroupWatch.save()
-        end
-        local cond = ImGui.InputInt('Group Watch Cond##gwcond', h.groupWatchCond or 0)
-        if cond ~= (h.groupWatchCond or 0) then
-            h.groupWatchCond = math.max(0, math.min(s.cond.size or 5, cond))
-            GroupWatch.save()
-        end
-        if ImGui.IsItemHovered() then
-            ImGui.SetTooltip('Also hold pulls while this condition (CondN) is true. 0 = off.')
-        end
-    end
 end
 
 function Settings.drawConditions()

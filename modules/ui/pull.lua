@@ -6,6 +6,9 @@ local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local intInput = Helpers.intInput
 local Pull     = require('modules.pull')
+local GroupWatch = require('modules.groupwatch')
+
+local GW_MODE_LABELS = { 'Off', 'Whole group', 'Healers only' }
 
 local PullUI = {}
 local _state
@@ -49,6 +52,48 @@ local function drawWatchLists(s)
         ImGui.TextDisabled('  none')
     end
     for _, e in ipairs(ignores) do ImGui.BulletText(e) end
+end
+
+-- Group Watch: hold pulls while group members med (GroupWatchOn "1|20",
+-- GroupWatchCheck "condN"); saved together by GroupWatch.save().
+local function drawGroupWatch(s)
+    local h = s.heal
+    ImGui.PushItemWidth(200)
+    local mode, modeChanged = ImGui.Combo('Group Watch##gwmode', (h.groupWatchOn or 0) + 1, GW_MODE_LABELS)
+    if modeChanged then
+        h.groupWatchOn = mode - 1
+        GroupWatch.save()
+    end
+    ImGui.PopItemWidth()
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Hold pulls while a group member is low on mana or endurance,\nuntil they med back to 90 percent.')
+    end
+    if (h.groupWatchOn or 0) > 0 then
+        local pct = ImGui.InputInt('Group Watch %##gwpct', h.groupWatchPct or 20)
+        if pct ~= (h.groupWatchPct or 20) then
+            h.groupWatchPct = math.max(1, math.min(100, pct))
+            GroupWatch.save()
+        end
+        local cond = ImGui.InputInt('Group Watch Cond##gwcond', h.groupWatchCond or 0)
+        if cond ~= (h.groupWatchCond or 0) then
+            h.groupWatchCond = math.max(0, math.min(s.cond.size or 5, cond))
+            GroupWatch.save()
+        end
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Also hold pulls while this condition (CondN) is true. 0 = off.')
+        end
+    end
+end
+
+-- One line saying whether pulls can go ahead, and if not, why.
+local function drawHoldStatus()
+    local reasons = Pull.holdReasons()
+    if #reasons == 0 then
+        ImGui.TextColored(0.3, 0.9, 0.4, 1, 'Pulling: nothing is holding pulls')
+    else
+        ImGui.TextColored(1, 0.8, 0.2, 1, 'Pulls held:')
+        for _, r in ipairs(reasons) do ImGui.BulletText(r) end
+    end
 end
 
 local _locBuf  = {}  -- PullLocs text being edited, per slot
@@ -222,9 +267,14 @@ function PullUI.drawPull()
         end
     end
 
+    ImGui.Spacing()
+    ImGui.Separator()
+    drawGroupWatch(s)
+
     -- Read-only status
     ImGui.Spacing()
     ImGui.Separator()
+    drawHoldStatus()
     ImGui.Text(string.format('Pull With: %s (range %d)', s.pull.withAlt or 'Melee', s.pull.range or 0))
     if s.pull.pauseHold then
         local left = math.floor(math.max(0, (s.timers.pullPause1 or 0) - os.clock()))
