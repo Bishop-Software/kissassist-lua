@@ -74,13 +74,22 @@ local function drawGroupWatch(s)
             h.groupWatchPct = math.max(1, math.min(100, pct))
             GroupWatch.save()
         end
-        local cond = ImGui.InputInt('Group Watch Cond##gwcond', h.groupWatchCond or 0)
-        if cond ~= (h.groupWatchCond or 0) then
-            h.groupWatchCond = math.max(0, math.min(s.cond.size or 5, cond))
+        -- Condition picker, as on the other tabs: (none), Cond1..CondN.
+        local condLabels = { '(none)' }
+        for j = 1, (s.cond.size or 0) do
+            condLabels[j + 1] = string.format('Cond%d', j)
+        end
+        local condNo = h.groupWatchCond or 0
+        if condNo > #condLabels - 1 then condNo = 0 end
+        ImGui.PushItemWidth(200)
+        local idx, condChanged = ImGui.Combo('Group Watch Cond##gwcond', condNo + 1, condLabels)
+        ImGui.PopItemWidth()
+        if condChanged then
+            h.groupWatchCond = idx - 1
             GroupWatch.save()
         end
         if ImGui.IsItemHovered() then
-            ImGui.SetTooltip('Also hold pulls while this condition (CondN) is true. 0 = off.')
+            ImGui.SetTooltip('Also hold pulls while this condition is true. (none) = off.')
         end
     end
 end
