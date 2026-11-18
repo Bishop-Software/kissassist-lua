@@ -122,6 +122,12 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_pull_ranged_swap',
+        path         = 'tests.unit.test_pull_ranged_swap',
+        useMock      = true,
+        clearModules = { 'modules.pull.execute', 'modules.pull.util' },
+    },
+    {
         name         = 'test_pull_hold',
         path         = 'tests.unit.test_pull_hold',
         useMock      = true,

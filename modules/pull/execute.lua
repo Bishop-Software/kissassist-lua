@@ -40,7 +40,9 @@ end
 --                   the pulled mob is still heading for us and > 20 from the MA.
 --   pullerpettank:  bring the pet back, then send it at the first hater
 --                   within PetAttackRange of camp.
--- Merc assignment and the ranged-weapon swap back are not ported.
+-- The merc is sent in when the mob reaches camp (mac:10525). Not ported: the
+-- solo-puller-with-merc group Puller role (mac:9692, 10555). The ranged swap
+-- back (mac:10477) is done in finishPull before this runs.
 local function waitForMob()
     local s    = _state
     local role = s.session.role
@@ -215,6 +217,39 @@ local function pullWithMelee(mobID)
     if meleeOff then mq.cmd('/squelch /melee melee=1') end
     s.pull.pulled      = pulled
     s.movement.toClose = false
+end
+
+local function hasItem(name)
+    return name ~= nil and name ~= '' and name:upper() ~= 'NULL'
+end
+
+-- Bow|Arrow pull: put the pull bow and ammo in the ranged and ammo slots if
+-- they aren't there already (Sub PullWithRanged RSwitch 0, mac:10091-10099).
+-- rangeSet sets pull.item / pull.ammo from PullWith.
+function Execute.swapRangedIn()
+    local p   = _state.pull
+    local inv = mq.TLO.Me.Inventory
+    if hasItem(p.item) and (inv('ranged').Name() or '') ~= p.item then
+        mq.cmdf('/exchange "%s" ranged', p.item)
+    end
+    if hasItem(p.ammo) and (inv('ammo').Name() or '') ~= p.ammo then
+        mq.cmdf('/exchange "%s" ammo', p.ammo)
+    end
+end
+
+-- After the pull: put back what was in the ranged and ammo slots at startup
+-- (Sub PullWithRanged RSwitch 2, mac:10168-10177). A summoned item stuck on
+-- the cursor goes to the inventory first (mac CheckCursor).
+function Execute.swapRangedBack()
+    local m = _state.misc or {}
+    if (mq.TLO.Cursor.ID() or 0) > 0 then mq.cmd('/autoinventory') end
+    local inv = mq.TLO.Me.Inventory
+    if hasItem(m.origRanged) and (inv('ranged').Name() or '') ~= m.origRanged then
+        mq.cmdf('/exchange "%s" ranged', m.origRanged)
+    end
+    if hasItem(m.tempAmmo) and (inv('ammo').Name() or '') ~= m.tempAmmo then
+        mq.cmdf('/exchange "%s" ammo', m.tempAmmo)
+    end
 end
 
 -- Mirrors Sub PullWithRanged RSwitch==1 path (kissassist.mac:10083).
@@ -553,6 +588,7 @@ local function finishPull(r)
         s.pull.pulled = true
         r.returnStat  = ''
     end
+    if r.withAlt == 'Ranged' then Execute.swapRangedBack() end  -- mac:9931
     s.pull.pulling = false
 
     if r.returnStat == 'btcr' then
@@ -617,6 +653,8 @@ function Execute.executePull(mobID)
 
     Pull.roleToggle(true, mobID)  -- mac:9634
     s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
+
+    if r.withAlt == 'Ranged' then Execute.swapRangedIn() end  -- mac:9685-9687
 
     -- Stuck-detection baseline; x2/y2 = where the last los /moveto was sent from.
     r.x1 = math.floor(mq.TLO.Me.X())

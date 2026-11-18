@@ -82,6 +82,14 @@ function Settings.load()
     Pull.rangeSet()
     Pull.pickMoveUse()
 
+    -- What's in the ranged and ammo slots at startup, put back after a
+    -- Bow|Arrow pull swaps the pull bow in (mac OrigRanged / TempAmmo, 16831/16907).
+    if _state.misc then
+        local ranged, ammo = mq.TLO.Me.Inventory('ranged'), mq.TLO.Me.Inventory('ammo')
+        _state.misc.origRanged = ranged and ranged.Name() or ''
+        _state.misc.tempAmmo   = ammo and ammo.Name() or ''
+    end
+
     _utils.debug('pull', 'Pull.init complete — with=%s range=%d maxRadius=%d levels=%d-%d',
         _state.pull.withAlt,
         _state.pull.range, _state.pull.maxRadius, _state.pull.min, _state.pull.max)
