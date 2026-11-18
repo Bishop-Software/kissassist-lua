@@ -307,270 +307,255 @@ local function pullWithCast(mobID)
     if hasAggro() then s.pull.pulled = true end
 end
 
--- Main pull movement + dispatch loop. Mirrors Sub Pull (kissassist.mac:9589–9969).
-function Execute.executePull(mobID)
-    local s       = _state
-    local moveUse = s.pull.moveUse
-    local withAlt = s.pull.withAlt
-    local pullDist = s.pull.range
+-- ---------------------------------------------------------------------------
+-- executePull: the approach loop (mac Sub Pull, 9589-9969), split into phases.
+-- Each pass runs preMoveChecks -> pullStatus -> approachStep -> btcrCheck ->
+-- dispatch. A phase returns DONE where the old single loop jumped to its
+-- "done" label (leave the loop and run finishPull); the loop starts its next
+-- pass where the old code jumped back to the top. The per-pull variables live
+-- in one table, r, passed to every phase.
+-- ---------------------------------------------------------------------------
+local DONE = 'done'
 
-    local pullAttempts = 0
-    local stuckCount   = 0
-    local wasInRange   = false
-    local returnStat
-    -- One pull attempt per call, so the mac's TryPetFirst reset never matters here.
-    local tryPetFirst  = s.session.role == 'hunterpettank'  -- mac:9623
+-- Events, own corpse, early aggro, mobs already in camp (mac:9645-9671).
+local function preMoveChecks(r)
+    local s = _state
+    mq.doevents()
 
-    s.pull.pulled  = false
-    s.pull.tooFar  = false
-    -- Pull attempt deadline (~25 s), extended while actively moving.
-    s.timers.pullTimer = os.clock() + 25
+    -- GrabCorpse: own corpse within MaxRadius during pull (mac:9645)
+    if grabOwnCorpse(s.pull.maxRadius, 1) then r.returnStat = 'btcr'; return DONE end
 
-    if not mq.TLO.Me.Mount.ID() and (mq.TLO.Me.Sitting() or mq.TLO.Me.Feigning()) then
-        mq.cmd('/stand')
-        mq.delay(200)
+    -- Something already has aggro on us (mac:9658). The .mac retargets
+    -- AggroTargetID, i.e. the mob in the first Auto Hater XTarget slot.
+    if hasAggro() then
+        local aggroID = mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0
+        if aggroID == 0 then aggroID = s.combat.myTargetID end
+        s.pull.pulled         = true
+        s.combat.myTargetID   = aggroID
+        s.combat.myTargetName = mq.TLO.Spawn('id ' .. aggroID).CleanName() or '?'
+        stopMoving()
+        _utils.debug('pull', 'executePull: early aggro detected')
+        return DONE
     end
 
-    Pull.roleToggle(true, mobID)  -- mac:9634
-    s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
+    -- Mobs already in camp → abort pull.
+    local meCampDist = dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), s.movement.campY, s.movement.campX)
+    local xSlot2ID   = mq.TLO.Me.XTarget(s.combat.xTSlot2).ID() or 0
+    if ((s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) or
+        (xSlot2ID > 0 and s.pull.chainPull > 0)) and
+       meCampDist < s.movement.campRadius then
+        printf('\awLooks like mobs in camp, aborting pull.')
+        pullReset()
+        return DONE
+    end
+end
 
-    -- Stuck-detection baseline positions.
-    local x1 = math.floor(mq.TLO.Me.X())
-    local y1 = math.floor(mq.TLO.Me.Y())
-    local x2, y2 = 0, 0
-    local nextTick = os.clock() + 1  -- next once-a-second pull check
+-- Pull status for this pass (mac:9675-9684): 1 keep approaching, 4 give up
+-- (mob too far from camp, timer, 7 tries out of sight, mob gone), 5 we are
+-- at the edge of MaxRadius. Anything but 1 means back to camp (btcr).
+local function pullStatus(r)
+    local s, sp = _state, r.sp
+    if sp() then
+        local mobCamp3D = distToCamp3D(sp.Y(), sp.X(), sp.Z())
+        local meCamp3D  = distToCamp3D(mq.TLO.Me.Y(), mq.TLO.Me.X(), mq.TLO.Me.Z())
+        if mobCamp3D > (s.pull.maxRadius + s.pull.range) then
+            r.flag = 4
+        elseif os.clock() > s.timers.pullTimer or
+               (r.pullAttempts >= 7 and not sp.LineOfSight()) then
+            r.flag = 4
+        elseif r.pullAttempts >= 7 then
+            r.pullAttempts = 0  -- still in sight: the mac starts a new round of tries (mac:9690)
+        elseif meCamp3D >= s.pull.maxRadius * 0.95 then
+            r.flag = 5
+        end
+    else
+        r.flag = 4
+    end
+    if r.flag ~= 1 then r.returnStat = 'btcr' end
+end
 
-    ::outer::
-    do
-        local pullStatusFlag = 1  -- 1=moving 2=in-range 4=abort 5=oor-return
-        returnStat = ''
+-- Once a second, as the mac's pull loop (its /delay 10, mac:9806): stuck
+-- check, attempt count and creeping closer.
+local function secondTick(r)
+    local s, sp = _state, r.sp
+    if os.clock() < r.nextTick then return end
+    r.nextTick = os.clock() + 1
 
-        mq.doevents()
-
-        -- GrabCorpse: own corpse within MaxRadius during pull (mac:9645)
-        if grabOwnCorpse(s.pull.maxRadius, 1) then returnStat = 'btcr'; goto done end
-
-        -- Something already has aggro on us (mac:9658). The .mac retargets
-        -- AggroTargetID, i.e. the mob in the first Auto Hater XTarget slot.
-        if hasAggro() then
-            local aggroID = mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0
-            if aggroID == 0 then aggroID = s.combat.myTargetID end
-            s.pull.pulled         = true
-            s.combat.myTargetID   = aggroID
-            s.combat.myTargetName = mq.TLO.Spawn('id ' .. aggroID).CleanName() or '?'
+    -- Stuck detection (mac:9807–9825).
+    local cx = math.floor(mq.TLO.Me.X())
+    local cy = math.floor(mq.TLO.Me.Y())
+    if cx == r.x1 and cy == r.y1 then
+        r.stuckCount = r.stuckCount + 1
+        if r.stuckCount >= 2 and not mq.TLO.Me.Hovering() then
+            _movement.stuck('pull')
+        end
+        if r.stuckCount >= 7 and not hasAggro() then
+            printf('\awI am stuck, aborting pull.')
             stopMoving()
-            _utils.debug('pull', 'executePull: early aggro detected')
-            goto done
+            r.returnStat = 'btcr'
+            r.flag       = 4
         end
+    else
+        r.stuckCount = 0
+    end
+    r.x1, r.y1 = cx, cy
 
-        -- Mobs already in camp → abort pull.
-        local meCampDist = dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), s.movement.campY, s.movement.campX)
-        local xSlot2ID   = mq.TLO.Me.XTarget(s.combat.xTSlot2).ID() or 0
-        if ((s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) or
-            (xSlot2ID > 0 and s.pull.chainPull > 0)) and
-           meCampDist < s.movement.campRadius then
-            printf('\awLooks like mobs in camp, aborting pull.')
-            pullReset()
-            goto done
-        end
+    -- The mac's nav step doesn't return until the mob is in range and in
+    -- sight (PullUsingNav, mac:10420), so a try only counts once nav has
+    -- stopped moving us.
+    local navigating = r.moveUse == 'nav' and mq.TLO.Navigation.Active()
+    if not navigating then r.pullAttempts = r.pullAttempts + 1 end
 
-        local sp = mq.TLO.Spawn('id ' .. mobID)
+    local myDist3D = sp.Distance3D() or 999
+    local los = sp.LineOfSight()
+    if myDist3D <= r.pullDist and (sp.FeetWet() == mq.TLO.Me.FeetWet() or r.withAlt == 'Pet') then
+        r.wasInRange = true  -- mac:9764
+    end
+    -- Creep pullDist smaller on repeated failures (mac:9791–9800). Not while
+    -- nav is still walking us in (the mac is still inside PullUsingNav then).
+    if not navigating and r.pullAttempts >= 7 and myDist3D <= r.pullDist
+       and not los and r.withAlt ~= 'Pet' then
+        r.pullDist = r.pullDist * 0.6
+    elseif not navigating and r.pullAttempts >= 3 and (sp.Speed() or 0) > 25
+           and r.wasInRange and myDist3D > r.pullDist then
+        r.pullDist   = r.pullDist * 0.6
+        r.wasInRange = false
+    elseif not navigating and (myDist3D > s.pull.range or not los)
+           and (r.withAlt ~= 'Pet' or myDist3D > s.pull.range)
+           and (not mq.TLO.Me.Moving() or r.wasInRange) then
+        -- Out of range or sight and not closing in: move in closer next time
+        -- (mac:9832-9836).
+        r.pullDist = r.pullDist * 0.8
+    end
+end
 
-        -- Evaluate pull status flag.
-        if sp() then
-            local mobCamp3D = distToCamp3D(sp.Y(), sp.X(), sp.Z())
-            local meCamp3D  = distToCamp3D(mq.TLO.Me.Y(), mq.TLO.Me.X(), mq.TLO.Me.Z())
-            if mobCamp3D > (s.pull.maxRadius + s.pull.range) then
-                pullStatusFlag = 4
-            elseif os.clock() > s.timers.pullTimer or
-                   (pullAttempts >= 7 and not sp.LineOfSight()) then
-                pullStatusFlag = 4
-            elseif pullAttempts >= 7 then
-                pullAttempts = 0  -- still in sight: the mac starts a new round of tries (mac:9690)
-            elseif meCamp3D >= s.pull.maxRadius * 0.95 then
-                pullStatusFlag = 5
+-- Move toward the mob while out of pull range or sight (mac:9696-9761); flag
+-- 2 once it is in range and in sight.
+local function approachStep(r)
+    local s, sp, mobID = _state, r.sp, r.mobID
+    if r.flag ~= 1 or not sp() then return end
+    local myDist3D = sp.Distance3D() or 999
+    local hasLOS   = sp.LineOfSight()
+
+    if myDist3D > r.pullDist or not hasLOS then
+        -- Extend timer while actively navigating.
+        if r.moveUse == 'nav' then
+            if mq.TLO.Navigation.PathExists('id ' .. mobID)() then
+                mq.cmd('/squelch /nav id ' .. mobID)  -- re-issued every pass (mac:10434)
             end
+            if mq.TLO.Navigation.Active() then
+                s.timers.pullTimer = s.timers.pullTimer + 0.5
+            end
+            mq.delay(100)
+            -- GrabCorpse: own corpse found on nav path (mac:10370)
+            if grabOwnCorpse(89, 2) then r.returnStat = 'btcr'; return DONE end
+        elseif r.moveUse == 'los' then
+            if hasLOS then
+                moveToMob(mobID, r.pullDist)
+                r.x2 = math.floor(mq.TLO.Me.X())
+                r.y2 = math.floor(mq.TLO.Me.Y())
+            elseif r.x2 ~= 0 then
+                -- Lost LOS: abort if we drifted too far or timed out.
+                if dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), r.y2, r.x2) > 200
+                   or os.clock() > s.timers.pullTimer then
+                    mq.cmd('/squelch /moveto off')
+                    r.returnStat = 'btcr'
+                    r.flag       = 4
+                elseif (not mq.TLO.Me.Moving() or not mq.TLO.MoveTo.Moving())
+                       and r.pullDist < (sp.Distance() or 0) then
+                    -- Keep closing in to find LOS again (mac:9743-9750).
+                    moveToMob(mobID, r.pullDist)
+                end
+            end
+            if mq.TLO.Me.Moving() or mq.TLO.MoveTo.Moving() then
+                s.timers.pullTimer = s.timers.pullTimer + 0.5
+            end
+            mq.delay(100)
+        end
+        secondTick(r)
+    elseif myDist3D <= r.pullDist and hasLOS then
+        r.flag = 2
+    end
+end
+
+-- Pulled already, or back-to-camp-reset (mac:9846-9856): stop on an abort,
+-- or when the mob is out of sight (out of pet range for a pet pull).
+local function btcrCheck(r)
+    local s, sp = _state, r.sp
+    if s.pull.pulled or hasAggro() then return DONE end
+    if r.returnStat == 'btcr' then
+        if r.flag == 4 then return DONE end
+        if r.withAlt ~= 'Pet' then
+            if not (sp() and sp.LineOfSight()) then return DONE end
         else
-            pullStatusFlag = 4
+            if not sp() or (sp.Distance3D() or 999) > r.pullDist then return DONE end
         end
-        if pullStatusFlag ~= 1 then returnStat = 'btcr' end
+        if r.flag ~= 5 then r.returnStat = '' end
+    end
+end
 
-        -- Move toward mob while status is normal and out of pull range.
-        if pullStatusFlag == 1 and sp() then
-            local myDist3D = sp.Distance3D() or 999
-            local hasLOS   = sp.LineOfSight()
+-- In pull range: stop, validate, pull with the PullWith method (mac:9859-9922).
+-- Returns DONE once it has tried; nil when the mob isn't in range yet.
+local function dispatch(r)
+    local s, sp, mobID, withAlt = _state, r.sp, r.mobID, r.withAlt
+    if not sp() then return end
+    local myDist3D = sp.Distance3D() or 999
+    if not (myDist3D < s.pull.range or
+            (withAlt == 'Melee' and myDist3D < s.pull.range * 2)) then
+        return
+    end
+    stopMoving()
+    mq.cmd('/target id ' .. mobID)
+    mq.delay(200, function() return (mq.TLO.Target.ID() or 0) == mobID end)
 
-            if myDist3D > pullDist or not hasLOS then
-                -- Extend timer while actively navigating.
-                if moveUse == 'nav' then
-                    if mq.TLO.Navigation.PathExists('id ' .. mobID)() then
-                        mq.cmd('/squelch /nav id ' .. mobID)  -- re-issued every pass (mac:10434)
-                    end
-                    if mq.TLO.Navigation.Active() then
-                        s.timers.pullTimer = s.timers.pullTimer + 0.5
-                    end
-                    mq.delay(100)
-                    -- GrabCorpse: own corpse found on nav path (mac:10370)
-                    if grabOwnCorpse(89, 2) then returnStat = 'btcr'; goto done end
-                elseif moveUse == 'los' then
-                    if hasLOS then
-                        moveToMob(mobID, pullDist)
-                        x2 = math.floor(mq.TLO.Me.X())
-                        y2 = math.floor(mq.TLO.Me.Y())
-                    elseif x2 ~= 0 then
-                        -- Lost LOS: abort if we drifted too far or timed out.
-                        if dist2D(mq.TLO.Me.Y(), mq.TLO.Me.X(), y2, x2) > 200
-                           or os.clock() > s.timers.pullTimer then
-                            mq.cmd('/squelch /moveto off')
-                            returnStat     = 'btcr'
-                            pullStatusFlag = 4
-                        elseif (not mq.TLO.Me.Moving() or not mq.TLO.MoveTo.Moving())
-                               and pullDist < (sp.Distance() or 0) then
-                            -- Keep closing in to find LOS again (mac:9743-9750).
-                            moveToMob(mobID, pullDist)
-                        end
-                    end
-                    if mq.TLO.Me.Moving() or mq.TLO.MoveTo.Moving() then
-                        s.timers.pullTimer = s.timers.pullTimer + 0.5
-                    end
-                    mq.delay(100)
-                end
+    if not _combat.validateTarget(mobID) then
+        printf('\awAborting pull! Target no longer valid.')
+        r.returnStat = 'btcr'
+        return DONE
+    end
 
-                -- Once a second, as the mac's pull loop (its /delay 10, mac:9806):
-                -- stuck check, attempt count and creeping closer.
-                if os.clock() >= nextTick then
-                    nextTick = os.clock() + 1
-
-                    -- Stuck detection (mac:9807–9825).
-                    local cx = math.floor(mq.TLO.Me.X())
-                    local cy = math.floor(mq.TLO.Me.Y())
-                    if cx == x1 and cy == y1 then
-                        stuckCount = stuckCount + 1
-                        if stuckCount >= 2 and not mq.TLO.Me.Hovering() then
-                            _movement.stuck('pull')
-                        end
-                        if stuckCount >= 7 and not hasAggro() then
-                            printf('\awI am stuck, aborting pull.')
-                            stopMoving()
-                            returnStat     = 'btcr'
-                            pullStatusFlag = 4
-                        end
-                    else
-                        stuckCount = 0
-                    end
-                    x1, y1 = cx, cy
-
-                    -- The mac's nav step doesn't return until the mob is in
-                    -- range and in sight (PullUsingNav, mac:10420), so a try
-                    -- only counts once nav has stopped moving us.
-                    local navigating = moveUse == 'nav' and mq.TLO.Navigation.Active()
-                    if not navigating then pullAttempts = pullAttempts + 1 end
-
-                    myDist3D = sp.Distance3D() or 999
-                    local los = sp.LineOfSight()
-                    if myDist3D <= pullDist and (sp.FeetWet() == mq.TLO.Me.FeetWet() or withAlt == 'Pet') then
-                        wasInRange = true  -- mac:9764
-                    end
-                    -- Creep pullDist smaller on repeated failures (mac:9791–9800).
-                    -- Not while nav is still walking us in (the mac is still
-                    -- inside PullUsingNav then).
-                    if not navigating and pullAttempts >= 7 and myDist3D <= pullDist
-                       and not los and withAlt ~= 'Pet' then
-                        pullDist = pullDist * 0.6
-                    elseif not navigating and pullAttempts >= 3 and (sp.Speed() or 0) > 25
-                           and wasInRange and myDist3D > pullDist then
-                        pullDist   = pullDist * 0.6
-                        wasInRange = false
-                    elseif not navigating and (myDist3D > s.pull.range or not los)
-                           and (withAlt ~= 'Pet' or myDist3D > s.pull.range)
-                           and (not mq.TLO.Me.Moving() or wasInRange) then
-                        -- Out of range or sight and not closing in: move in
-                        -- closer next time (mac:9832-9836).
-                        pullDist = pullDist * 0.8
-                    end
-                end
-            elseif myDist3D <= pullDist and hasLOS then
-                pullStatusFlag = 2
-            end
-        end
-
-        if s.pull.pulled or hasAggro() then goto done end
-
-        -- BTC: if abort-level, stop; if no LOS, stop.
-        if returnStat == 'btcr' then
-            if pullStatusFlag == 4 then goto done end
-            if withAlt ~= 'Pet' then
-                if not (sp() and sp.LineOfSight()) then goto done end
-            else
-                if not sp() or (sp.Distance3D() or 999) > pullDist then goto done end
-            end
-            if pullStatusFlag ~= 5 then returnStat = '' end
-        end
-
-        -- Still moving toward mob → loop.
-        if pullStatusFlag == 1 then goto outer end
-
-        -- In pull range: stop, validate, dispatch.
-        if sp() then
-            local myDist3D = sp.Distance3D() or 999
-            if myDist3D < s.pull.range or
-               (withAlt == 'Melee' and myDist3D < s.pull.range * 2) then
-                stopMoving()
-                mq.cmd('/target id ' .. mobID)
-                mq.delay(200, function() return (mq.TLO.Target.ID() or 0) == mobID end)
-
-                if not _combat.validateTarget(mobID) then
-                    printf('\awAborting pull! Target no longer valid.')
-                    returnStat = 'btcr'
-                    goto done
-                end
-
-                -- hunterpettank sends the pet in first when the mob is close,
-                -- whatever PullWith says (mac:9623, 9878-9887). If the pet won't
-                -- engage, fall back to the normal pull method.
-                local petSent = false
-                if tryPetFirst and (mq.TLO.Pet.ID() or 0) > 0 and myDist3D < s.combat.meleeDistance then
-                    if withAlt ~= 'Pet' then printf('\aw====>> Sending in Pet. Ignoring PullWith.') end
-                    _combat.combatPet()
-                    mq.delay(500, function() return mq.TLO.Pet.Combat() end)
-                    petSent = mq.TLO.Pet.Combat() and true or false
-                    if not petSent and withAlt ~= 'Pet' then
-                        printf('\aw====>> Sending in Pet Failed. Trying normal PullWith Option.')
-                    end
-                end
-
-                if petSent then
-                    s.pull.pulled = true
-                elseif withAlt == 'Melee' then
-                    pullWithMelee(mobID)
-                elseif withAlt == 'Ranged' and not s.movement.toClose then
-                    pullWithRanged(mobID)
-                elseif withAlt == 'Pet' then
-                    pullWithPet(mobID)
-                else
-                    -- nav/los/spell/AA/item cast pull.
-                    pullWithCast(mobID)
-                end
-                goto done
-            end
-        end
-
-        -- los/nav: loop if not yet pulled.
-        if (moveUse == 'los' or moveUse == 'nav') and not s.pull.pulled then
-            goto outer
+    -- hunterpettank sends the pet in first when the mob is close, whatever
+    -- PullWith says (mac:9623, 9878-9887). If the pet won't engage, fall back
+    -- to the normal pull method.
+    local petSent = false
+    if r.tryPetFirst and (mq.TLO.Pet.ID() or 0) > 0 and myDist3D < s.combat.meleeDistance then
+        if withAlt ~= 'Pet' then printf('\aw====>> Sending in Pet. Ignoring PullWith.') end
+        _combat.combatPet()
+        mq.delay(500, function() return mq.TLO.Pet.Combat() end)
+        petSent = mq.TLO.Pet.Combat() and true or false
+        if not petSent and withAlt ~= 'Pet' then
+            printf('\aw====>> Sending in Pet Failed. Trying normal PullWith Option.')
         end
     end
 
-    ::done::
-    -- Post-pull cleanup (mac:9924–9969).
+    if petSent then
+        s.pull.pulled = true
+    elseif withAlt == 'Melee' then
+        pullWithMelee(mobID)
+    elseif withAlt == 'Ranged' and not s.movement.toClose then
+        pullWithRanged(mobID)
+    elseif withAlt == 'Pet' then
+        pullWithPet(mobID)
+    else
+        -- nav/los/spell/AA/item cast pull.
+        pullWithCast(mobID)
+    end
+    return DONE
+end
+
+-- After the loop (mac:9924–9969): give up on a mob we couldn't pull, or walk
+-- back and wait in camp for the one we pulled. Returns 'oor' for
+-- PullOnReturn.
+local function finishPull(r)
+    local s = _state
     mq.cmd('/moveto dist 10')
     if not s.pull.pulled and hasAggro() then
         s.pull.pulled = true
-        returnStat    = ''
+        r.returnStat  = ''
     end
     s.pull.pulling = false
 
-    if returnStat == 'btcr' then
+    if r.returnStat == 'btcr' then
         -- Don't keep retrying a mob we couldn't pull (mac:9936-9942).
         if s.combat.myTargetID ~= 0 then
             Pull.ignoreAdd(s.combat.myTargetID, 'pull2')
@@ -602,6 +587,60 @@ function Execute.executePull(mobID)
             s.pull.pulled = false
         end
     end
+end
+
+-- Main pull movement + dispatch loop. Mirrors Sub Pull (kissassist.mac:9589–9969).
+function Execute.executePull(mobID)
+    local s = _state
+    local r = {
+        mobID        = mobID,
+        moveUse      = s.pull.moveUse,
+        withAlt      = s.pull.withAlt,
+        pullDist     = s.pull.range,
+        pullAttempts = 0,
+        stuckCount   = 0,
+        wasInRange   = false,
+        returnStat   = '',
+        -- One pull attempt per call, so the mac's TryPetFirst reset never matters here.
+        tryPetFirst  = s.session.role == 'hunterpettank',  -- mac:9623
+    }
+
+    s.pull.pulled  = false
+    s.pull.tooFar  = false
+    -- Pull attempt deadline (~25 s), extended while actively moving.
+    s.timers.pullTimer = os.clock() + 25
+
+    if not mq.TLO.Me.Mount.ID() and (mq.TLO.Me.Sitting() or mq.TLO.Me.Feigning()) then
+        mq.cmd('/stand')
+        mq.delay(200)
+    end
+
+    Pull.roleToggle(true, mobID)  -- mac:9634
+    s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
+
+    -- Stuck-detection baseline; x2/y2 = where the last los /moveto was sent from.
+    r.x1 = math.floor(mq.TLO.Me.X())
+    r.y1 = math.floor(mq.TLO.Me.Y())
+    r.x2, r.y2 = 0, 0
+    r.nextTick = os.clock() + 1  -- next once-a-second pull check
+
+    while true do
+        r.flag       = 1  -- 1=moving 2=in-range 4=abort 5=oor-return
+        r.returnStat = ''
+        if preMoveChecks(r) == DONE then break end
+        r.sp = mq.TLO.Spawn('id ' .. mobID)
+        pullStatus(r)
+        if approachStep(r) == DONE then break end
+        if btcrCheck(r) == DONE then break end
+        if r.flag ~= 1 then
+            -- Not approaching any more: pull if in range; otherwise keep going
+            -- (los/nav) until pulled, or stop.
+            if dispatch(r) == DONE then break end
+            if not ((r.moveUse == 'los' or r.moveUse == 'nav') and not s.pull.pulled) then break end
+        end
+    end
+
+    return finishPull(r)
 end
 
 return Execute
