@@ -18,7 +18,7 @@ local XTAR_HEAL_LABELS = { 'Off', 'Group + XTarget', 'XTarget only' }
 
 local function splitHeal(raw)
     -- SpellName[|pct[|tag]][|condNNN]  →  spell, pct, tag, cond
-    local spell, pct, tag, cond = '', '0', '', ''
+    local cond = ''
     local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
@@ -26,10 +26,7 @@ local function splitHeal(raw)
     end
     local parts = {}
     for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-    spell = parts[1] or ''
-    pct   = parts[2] or '0'
-    tag   = parts[3] or ''
-    return spell, pct, tag, cond
+    return parts[1] or '', parts[2] or '0', parts[3] or '', cond
 end
 
 local function joinHeal(spell, pct, tag, cond)
@@ -121,8 +118,8 @@ function HealingUI.drawHealThresholds()
             local raw     = healsRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
             local spell, pct, tag, cond = splitHeal(isEmpty and '' or raw)
-            local newSpell, newPct, newTag, newCond = spell, pct, tag, cond
-            local sc, pc, tac, cc = false, false, false, false
+            local newPct = pct
+            local newSpell, newTag, newCond, sc, pc, tac, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -197,7 +194,7 @@ end
 -- Parse: SpellName[|debuffType[|Me]][|condNNN]
 -- debuffType absent or 'me' → no type filter; 'me' alone → self-only scope
 local function splitCure(raw)
-    local spell, dtype, selfOnly, cond = raw, '', false, ''
+    local dtype, selfOnly, cond = '', false, ''
     local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
@@ -205,7 +202,7 @@ local function splitCure(raw)
     end
     local parts = {}
     for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-    spell = parts[1] or ''
+    local spell = parts[1] or ''
     local arg2 = (parts[2] or ''):lower()
     local arg3 = (parts[3] or ''):lower()
     if arg2 == 'me' then

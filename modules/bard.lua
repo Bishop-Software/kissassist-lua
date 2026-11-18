@@ -6,7 +6,7 @@ local mq     = require('mq')
 local Config = require('modules.config')
 
 local Bard = {}
-local _state, _utils, _cast
+local _state, _utils
 -- Assigned in Bard.init() after MQ2Medley plugin is confirmed loaded.
 ---@diagnostic disable-next-line: undefined-field
 local Medley
@@ -28,10 +28,9 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-function Bard.init(state, utils, cast)
+function Bard.init(state, utils, _cast)  -- cast: unused, kept for the init.lua call
     _state = state
     _utils = utils
-    _cast  = cast
 
     if not _state.session.iAmABard then return end
 

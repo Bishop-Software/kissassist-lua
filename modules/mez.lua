@@ -6,7 +6,7 @@ local _state, _utils, _cast
 
 local MEZ_CLASSES = { BRD = true, ENC = true, NEC = true }
 
-function Mez.init(state, utils, cast, bard)
+function Mez.init(state, utils, cast, _bard)  -- bard: unused, kept for the init.lua call
     _state = state
     _utils = utils
     _cast  = cast

@@ -338,9 +338,8 @@ local function dpsPass(myID, role, fromWhere, chainPath)
             -- tcnc = this cast no combat: restart loop iteration (mac:1196)
             if ccResult == 'tcnc' then return CONTINUE, myID end
         end
-    else
-        -- MashButtons (deferred)
     end
+    -- With DPSOn off the mac runs MashButtons here (deferred).
     return nil, myID
 end
 

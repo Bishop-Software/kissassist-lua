@@ -932,9 +932,9 @@ local function onKaSettings(_cmd1, _cmd2, _skipIni)
     printf('\ay>> Settings are in the KissAssist window (/kaui to toggle it).')
 end
 
-local function onWriteSpells(_quiet)
+local function onWriteSpells(quiet)
     _config.writeSpells(state)
-    if not _quiet then printf('\aySpell set written to config.') end
+    if not quiet then printf('\aySpell set written to config.') end
 end
 
 -- Mirrors Bind_MemMySpells (kissassist.mac:14131-14232).

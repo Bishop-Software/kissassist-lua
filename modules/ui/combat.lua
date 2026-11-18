@@ -131,7 +131,7 @@ end
 
 local function splitDPS(raw)
     -- SpellName[|thresh[|target[|damod]]][|condNNN]  →  spell, thresh, target, damod, cond
-    local spell, thresh, target, damod, cond = '', '0', '', '', ''
+    local cond = ''
     local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
@@ -139,11 +139,7 @@ local function splitDPS(raw)
     end
     local parts = {}
     for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-    spell  = parts[1] or ''
-    thresh = parts[2] or '0'
-    target = parts[3] or ''
-    damod  = parts[4] or ''
-    return spell, thresh, target, damod, cond
+    return parts[1] or '', parts[2] or '0', parts[3] or '', parts[4] or '', cond
 end
 
 local function joinDPS(spell, thresh, target, damod, cond)
@@ -160,7 +156,7 @@ end
 
 local function splitAggro(raw)
     -- SpellName[|pct[|glt[|target]]][|condNNN]  →  spell, pct, glt, target, cond
-    local spell, pct, glt, target, cond = '', '0', '<', '', ''
+    local cond = ''
     local condPos = raw:lower():find('|cond%d')
     if condPos then
         cond = raw:sub(condPos + 1)
@@ -168,11 +164,7 @@ local function splitAggro(raw)
     end
     local parts = {}
     for p in (raw .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
-    spell  = parts[1] or ''
-    pct    = parts[2] or '0'
-    glt    = parts[3] or '<'
-    target = parts[4] or ''
-    return spell, pct, glt, target, cond
+    return parts[1] or '', parts[2] or '0', parts[3] or '<', parts[4] or '', cond
 end
 
 local function joinAggro(spell, pct, glt, target, cond)
@@ -226,8 +218,8 @@ function CombatUI.drawAggro()
             local raw     = aggroRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
             local spell, pct, glt, target, cond = splitAggro(isEmpty and '' or raw)
-            local newSpell, newPct, newGlt, newTarget, newCond = spell, pct, glt, target, cond
-            local sc, pc, gc, tac, cc = false, false, false, false, false
+            local newPct, newGlt, newTarget = pct, glt, target
+            local newSpell, newCond, sc, pc, gc, tac, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -379,8 +371,7 @@ function CombatUI.drawDebuffs()
                 end
                 spell = raw
             end
-            local newSpell, newCond = spell, cond
-            local sc, cc = false, false
+            local newSpell, newCond, sc, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -479,8 +470,8 @@ function CombatUI.drawDPS()
             local raw     = dpsRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
             local spell, thresh, target, damod, cond = splitDPS(isEmpty and '' or raw)
-            local newSpell, newThresh, newTarget, newDamod, newCond = spell, thresh, target, damod, cond
-            local sc, tc, tac, dc, cc = false, false, false, false, false
+            local newThresh, newTarget = thresh, target
+            local newSpell, newDamod, newCond, sc, tc, tac, dc, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -635,8 +626,8 @@ function CombatUI.drawBurn()
             local isEmpty = (raw == 'null' or raw == '')
             local spell, target, condNo = '', 'Mob', 0
             if not isEmpty then spell, target, condNo = Config.parseBurnEntry(raw) end
-            local newSpell, newTarget, newCondNo = spell, target, condNo
-            local sc, tac, cc = false, false, false
+            local newTarget, newCondNo = target, condNo
+            local newSpell, sc, tac, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
@@ -771,8 +762,8 @@ function CombatUI.drawAE()
             local raw     = aeRaw[i] or 'null'
             local isEmpty = (raw == 'null' or raw == '')
             local spell, count, target, cond = splitAE(isEmpty and '' or raw)
-            local newSpell, newCount, newTarget, newCond = spell, count, target, cond
-            local sc, nc, tac, cc = false, false, false, false
+            local newCount = count
+            local newSpell, newTarget, newCond, sc, nc, tac, cc
 
             ImGui.TableNextColumn()
             ImGui.PushItemWidth(-1)
