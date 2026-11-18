@@ -127,7 +127,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_comms_announce',
@@ -159,7 +159,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_ready',
@@ -167,7 +167,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_wait',
@@ -175,7 +175,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_range',
@@ -183,7 +183,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_ignore',
@@ -191,7 +191,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_map',
@@ -199,7 +199,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_ranking',
@@ -207,7 +207,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_move',
@@ -215,7 +215,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_level',
@@ -223,7 +223,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_pause',
@@ -231,7 +231,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_role',
@@ -239,7 +239,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_chain',
@@ -247,7 +247,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_on_return',
@@ -255,7 +255,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_locs',
@@ -263,7 +263,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_hunter_role',
@@ -271,7 +271,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.config' },
     },
     {
         name         = 'test_pull_puller_role',
@@ -279,7 +279,7 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.pull', 'modules.pull.util', 'modules.pull.settings',
                          'modules.pull.arc', 'modules.pull.roles', 'modules.pull.holds',
-                         'modules.pull.validate', 'modules.pull.search', 'modules.movement', 'modules.config' },
+                         'modules.pull.validate', 'modules.pull.search', 'modules.pull.execute', 'modules.movement', 'modules.config' },
     },
     {
         name         = 'test_afk_camp_on_death',
