@@ -317,6 +317,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.aliases' },
     },
+    {
+        name         = 'test_startup',
+        path         = 'tests.unit.test_startup',
+        useMock      = true,
+        clearModules = { 'modules.startup', 'modules.config', 'modules.utils' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
