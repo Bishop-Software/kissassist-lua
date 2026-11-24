@@ -1,5 +1,5 @@
 -- tests/unit/test_utils.lua
--- Tests Utils.timerExpired, Utils.setTimer, Utils.setFlag, Utils.setAll.
+-- Tests Utils.timerExpired, Utils.setTimer, Utils.setFlag, Utils.setAll, Utils.isFamiliarName.
 -- No mq dependency — runs without mock injection.
 local M = {}
 
@@ -59,6 +59,16 @@ function M.run(TH, _MockMQ)
     -- setFlag with unknown key is silently ignored (guard on nil check)
     local ok = pcall(function() Utils.setFlag('notakey', true) end)
     TH.assert_true(ok, 'setFlag unknown key no error')
+
+    -- isFamiliarName (mac:5235, 8490)
+    TH.assert_true(Utils.isFamiliarName('Toon`s familiar', 'Toon'), 'isFamiliarName: backtick (EQ spelling)')
+    TH.assert_true(Utils.isFamiliarName("Toon's familiar", 'Toon'), 'isFamiliarName: apostrophe also matches')
+    TH.assert_true(Utils.isFamiliarName('toon`s Familiar', 'Toon'), 'isFamiliarName: case-insensitive like .Equal[]')
+    TH.assert_false(Utils.isFamiliarName('Other`s familiar', 'Toon'), 'isFamiliarName: someone else\'s familiar')
+    TH.assert_false(Utils.isFamiliarName('Toon`s warder', 'Toon'), 'isFamiliarName: other pet name')
+    TH.assert_false(Utils.isFamiliarName(nil, 'Toon'), 'isFamiliarName: no pet')
+    TH.assert_false(Utils.isFamiliarName('', 'Toon'), 'isFamiliarName: empty pet name')
+    TH.assert_false(Utils.isFamiliarName('`s familiar', nil), 'isFamiliarName: no character name')
 end
 
 return M

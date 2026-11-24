@@ -108,9 +108,8 @@ function Pet.doPetStuff()
     end
     local focusSwitch = false
 
-    -- Familiar banish (mac:5234)
-    local petCleanName = mq.TLO.Me.Pet.CleanName() or ''
-    if petCleanName ~= '' and petCleanName == (mq.TLO.Me.Name() or '') .. "'s familiar" then
+    -- Familiar banish (mac:5235). Any class, as in the mac's DoPetStuff.
+    if _utils.isFamiliarName(mq.TLO.Me.Pet.CleanName(), mq.TLO.Me.Name()) then
         mq.cmd('/pet get lost')
     end
 
