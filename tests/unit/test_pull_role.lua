@@ -1,6 +1,7 @@
 -- tests/unit/test_pull_role.lua
 -- #61 part 3: PullRoleToggle (mac:10586 PullModeToggle) - a pullerpettank who
 -- leads the group with a merc takes the EQ group Puller role for a pull.
+-- Gap 11: a solo puller whose MA is its merc does the same (mac:9692, 10555).
 local M = {}
 
 function M.run(TH, MockMQ)
@@ -76,6 +77,58 @@ function M.run(TH, MockMQ)
     setGroup(true, 1, 0, 200)
     Pull.roleToggle(true, 99)
     TH.assert_false(MockMQ.cmdMatched('grouproles'), 'option off: no change')
+
+    -- ── Solo puller with a merc tank (mac:9692, 10555) ──────────────────────
+    -- members: Group.Members; maType: the MA spawn's Type; puller: Group.Puller.ID;
+    -- mobDist: distance to myTargetID
+    local function setMerc(members, maType, puller, mobDist)
+        MockMQ.reset()
+        MockMQ.set('TLO.Me.ID', 10)
+        MockMQ.set('TLO.Me.CleanName', 'Me')
+        MockMQ.set('TLO.Group.Members', members)
+        MockMQ.set('TLO.Group.Puller.ID', puller)
+        MockMQ.set('TLO.Spawn', function(q)
+            if q:sub(1, 1) == '=' then return { Type = function() return maType end } end
+            return { Distance = function() return mobDist end }
+        end)
+    end
+    state.session.role       = 'puller'
+    state.session.mainAssist = 'MercName'
+    state.combat.myTargetID  = 99
+    state.combat.meleeDistance = 75
+
+    setMerc(1, 'Mercenary', 0, 300)
+    Pull.mercPullerRole(true)
+    TH.assert_true(MockMQ.cmdCalled('/grouproles set Me 3'), 'merc tank: take Puller role at pull start')
+
+    setMerc(1, 'Mercenary', 10, 300)
+    Pull.mercPullerRole(true)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'merc tank: already Puller, no change')
+
+    setMerc(2, 'Mercenary', 0, 300)
+    Pull.mercPullerRole(true)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'merc tank: more than one group member, no change')
+
+    setMerc(1, 'PC', 0, 300)
+    Pull.mercPullerRole(true)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'MA is not a merc: no change')
+
+    setMerc(1, 'Mercenary', 10, 50)
+    Pull.mercPullerRole(false)
+    TH.assert_true(MockMQ.cmdCalled('/grouproles unset Me 3'), 'merc tank: mob within MeleeDistance, drop the role')
+
+    setMerc(1, 'Mercenary', 10, 300)
+    Pull.mercPullerRole(false)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'merc tank: mob still far, keep the role')
+
+    setMerc(1, 'Mercenary', 0, 50)
+    Pull.mercPullerRole(false)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'merc tank: not Puller, nothing to drop')
+
+    state.session.role = 'pullertank'
+    setMerc(1, 'Mercenary', 0, 300)
+    Pull.mercPullerRole(true)
+    TH.assert_false(MockMQ.cmdMatched('grouproles'), 'merc tank: only the puller role')
 
     package.loaded['modules.pull'] = nil
 end

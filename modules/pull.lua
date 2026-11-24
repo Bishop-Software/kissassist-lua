@@ -50,6 +50,7 @@ Pull.paintMap          = Arc.paintMap
 Pull.setupHunterRole   = Roles.setupHunterRole
 Pull.setupPullerRole   = Roles.setupPullerRole
 Pull.roleToggle        = Roles.roleToggle
+Pull.mercPullerRole    = Roles.mercPullerRole
 
 -- Ready check, PullWait, PullPause and hold reasons (modules/pull/holds.lua)
 Pull.pullAbilityReady  = Holds.pullAbilityReady
