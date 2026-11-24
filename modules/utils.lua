@@ -104,6 +104,15 @@ function Utils.zoneIniGet(infoFile, zoneKey, key)
 end
 function Utils.setTimer(seconds) return os.clock() + seconds end
 
+-- True when petName is myName's familiar. EQ names it "Name`s familiar" with a
+-- backtick, as the mac matches (mac:5235, 8490); an apostrophe is accepted too.
+-- Case-insensitive, like the mac's .Equal[].
+function Utils.isFamiliarName(petName, myName)
+    if not petName or petName == '' or not myName or myName == '' then return false end
+    local p, n = petName:lower(), myName:lower()
+    return p == n .. '`s familiar' or p == n .. "'s familiar"
+end
+
 -- Resolve a spell or disc name to the rank the character owns, checking the
 -- spellbook and combat abilities. Handles INI entries like 'Foo|Aura' where only
 -- 'Foo Rk. II' is in the book, and 'Night's Calming|End|25' where the disc is

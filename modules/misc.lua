@@ -8,6 +8,7 @@
 -- commands and messages, doMiscStuff() applies the mac's gate and sends them.
 local mq     = require('mq')
 local Config = require('modules.config')
+local Utils  = require('modules.utils')
 
 local Misc = {}
 
@@ -57,11 +58,8 @@ function Misc.decide(snap, state, now)
         cmds[#cmds + 1] = '/invite'
     end
 
-    -- Ditch a wizard's familiar (mac:8490). EQ names it "Name`s familiar"
-    -- (backtick, as the mac matches); accept an apostrophe too.
-    if snap.class == 'WIZ' and snap.petName ~= ''
-       and (snap.petName == snap.myName .. '`s familiar'
-            or snap.petName == snap.myName .. "'s familiar") then
+    -- Ditch a wizard's familiar (mac:8490).
+    if snap.class == 'WIZ' and Utils.isFamiliarName(snap.petName, snap.myName) then
         cmds[#cmds + 1] = '/pet get lost'
     end
 
