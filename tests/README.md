@@ -74,13 +74,14 @@ Integration tests run from **within a live kissassist session**. They issue slas
 Start kissassist normally, then use the `/katest` bind:
 
 ```
-/katest all                  ← runs all six suites in sequence
+/katest all                  ← runs all seven suites in sequence
 /katest debug_cmds           ← run one suite
 /katest toggle_cmds
 /katest camp_cmds
 /katest switchma
 /katest charm_cmds
 /katest switchtarget
+/katest recent
 ```
 
 All tests save and restore any state they modify — it is safe to run in-game while the character is active.
@@ -95,6 +96,7 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
 | `integration/test_switchtarget.lua` | ~6 | `/kaswitchtarget` updates the aggro/combat target fields |
+| `integration/test_recent.lua` | 15–16 | Recent PRs without a fight (#246): mac aliases in `MacroQuest.ini` (delete list and KissTell gone, `/ktdismount` kept); window title = parsed `WinTitleText`; CheckStuckGems leaves a normal client alone, Origin/CastingWindow lookups resolve; `petHoldCommand` follows the live Companion's Discipline rank; `stopMoving` returns at once when still; with a pet and PetHoldOn, the pet is really on hold/ghold. Re-sets the window title; puts the pet on hold if PetHoldOn |
 
 **Total: ~70 integration assertions**
 

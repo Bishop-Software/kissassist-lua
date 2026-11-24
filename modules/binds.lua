@@ -11,6 +11,15 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
+-- True if the port binds this command (any case). Used by /katest recent.
+function Binds.isBound(name)
+    name = (name or ''):lower()
+    for cmd in pairs(BOUND) do
+        if cmd:lower() == name then return true end
+    end
+    return false
+end
+
 local state, _buffs, _cast, _combat, _config, _comms
 
 -- Maps /debug subcommand names to state.debug field names
@@ -1049,11 +1058,11 @@ end
 
 -- ─── Integration test runner ──────────────────────────────────────────────────
 
-local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds', 'switchtarget' }
+local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds', 'switchtarget', 'recent' }
 
 local function onKaTest(testName)
     if not testName or testName == '' then
-        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|charm_cmds|switchtarget|all>')
+        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|charm_cmds|switchtarget|recent|all>')
         return
     end
     local names = testName:lower() == 'all' and INTEGRATION_TESTS or { testName }
