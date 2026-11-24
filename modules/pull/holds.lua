@@ -175,8 +175,12 @@ function Holds.holdReasons()
         add('Group Watch: dead group member or mobs close while chain pulling')
     end
     if h.medding then
-        local cur = h.medStat == 'Endurance' and me.PctEndurance() or me.PctMana()
-        add('medding (' .. pctText(h.medStat or 'Mana', cur, h.medStop or 100) .. ')')
+        if h.medHP then
+            add('medding (' .. pctText('HP', me.PctHPs(), h.medStop or 100) .. ')')
+        else
+            local cur = h.medStat == 'Endurance' and me.PctEndurance() or me.PctMana()
+            add('medding (' .. pctText(h.medStat or 'Mana', cur, h.medStop or 100) .. ')')
+        end
     end
     if h.petMedding then
         add(string.format('healing pet (%d%% of %d%%)', me.Pet.PctHPs() or 0, h.medStop or 100))

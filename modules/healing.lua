@@ -596,59 +596,93 @@ function Heal.doPetMedStuff()
     end
 end
 
--- Simplified port of Sub DoWeMed (mac:3836). Manages sit-to-med when out of combat.
--- Not ported: the MeddingInterrupted state machine (mac:3875-3946) and bard TwistMed.
--- Called from the main loop out-of-combat (init.lua).
+-- Roles that med their own health back up before pulling (mac:4102).
+local HP_MED_ROLES = { puller = true, pullerpettank = true, hunter = true, hunterpettank = true }
+
+local function announce(msg)
+    if _comms and _comms.announce then _comms.announce(msg, 't') else printf('%s', msg) end
+end
+
+-- Port of Sub DoWeMed (mac:3836), non-blocking: heal.medding holds pulls and
+-- each call sits, checks the stat, and ends the med at MedStop.
+--   * Mana/endurance med below MedStart (mac:3873).
+--   * MeddingInterrupted (mac:3875-3955, state 1): a mob ending a med leaves
+--     heal.medInterrupted set, and after the fight the med resumes up to
+--     MedStop even above MedStart ("Medding Interrupted ... time to Resume").
+--     States 2-5 are the PullPause rest and GroupWatch waits, whose holds in
+--     the port already survive a fight (Holds.pullPauseCheck, GroupWatch).
+--   * Puller/hunter roles at or below 50% health med their HP up to MedStop
+--     (mac:4102-4139, state 6), heal.medHP. Unlike the mac, an interrupted HP
+--     med doesn't turn every later check into a mana med (its state 6 sticks).
+-- Not ported: bard TwistMed, MedForceOn (MA sitting) and the medding
+-- CalledTargetID handling. Called from the main loop (init.lua).
 function Heal.doWeMed()
-    if not _state.heal.medOn then
-        _state.heal.medding    = false  -- MedOn turned off mid-med: don't keep holding pulls
-        _state.heal.petMedding = false
+    local h = _state.heal
+    if not h.medOn then
+        -- MedOn turned off mid-med: don't keep holding pulls
+        h.medding, h.medHP, h.medInterrupted, h.petMedding = false, false, false, false
         return
     end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
     -- Only med in combat if medCombat is on (mac:3838). A mob on us ends a med
     -- in progress, as the mac's med loop does (mac:4042-4053); otherwise a stale
     -- medding flag would keep holding pulls (chain pulls) through the fight.
-    if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then
-        _state.heal.medding    = false
-        _state.heal.petMedding = false
+    if not h.medCombat and _state.combat.aggroTargetID ~= '' then
+        if h.medding and not h.medHP and not h.medInterrupted then
+            h.medInterrupted = true  -- resume after the fight (mac MeddingInterrupted)
+            _utils.debug('heals', 'doWeMed: med interrupted by a mob')
+        end
+        h.medding, h.medHP, h.petMedding = false, false, false
         return
     end
     if mq.TLO.Me.Moving() then return end
     Heal.doPetMedStuff()
 
-    local stat = _state.heal.medStat
+    local stat = h.medStat
     if stat == '' then return end
-
+    local me = mq.TLO.Me
     local pct
-    if stat == 'Mana' then
-        pct = mq.TLO.Me.PctMana() or 100
-    else
-        pct = mq.TLO.Me.PctEndurance() or 100
+    if stat == 'Mana' then pct = me.PctMana() or 100 else pct = me.PctEndurance() or 100 end
+
+    if not h.medding then
+        local resume = h.medInterrupted and pct < h.medStop
+        if pct < h.medStart or resume then
+            h.medding, h.medHP = true, false
+            printf('\awMedding until %s %d%% (now %d%%)', stat, h.medStop, pct)
+            if pct < h.medStart then
+                announce(string.format('My %s is %d%% time to med.', stat, pct))
+            else
+                announce(string.format('Medding Interrupted. My %s is %d%% time to Resume.', stat, pct))
+            end
+        elseif h.medInterrupted then
+            h.medInterrupted = false  -- already back at MedStop
+        elseif HP_MED_ROLES[_state.session.role] and (me.PctHPs() or 100) <= 50 then
+            h.medding, h.medHP = true, true
+            printf('\awMedding to 100%% health')
+            local mv = _state.movement
+            if mv.returnToCamp and _movement and (mv.campX ~= 0 or mv.campY ~= 0) then
+                local dy, dx = (me.Y() or 0) - mv.campY, (me.X() or 0) - mv.campX
+                if math.sqrt(dx * dx + dy * dy) > 15 then _movement.doWeMove(0, 'dowemed') end
+            end
+        else
+            return
+        end
+        if not me.Mount.ID() and not me.Sitting() then mq.cmd('/sit') end
+        return
     end
 
-    if not _state.heal.medding then
-        if pct < _state.heal.medStart then
-            _state.heal.medding = true
-            _utils.debug('heals', string.format('doWeMed: start medding %s at %d%%', stat, pct))
-            if not mq.TLO.Me.Sitting() then
-                mq.cmd('/sit')
-            end
+    local cur = h.medHP and (me.PctHPs() or 100) or pct
+    if cur >= h.medStop then
+        _utils.debug('heals', string.format('doWeMed: done medding %s at %d%%', h.medHP and 'HP' or stat, cur))
+        h.medding, h.medHP, h.medInterrupted = false, false, false
+        -- Stay seated through a PullPause rest (Pull.pullPauseCheck stands us)
+        -- or while GroupWatch waits on a member (it stands us when done).
+        if me.Sitting() and not _state.pull.pauseHold and (h.gwWatchID or 0) == 0 then
+            mq.cmd('/stand')
         end
-    else
-        if pct >= _state.heal.medStop then
-            _state.heal.medding = false
-            _utils.debug('heals', string.format('doWeMed: done medding %s at %d%%', stat, pct))
-            -- Stay seated through a PullPause rest (Pull.pullPauseCheck stands us)
-            -- or while GroupWatch waits on a member (it stands us when done).
-            if mq.TLO.Me.Sitting() and not _state.pull.pauseHold
-               and (_state.heal.gwWatchID or 0) == 0 then
-                mq.cmd('/stand')
-            end
-        elseif not mq.TLO.Me.Sitting() then
-            -- Re-sit if something stood us up mid-med
-            mq.cmd('/sit')
-        end
+    elseif not me.Mount.ID() and not me.Sitting() then
+        -- Re-sit if something stood us up mid-med
+        mq.cmd('/sit')
     end
 end
 
