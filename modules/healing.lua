@@ -539,8 +539,8 @@ function Heal.doGroupHealStuff()
 end
 
 -- Simplified port of Sub DoWeMed (mac:3836). Manages sit-to-med when out of combat.
--- Full MeddingInterrupted state machine and bard twist-med are deferred (Step 5.6).
--- Called from the main loop out-of-combat (init.lua, Step 5.6).
+-- Not ported: the MeddingInterrupted state machine (mac:3875-3946) and bard TwistMed.
+-- Called from the main loop out-of-combat (init.lua).
 function Heal.doWeMed()
     if not _state.heal.medOn then
         _state.heal.medding = false  -- MedOn turned off mid-med: don't keep holding pulls
@@ -691,7 +691,7 @@ end
 -- Port of Sub CheckCures (mac:12596). Iterates curesArray, checks targets for matching debuffs
 -- via KissAssist_Buffs.ini (non-DanNet path), calls castWhat with sentFrom='Cure'.
 -- CuresOn: 0=off 1=everyone-in-zone 2=self-only 3=group-only.
--- Also wires MezBroke timer reset that was deferred from Step 2.2 events.lua.
+-- Also clears the MezBroke flag set by events.lua's onMezBroke.
 function Heal.checkCures()
     if _state.heal.curesOn == 0 then return end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then return end
@@ -865,7 +865,7 @@ function Heal.checkCures()
         ::next_target::
     end
 
-    -- Wire MezBroke timer reset deferred from Step 2.2 events.lua (onMezBroke handler)
+    -- Clear the MezBroke flag set by events.lua's onMezBroke
     _state.mez.broke = false
 
     _utils.debug('heals', 'checkCures leave')

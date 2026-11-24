@@ -277,9 +277,10 @@ function Search.findMobToPull(readyFlag, _a, b)
         end
     end
 
-    -- Alert/ignore list management deferred (mac:8997-9004)
+    -- The mac's alert-list ignore handling (mac:8997-9004) is covered by the
+    -- MobsToIgnore check in pullValidate and pullIgnoreTick.
 
-    -- AdvPath dispatch — deferred (mac:9008-9010)
+    -- AdvPath pulling: not ported (parked) (mac:9008-9010)
     if s.pull.moveUse == 'advpath' then
         _utils.debug('pull', 'findMobToPull: advpath mode not yet implemented')
         return 0

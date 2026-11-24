@@ -947,7 +947,7 @@ local function onMemMySpells(_charName, p_spellSet)
         end
     end
 
-    -- Bard twist-pause stub → M8
+    -- Not ported: the mac stops the bard's songs here (CastBardCheck 0, mac:14182).
 
     local wasStanding = mq.TLO.Me.Standing()
 
@@ -1005,7 +1005,8 @@ local function onMemMySpells(_charName, p_spellSet)
         state.cast.reMemMiscSpellLW = mq.TLO.Me.Gem(state.cast.miscGemLW).Name() or ''
     end
 
-    -- Bard cleanup stub → M8
+    -- Stand back up if we were standing. Not ported: the mac restarts the bard
+    -- twist here (mac:14225); the medley isn't resumed.
     if wasStanding and mq.TLO.Me.Sitting() and not mq.TLO.Me.Mount.ID() then
         mq.cmd('/stand')
     end

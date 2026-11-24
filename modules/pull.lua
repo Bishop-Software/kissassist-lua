@@ -175,9 +175,9 @@ function Pull.pullCheck()
         end
     end
 
-    -- Advpath guard: deferred to M7 stretch (mac:9321–9333).
+    -- AdvPath pulling: not ported (parked) (mac:9321-9333).
     if moveUse == 'advpath' then
-        _utils.debug('pull', 'pullCheck: advpath mode deferred (M7 stretch)')
+        _utils.debug('pull', 'pullCheck: advpath mode not supported')
         return
     end
 

@@ -190,7 +190,7 @@ end
 -- Mirrors CastSpell (kissassist.mac:2833-2915).
 -- Polls State.cast.castReturn (set by events.lua) while Me.Casting.ID is live.
 -- Retries up to 2× on FIZZLE/INTERRUPT/RESIST when recast time ≤ 2s.
--- Interrupt sub-calls stubbed → M4 (DPS/burn), M5 (Cure/Mez), M6 (Buffs).
+-- CastingInterruptOn is handled by shouldInterrupt() above.
 local function castSpell(spellName, sentFrom)
     -- Invis guard
     if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
@@ -367,7 +367,7 @@ end
 
 -- Mirrors CastAA (kissassist.mac:2639-2705).
 -- Banestrike race/distance/combat guard; /alt act ID; poll until AA consumed or
--- cast window clears. Bard twist-pause stubbed → M8 (bard.lua).
+-- cast window clears. Bards queue the AA through MQ2Medley.
 local function castAA(whatAA, sentFrom)
 
     if mq.TLO.Me.Invis() and sentFrom ~= 'SingleHeal' and sentFrom ~= 'GroupHeal'
@@ -974,8 +974,7 @@ end
 
 -- CastWhat dispatcher — mirrors CastWhat (kissassist.mac:2467-2614).
 -- Determines what type of ability castWhat is, checks readiness, acquires target,
--- then routes to the appropriate cast sub. Stacking checks (DPS/Buffs), conditions,
--- StopMoving, and bard twist-restart are stubbed → M4/M5/M6/M7/M8.
+-- then routes to the appropriate cast sub.
 
 -- FindItem searches bags only, not worn equipment slots (charm, neck, rings, etc.).
 -- This scan detects an item's presence in any wear slot, independent of its reuse timer,
@@ -1093,7 +1092,8 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         end
     end
 
-    -- DPS stacking check stub → M4
+    -- The mac's DPS stacking check (mac:2515 CastDPSSpellCheck) runs in combatCast,
+    -- before castWhat is called.
 
     -- Buff stacking check (mac:2524-2532). On another target, check that target's
     -- buffs (already there, or won't stack) and report the remaining duration;
@@ -1123,7 +1123,8 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         return 'CAST_SUCCESS'
     end
 
-    -- Stop moving before spells with cast time (non-bard) — full impl stub → M7
+    -- Stand before spells with a cast time (non-bard). Not ported: the mac's
+    -- StopMoving (mac:10025) also turns off moveto/stick/nav and waits to stop.
     if (mq.TLO.Spell(castWhat).CastTime() or 0) > 0
             and mq.TLO.Me.Moving()
             and not isBard then
@@ -1260,7 +1261,7 @@ end
 
 -- Mirrors MashButtons (kissassist.mac:1973).
 -- Iterates MashArray and fires any ready instant-cast AA/disc/item/skill each tick.
--- Cond check deferred → M5. TargetSwitchingOn+IAmMA path simplified to plain retarget.
+-- TargetSwitchingOn+IAmMA path (mac:1980 CombatTargetCheck 1) simplified to plain retarget.
 local function mashButtons()
     if not state.combat.dpsOn then return end
     -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
@@ -1601,7 +1602,8 @@ function Cast.combatCast()
             while os.clock() < t and mq.TLO.Me.Combat() do mq.delay(50) end
         end
 
-        -- Skip gem-spell if under global spell cooldown (DPSOn==2 wait mode deferred)
+        -- Skip gem-spell if under global spell cooldown. Not ported: DPSOn==2 waits
+        -- the cooldown out instead (mac:1750-1753).
         if mq.TLO.Me.SpellInCooldown() and not state.session.iAmABard then
             -- Only weave entries fire during the global cooldown (mac:1742-1747).
             if hasWeave() then
@@ -1742,7 +1744,7 @@ function Cast.doBurn()
         return
     end
 
-    -- Announce on first activation; BroadCast deferred M9 (mac:11782)
+    -- Announce on first activation (mac:11782). The mac uses BroadCast; this only echoes.
     if not state.combat.burnActive then
         mq.cmd('/echo BURN ACTIVATED => Autobots Transform <=')
     end
