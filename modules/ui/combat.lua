@@ -49,8 +49,10 @@ function CombatUI.drawMelee()
         Movement.resolveStickHow()  -- MQ2Melee does its own sticking
     end)
 
-    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(_)
-        mq.cmd('/autofireon')
+    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(v)
+        s.combat.autoFireOn = v and 1 or 0
+        Config.set('Melee', 'AutoFireOn', v and '1' or '0')
+        Config.save()
     end)
 
     checkbox('LOS Check', Config.get('General', 'LOSBeforeCombat', '0') == '1', function(v)

@@ -23,7 +23,9 @@ function SupportUI.drawPet()
 
             -- Row 1
             checkbox('Pet', s.pet.on, function(v)
-                mq.cmd(v and '/peton' or '/petoff')
+                s.pet.on = v
+                Config.set('Pet', 'PetOn', v and '1' or '0')
+                Config.save()
             end)
             ImGui.SameLine(120)
             checkbox('Pet Buffs', s.buffs.petBuffsOn, function(v)
