@@ -29,6 +29,7 @@ local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 local GroupWatch = require('modules.groupwatch')
 local Startup  = require('modules.startup')
+local Misc     = require('modules.misc')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -105,6 +106,10 @@ end
 
 -- Validate required plugins; continue even if some are missing (warn only)
 Config.checkPlugins()
+-- AcceptInvitesOn / RezAcceptOn, then the MQ2Rez setup (mac:16403); after
+-- checkPlugins, which loads MQ2Rez.
+Misc.init(State)
+Misc.setupRez()
 -- Check the INI's spell/AA/disc/item names, as the mac does at startup (mac:285, 15009-15012)
 printf('Checking your ini file for errors.')
 Config.scanIni('all')
@@ -229,6 +234,9 @@ while not State.terminate do
     if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    -- Phase 5.4: housekeeping — trades, invites, familiar, stuck cursor (mac:391
+    -- DoMiscStuff; skips itself in combat unless chain pulling)
+    Misc.doMiscStuff()
     -- Phase 5.5: merc (mac:393)
     if State.merc.on > 0 then Merc.check() end
     -- Phase 6: buffs

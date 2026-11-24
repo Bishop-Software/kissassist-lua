@@ -545,6 +545,10 @@ local State = {
         tempAmmo             = '',
         campfireOn           = false,
         myCmd                = '',  -- custom command string from INI [General] MyCmd
+        acceptInvitesOn      = 1,      -- [General] AcceptInvitesOn: accept group invites (mac:8488)
+        rezAcceptOn          = '1|90', -- [General] RezAcceptOn: MQ2Rez accept on|pct at startup (mac:16405)
+        cursorID             = 0,      -- item seen stuck on the cursor (mac CursorID, CheckCursor)
+        cursorSince          = 0,      -- mq.gettime() when cursorID was first seen
         -- Window title, an MQ expression re-parsed on each set (mac:16250).
         -- A startup line can change it; 'null' leaves the title alone.
         winTitleText         = '${Me.Name} (Lvl:${Me.Level} ${Zone.ShortName})',
