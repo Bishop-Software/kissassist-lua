@@ -139,10 +139,12 @@ Movement.resolveStickHow()
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
 
--- mac:355-356: WinTitle, then StartupCommands. After Binds.register, since
--- startup lines often call KissAssist commands (/burn off, /togglevariable ...).
-Startup.setWinTitle()
+-- mac:355-356 (WinTitle, StartupCommands). After Binds.register, since startup
+-- lines often call KissAssist commands (/burn off, /togglevariable ...). The
+-- commands run first so a '/varset WinTitleText null' line can stop the title
+-- being set at all; the mac sets the default title before reading them.
 Startup.runCommands()
+Startup.setWinTitle()
 
 printf('\agKissAssist ready. \awEntering main loop.')
 
