@@ -1276,7 +1276,8 @@ end
 
 -- Mirrors MashButtons (kissassist.mac:1973).
 -- Iterates MashArray and fires any ready instant-cast AA/disc/item/skill each tick.
--- TargetSwitchingOn+IAmMA path (mac:1980 CombatTargetCheck 1) simplified to plain retarget.
+-- With TargetSwitchingOn, an MA whose target differs from MyTargetID adopts it
+-- (mac:1979-1980 CombatTargetCheck 1); otherwise retarget MyTargetID.
 local function mashButtons()
     if not state.combat.dpsOn then return end
     -- Bards: Casting.ID stays non-zero while songs play — same gate as cast.lua:201.
@@ -1284,7 +1285,13 @@ local function mashButtons()
     local meState = mq.TLO.Me.State() or ''
     if meState ~= 'STAND' and meState ~= 'MOUNT' then return end
 
-    if not syncManualTarget() and (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID then
+    if syncManualTarget() then  -- luacheck: ignore 542 (Manual Target Swapping: the player's pick wins)
+    elseif state.combat.targetSwitchingOn then
+        local tID = mq.TLO.Target.ID() or 0
+        if state.session.iAmMA and tID ~= 0 and tID ~= state.combat.myTargetID then
+            require('modules.combat').combatTargetCheck(1)
+        end
+    elseif (mq.TLO.Target.ID() or 0) ~= state.combat.myTargetID then
         mq.cmdf('/squelch /target id %d', state.combat.myTargetID)
         local t = os.clock() + 0.5
         while os.clock() < t do
@@ -1762,9 +1769,10 @@ function Cast.doBurn()
         return
     end
 
-    -- Announce on first activation (mac:11782). The mac uses BroadCast; this only echoes.
+    -- Announce on first activation (mac:11782 BroadCast r): to DanNet peers when
+    -- connected, else a local echo (Comms.announce).
     if not state.combat.burnActive then
-        mq.cmd('/echo BURN ACTIVATED => Autobots Transform <=')
+        require('modules.comms').announce('BURN ACTIVATED => Autobots Transform <=', 'r')
     end
 
     -- Tribute (mac:11783-11787)

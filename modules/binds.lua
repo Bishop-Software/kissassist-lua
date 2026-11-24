@@ -1006,7 +1006,10 @@ local function onMemMySpells(_charName, p_spellSet)
         end
     end
 
-    -- Not ported: the mac stops the bard's songs here (CastBardCheck 0, mac:14182).
+    -- Bard: stop the songs while memming (mac:14182 CastBardCheck 0). With
+    -- MQ2Medley that's /medley stop plus clearing the song mid-cast.
+    local Bard = state.session.iAmABard and require('modules.bard') or nil
+    if Bard then Bard.pauseMedley() end
 
     local wasStanding = mq.TLO.Me.Standing()
 
@@ -1064,11 +1067,12 @@ local function onMemMySpells(_charName, p_spellSet)
         state.cast.reMemMiscSpellLW = mq.TLO.Me.Gem(state.cast.miscGemLW).Name() or ''
     end
 
-    -- Stand back up if we were standing. Not ported: the mac restarts the bard
-    -- twist here (mac:14225); the medley isn't resumed.
+    -- Stand back up if we were standing (mac:14225); a bard then gets its medley
+    -- restarted if we stopped it (mac:14221-14224).
     if wasStanding and mq.TLO.Me.Sitting() and not mq.TLO.Me.Mount.ID() then
         mq.cmd('/stand')
     end
+    if Bard then Bard.resumeMedley() end
 end
 
 local function onIniWrite()
