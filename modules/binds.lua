@@ -147,17 +147,15 @@ local function onSwitch(_lockOnFlag, newTargetID)
     printf('\aw>> Switching to target ID: %d', state.combat.calledTargetID)
 end
 
+-- /switchma <name> [role] [1]: Bind_SwitchMA (mac:10969), in modules/roles.lua.
+-- Broadcasts to the group unless the 3rd arg is non-zero (mac:10973-10978).
 local function onSwitchMA(newMA, newRole, doWhat)
-    if not newMA or newMA == '' then return end
-    state.session.mainAssist = newMA
-    state.session.iAmMA = (newMA:lower() == (mq.TLO.Me.CleanName() or ''):lower())
-    state.combat.calledTargetID = 0
-    _combat.combatReset('switchma', 'switchma')
-    -- Broadcast to group when doWhat is absent or 0 (mac:10973-10978 DanNet equivalent)
-    if (not doWhat or doWhat == '' or tonumber(doWhat) == 0) and _comms then
-        _comms.broadcast('SWITCHMA', { newMA = newMA, newRole = newRole or 'tank' })
+    if not newMA or newMA == '' then
+        printf('\ay/switchma <name> [role] [1 = don\'t broadcast]')
+        return
     end
-    printf('\awMain Assist changed to \at%s\aw (IAmMA=%s)', newMA, tostring(state.session.iAmMA))
+    local broadcast = not doWhat or doWhat == '' or tonumber(doWhat) == 0
+    require('modules.roles').switchMA(newMA, newRole, broadcast)
 end
 
 local function onSwitchTarget(idArg)
@@ -713,16 +711,9 @@ local function onAddMezImmune(_mti)
         return
     end
     state.mez.immuneIDs = ids .. '|' .. sID
-    -- Persist name to InfoFileName INI under the current zone key
-    local iniFile = state.session.infoFileName
-    local zone    = state.session.zoneName
-    if iniFile and iniFile ~= '' and zone and zone ~= '' then
-        local existing = Utils.zoneIniGet(iniFile, zone, 'MezImmune') or ''
-        if not existing:find(name, 1, true) then
-            local updated = (existing == '' or existing == 'null') and name or (existing .. ',' .. name)
-            mq.cmdf('/ini "%s" "%s" "MezImmune" "%s"', iniFile, zone, updated)
-        end
-    end
+    -- The name goes on this zone's MezImmune list: Info INI, state and alert
+    -- list 4, so it takes effect at once (modules/mez.lua).
+    require('modules.mez').addImmuneName(name)
     printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 

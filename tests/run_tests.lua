@@ -329,6 +329,18 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.misc', 'modules.config' },
     },
+    {
+        name         = 'test_roles',
+        path         = 'tests.unit.test_roles',
+        useMock      = true,
+        clearModules = { 'modules.roles', 'modules.config' },
+    },
+    {
+        name         = 'test_mez_immune',
+        path         = 'tests.unit.test_mez_immune',
+        useMock      = true,
+        clearModules = { 'modules.mez', 'modules.config' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

@@ -14,6 +14,7 @@ local ROLES = {
     puller=true, pullertank=true, pullerpettank=true,
     hunter=true, hunterpettank=true, offtank=true,
 }
+Config.ROLES = ROLES  -- also used by /switchma (modules/roles.lua)
 
 -- Step 1.4a: Parse CLI args into State.
 -- Mirrors PParse() from kissassist.mac.
