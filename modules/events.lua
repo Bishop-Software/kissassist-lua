@@ -356,7 +356,7 @@ end
 local function onTooSteep()
     utils.debug('move', 'TooSteep')
     state.combat.eventFlag = true
-    state.misc.campfireOn  = false
+    state.misc.campfireOn  = 0
     printf('\ayTooSteep: CampfireOn disabled.')
 end
 

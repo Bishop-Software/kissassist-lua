@@ -31,6 +31,7 @@ local GroupWatch = require('modules.groupwatch')
 local Startup  = require('modules.startup')
 local Misc     = require('modules.misc')
 local Roles    = require('modules.roles')
+local Campfire = require('modules.campfire')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -121,6 +122,7 @@ Cast.init(State, Utils)
 Cast.setCond(Cond)
 Heal.init(State, Utils, Cast, Cond, Movement, Comms)
 Movement.init(State, Utils)
+Campfire.init(State, Movement)
 Comms.init(State, Utils)
 Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
@@ -173,6 +175,10 @@ while not State.terminate do
     -- Phase 1: events
     mq.doevents()
     Cast.checkTribute()
+    if State.misc.pendingCampfire then  -- UI "Place Campfire Now" (the UI can't wait)
+        State.misc.pendingCampfire = false
+        Campfire.place()
+    end
     if State.cast.pendingLoadSpellSet then
         State.cast.pendingLoadSpellSet = false
         Cast.loadSpellSet()
@@ -197,7 +203,13 @@ while not State.terminate do
         Comms.broadcastBuffState()
     end
     -- Phase 1.4: stuck gem (mac:367; skipped while ChainPull is 2, like the mac)
-    if (State.pull.chainPull or 0) ~= 2 then Cast.checkStuckGems() end
+    if (State.pull.chainPull or 0) ~= 2 then
+        Cast.checkStuckGems()
+        -- ClickBacktoCamp: dead out of the camp zone, click back to the campfire (mac:368)
+        if State.afk.clickBacktoCamp ~= 0 then Campfire.back() end
+    end
+    -- Dead and hovering: a puller far from camp respawns at bind to click back (mac:15979)
+    if mq.TLO.Me.Hovering() then Campfire.hoverRespawn() end
     -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
     if State.afk.on > 0 then Afk.check() end
     -- Phase 2: combat (first pass — mac:MainLoop1)
@@ -238,6 +250,8 @@ while not State.terminate do
     if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     if State.pet.on then Buffs.checkPetBuffs() end
     if State.pet.toysOn and State.buffs.kaPetBegActive then Buffs.checkBegforPetBuffs() end
+    -- Phase 5.3: CampfireOn — place a fellowship campfire at camp (mac:389)
+    if State.misc.campfireOn ~= 0 and (mq.TLO.Me.CombatState() or '') ~= 'COMBAT' then Campfire.check() end
     -- Phase 5.4: housekeeping — trades, invites, familiar, stuck cursor (mac:391
     -- DoMiscStuff; skips itself in combat unless chain pulling)
     Misc.doMiscStuff()

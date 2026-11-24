@@ -464,8 +464,10 @@ local State = {
         addSpam        = 0,
         aggroOff       = 0,
         campOnDeath    = 0,
-        campfire       = 0,
-        campfireClick  = 0,
+        campfire       = 0,  -- CampfireTimer: next auto-placement try (mac:12866)
+        campfireClick  = 0,  -- CampfireClickTimer: next ClickBacktoCamp try (mac:13445)
+        campfireWaitMsg = 0, -- throttles "Waiting for Insignia"
+        campfireRespawn = 0, -- throttles the hovering respawn-at-bind click
         cleanBuffs     = 0,
         cursorID       = 0,
         debugTicker    = 0,
@@ -509,6 +511,7 @@ local State = {
         pcRadius  = 500,  -- MQ2Posse camp radius in units (mac AFKPCRadius)
         campOnDeath = 0,  -- 0=off 1=camp after 10 min out of the camp zone 2=camp at once (mac CampOnDeath)
         waitingToCamp = false, -- CampOnDeath 1: the "waiting" message has been printed
+        clickBacktoCamp = 0, -- 1 = dead out of the camp zone: click the Fellowship Insignia back (mac ClickBacktoCamp)
     },
 
     merc = {
@@ -547,7 +550,9 @@ local State = {
         redguides            = true,
         searchType           = '',
         tempAmmo             = '',
-        campfireOn           = false,
+        campfireOn           = 0,      -- [General] CampfireOn: 0 off, N = campsite kit to place (mac:12855)
+        campfireKit          = 1,      -- the INI's kit (CampfireOn), kept when the UI toggle is turned off and on
+        pendingCampfire      = false,  -- UI "Place Campfire Now": placed by the main loop (it waits)
         myCmd                = '',  -- custom command string from INI [General] MyCmd
         acceptInvitesOn      = 1,      -- [General] AcceptInvitesOn: accept group invites (mac:8488)
         rezAcceptOn          = '1|90', -- [General] RezAcceptOn: MQ2Rez accept on|pct at startup (mac:16405)
