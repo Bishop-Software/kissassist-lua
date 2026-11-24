@@ -149,9 +149,8 @@ function Combat.combatReset(sFlag, calledFrom)
     if (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
         _state.timers.petAttack = 0
         mq.cmd('/pet back off')
-        -- Pet hold back on (mac:2266). The mac sends /pet ghold or hold by
-        -- Companion's Discipline rank; the port uses /pet hold everywhere.
-        if (_state.pet.holdOn or 0) ~= 0 then mq.cmd('/pet hold on') end
+        -- Pet hold back on (mac:2266)
+        if (_state.pet.holdOn or 0) ~= 0 then mq.cmd(_utils.petHoldCommand()) end
     end
 
     -- Clear per-slot DPS timers on fight end (mac CreateTimersDPS; Step 13.1)

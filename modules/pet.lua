@@ -230,7 +230,7 @@ function Pet.doPetStuff()
             end
         end
         if s.pet.holdOn == 1 then
-            mq.cmd('/pet hold on')
+            mq.cmd(_utils.petHoldCommand())
             s.pet.holdOn = 2
         end
         if s.pet.focusOn == 1 then
@@ -257,7 +257,7 @@ function Pet.doPetStuff()
             end
         end
         if s.pet.holdOn == 1 then
-            mq.cmd('/pet hold on')
+            mq.cmd(_utils.petHoldCommand())
             s.pet.holdOn = 2
         end
         if s.pet.focusOn == 1 then
