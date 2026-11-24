@@ -1,5 +1,6 @@
-local mq    = require('mq')
-local Utils = require('modules.utils')
+local mq      = require('mq')
+local Utils   = require('modules.utils')
+local Aliases = require('modules.aliases')
 
 local Binds = {}
 
@@ -188,20 +189,6 @@ local function onKissCast(castWhat, whatID, _forceInterrupt)
     _cast.castWhat(castWhat, tonumber(whatID) or 0, 'KissCast')
 end
 
-local function onPetOn()
-    state.pet.on = true
-    _config.set('Pet', 'PetOn', '1')
-    _config.save()
-    printf('\ayPet system \agON')
-end
-
-local function onPetOff()
-    state.pet.on = false
-    _config.set('Pet', 'PetOn', '0')
-    _config.save()
-    printf('\ayPet system \arOFF')
-end
-
 local function onMountOn()
     state.misc.mountOn = true
     _config.set('General', 'MountOn', '1')
@@ -214,14 +201,6 @@ local function onMountOff()
     _config.set('General', 'MountOn', '0')
     _config.save()
     printf('\ayMount system \arOFF')
-end
-
-local function onAutoFireOn()
-    local cur = state.combat.autoFireOn or 0
-    state.combat.autoFireOn = cur == 0 and 1 or 0
-    _config.set('Melee', 'AutoFireOn', tostring(state.combat.autoFireOn))
-    _config.save()
-    printf('\ayAutoFireOn \ag%d', state.combat.autoFireOn)
 end
 
 -- ─── /togglevariable and /changevarint ───────────────────────────────────────
@@ -246,6 +225,7 @@ local MAC_VAR_NAMES = {
     dpspaused  = { 'dps', 'paused' },
     -- session.assistAt is only the command-line value; combat uses this one
     assistat   = { 'combat', 'assistAt' },
+    mercassistat = { 'merc', 'assistAt' },
 }
 
 -- Mac variables that have no counterpart in the port.
@@ -1112,7 +1092,6 @@ function Binds.register(s, b, cast, combat, config, comms)
     _comms  = comms
 
     -- Debug / utility
-    if mq.TLO.Alias('/debug')() then mq.cmd('/alias /debug delete') end
     bind('/debug',          onDebug)
     bind('/parse',          onParse)
     bind('/zoneinfo',       onZoneInfo)
@@ -1134,17 +1113,11 @@ function Binds.register(s, b, cast, combat, config, comms)
     bind('/switchnow',         onSwitch)
     bind('/kaswitchtarget',    onSwitchTarget)
     bind('/katargetmode',      onTargetMode)
-    if mq.TLO.Alias('/switchma')() then mq.cmd('/alias /switchma delete') end
     bind('/switchma',          onSwitchMA)
     bind('/kisscast',       onKissCast)
-    if mq.TLO.Alias('/peton')()  then mq.cmd('/alias /peton delete')  end
-    if mq.TLO.Alias('/petoff')() then mq.cmd('/alias /petoff delete') end
-    bind('/peton',          onPetOn)
-    bind('/petoff',         onPetOff)
+    -- /peton and /autofireon are mac aliases (modules/aliases.lua), not commands.
     bind('/mounton',        onMountOn)
     bind('/mountoff',       onMountOff)
-    if mq.TLO.Alias('/autofireon')() then mq.cmd('/alias /autofireon delete') end
-    bind('/autofireon',     onAutoFireOn)
     bind('/kainterrupton',  function()
         local v = (state.cast.castingInterruptOn or 0) == 0 and 62 or 0
         state.cast.castingInterruptOn = v
@@ -1172,7 +1145,6 @@ function Binds.register(s, b, cast, combat, config, comms)
     bind('/addpull',        onAddPull)
     bind('/addignore',      onAddIgnore)
     bind('/addimmune',      onAddMezImmune)
-    if mq.TLO.Alias('/addburn')() then mq.cmd('/alias /addburn delete') end
     bind('/addburn',        onAddBurn)
 
     -- Charm
@@ -1196,6 +1168,13 @@ function Binds.register(s, b, cast, combat, config, comms)
         printf('\arKissAssist stopping...\ax')
         state.terminate = true
     end)
+
+    -- The mac's /alias shortcuts (mac LoadAliases). Runs after every bind so names
+    -- the port binds are skipped: MQ won't add an alias while a command exists.
+    local boundLower = {}
+    for cmd in pairs(BOUND) do boundLower[cmd:lower()] = true end
+    local written, deleted = Aliases.sync(function(name) return boundLower[name:lower()] end)
+    Utils.debug('all', 'Aliases: %d written, %d deleted', written, deleted)
 end
 
 function Binds.unregister()
