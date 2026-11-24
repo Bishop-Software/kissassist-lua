@@ -597,8 +597,12 @@ function Buffs.checkBuffs(forceGroup)
         -- Drain events (mac:4208-4211)
         mq.doevents()
 
-        -- Not ported: with a called target and no aggro target, the mac re-syncs the
-        -- combat target here (mac:4212 CombatTargetCheck 0).
+        -- A called target (/switchnow) with no aggro target: re-sync the combat
+        -- target before buffing (mac:4212 CombatTargetCheck 0), so the aggro bail
+        -- below sees it.
+        if (_state.combat.calledTargetID or 0) ~= 0 and (tonumber(_state.combat.aggroTargetID) or 0) == 0 then
+            require('modules.combat').combatTargetCheck(0)
+        end
 
         -- Aggro bail (mac:4213)
         local aggroID = _state.combat.aggroTargetID
