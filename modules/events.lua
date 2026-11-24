@@ -539,7 +539,7 @@ local function onYouGotTell(_, fwho, swhat)
     printf('====> %s Sent you a Tell: %s <====', fwho, tostring(swhat))
 end
 
--- EQBC cross-char relay stubs (EQBC deprecated in Lua port; DanNet handled in M9)
+-- EQBC cross-char relay stubs (EQBC is replaced by Lua actors in the port)
 local function onEQBCIRC()
     utils.debug('comms', 'EQBCIRC (stub — EQBC deprecated)')
     state.combat.eventFlag = true

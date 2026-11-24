@@ -71,8 +71,6 @@ function Combat.combatReset(sFlag, calledFrom)
 
     if _state.session.role == 'manual' then return end
 
-    -- DPS meter output (deferred — MQ2DPSAdv not yet wired, Step M9)
-
     Combat.mobRadar('los', _state.combat.meleeDistance)
 
     -- Mez array and immune-ID cleanup (mac:2196–2214)
@@ -151,7 +149,7 @@ function Combat.combatReset(sFlag, calledFrom)
     if (mq.TLO.Me.Pet.ID() or 0) ~= 0 then
         _state.timers.petAttack = 0
         mq.cmd('/pet back off')
-        -- PetHold re-enable (deferred — pet module Step M6)
+        -- Not ported: the mac turns pet hold back on here (mac:2266 PetHoldOn).
     end
 
     -- Clear per-slot DPS timers on fight end (mac CreateTimersDPS; Step 13.1)
@@ -171,9 +169,6 @@ function Combat.combatReset(sFlag, calledFrom)
             mq.cmd('/echo Burn Target is Dead. Pausing Burn.')
         end
     end
-
-    -- Loot (deferred — loot module Step M8)
-    -- Bard stuff (deferred — bard module)
 
     -- TargetSwitching reset for non-MA (mac:2311)
     if not _state.session.iAmMA then
@@ -410,7 +405,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         end
         if not _state.combat.dpsOn and not _state.combat.meleeOn then return end
 
-        -- Bard DPS twist (deferred — bard module)
+        -- MeleeTwistOn==2 DoBardStuff (mac:495) is MQ2Twist-only; not ported.
 
         -- EngageWaitTimer: deadline after which we stop waiting for a target (mac:496)
         local engageDeadline = os.clock() + (waitTime * 0.05)
@@ -422,7 +417,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
 
                 if _state.session.role ~= 'offtank' or maID ~= 0 then
                     Combat.assist(fromWhere)
-                    -- SwitchMA return value (deferred — DanNet/EQBC Step M9)
+                    -- Not ported: Assist returning 'switch' (mac:780) makes an offtank MA.
                 else
                     -- Offtank with dead MA: promote self to MA (mac:508-511)
                     mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
@@ -515,8 +510,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     Combat.checkForAdds(fromWhere)
 
     -- Tank/pullertank: camp movement and mob-count gating (mac:587–599)
-    -- (The tank branch's DoWeChase, DoWeMove, EnduranceCheck are deferred —
-    -- movement/buffs modules.)
+    -- Not ported: the tank branch's DoWeChase, DoWeMove, endurance-buff check and
+    -- MobCount/TankTimer gating (mac:587-599).
     local role = _state.session.role
     if role ~= 'tank' and role ~= 'pullertank' and role ~= 'manual' then
         -- Non-manual non-tank: CombatReset if our target died (mac:601)

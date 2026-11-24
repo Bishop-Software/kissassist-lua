@@ -19,7 +19,7 @@ function Radar.init(state, utils)
 end
 
 -- Returns true if valid. Sets state.combat.validTarget as a side-effect.
--- Pull-specific checks (PullValid loop, PCNear, BadLevel, etc.) deferred to pull.lua (Step 5.x).
+-- Pull-specific checks (PullValid loop, PCNear, BadLevel, etc.) are in pull/validate.lua.
 local function validateTarget(spawnID)
     local spObj
     local mobID, mobName, mobType
@@ -146,7 +146,7 @@ end
 
 -- Mirrors MobRadar (kissassist.mac:7143).
 -- mode 'los': iterate XTarget auto-hater slots, check 2D radius + z-range + optional LOS.
--- mode 'pull': stub for pull.lua (returns without mutating state).
+-- mode 'pull': no-op (returns without mutating state); pull searches are in pull/search.lua.
 -- Sets state.combat.mobCount; sets state.combat.aggroTargetID to closest living hater.
 local function mobRadar(mode, radius)
     -- DMZ guard: no combat in non-instance DMZ zones
@@ -155,7 +155,7 @@ local function mobRadar(mode, radius)
     end
 
     if mode == 'pull' then
-        -- Pull-mode mob detection handled in pull.lua (Step 5.x).
+        -- Pull-mode mob detection is in pull/search.lua.
         return
     end
 

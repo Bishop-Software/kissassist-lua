@@ -327,7 +327,7 @@ local function dpsPass(myID, role, fromWhere, chainPath)
                 return BREAK, myID
             end
         end
-        -- CombatCast (mac:1191) — cast module provides this in Step M4.6+
+        -- CombatCast (mac:1191)
         if _cast.combatCast then
             local ccResult = _cast.combatCast()
             myID = _state.combat.myTargetID
@@ -339,7 +339,8 @@ local function dpsPass(myID, role, fromWhere, chainPath)
             if ccResult == 'tcnc' then return CONTINUE, myID end
         end
     end
-    -- With DPSOn off the mac runs MashButtons here (deferred).
+    -- With DPSOn off the mac calls MashButtons here, but MashButtons returns at once
+    -- when DPSOn is 0 (mac:1974), so there's nothing to port.
     return nil, myID
 end
 
@@ -396,7 +397,6 @@ local function reEngage(myID, combatRadius)
             combatPet()
         end
     end
-    -- ChainPull puller path (deferred M5)
 end
 
 -- Target dead or gone (mac:1278-1309). Every path ends the loop or restarts it on the
@@ -452,7 +452,7 @@ local function outOfRangeBlock(myID)
             combatPet()
         end
     end
-    -- Deferred: Bard twist (mac:1327, M8)
+    -- MeleeTwistOn==2 DoBardStuff (mac:1327) is MQ2Twist-only; not ported.
     -- DebuffAllOn==2: debuff adds even when not at melee range (mac:1328)
     if (_state.debuff.on or 0) == 2 and _state.combat.myTargetID ~= 0
        and (_state.combat.aggroTargetID or '') ~= '' and _debuff then
@@ -477,7 +477,7 @@ local function fight(fromWhere)
     local combatRadius = getCombatRadius(myID)
     local spamTankWait = true  -- "Tank to far from camp" once per fight (mac:1057)
 
-    -- Deferred: CheckCures/CheckHealth (M5), DoWeChase (M7), DPS meter (M9)
+    -- CheckCures/CheckHealth run in tickPreamble and after dpsPass. DPS meter: won't do.
 
     -- Mez runs before the engage block (BeforeAttack/melee/discs) so a fresh pull
     -- doesn't wake adds before they can be locked down (mac:1069-1071).

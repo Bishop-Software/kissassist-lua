@@ -72,7 +72,7 @@ local function beforeAttack(_tarID, condCheck)
         elseif (mq.TLO.Me.Skill(name)() or 0) > 0 and mq.TLO.Me.AbilityReady(name)() then
             mq.cmd('/doability "' .. name .. '"')
             mq.cmd('/echo ## Before Attack >> ' .. name .. ' <<')
-        -- command: prefix (deferred — CastCommand)
+        -- Not ported: command: entries (mac:2045 CastCommand)
         end
 
         mq.delay(150)

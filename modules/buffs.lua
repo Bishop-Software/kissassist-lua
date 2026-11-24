@@ -547,7 +547,6 @@ end
 -- Mirrors Sub CheckBuffs (mac:4170-4660).
 -- Guards → PowerSource refuel → mount cast → per-entry loop.
 -- Step 6.3: entry parsing + group-v + self target-type dispatch.
--- Steps 6.4/6.5: single-target group iteration and special tags — stubs only here.
 function Buffs.checkBuffs(forceGroup)
     forceGroup = forceGroup or false
 
@@ -580,7 +579,8 @@ function Buffs.checkBuffs(forceGroup)
         -- Drain events (mac:4208-4211)
         mq.doevents()
 
-        -- CalledTargetID sync deferred (mac:4212 CombatTargetCheck call — M7+)
+        -- Not ported: with a called target and no aggro target, the mac re-syncs the
+        -- combat target here (mac:4212 CombatTargetCheck 0).
 
         -- Aggro bail (mac:4213)
         local aggroID = _state.combat.aggroTargetID
@@ -1042,7 +1042,7 @@ function Buffs.checkBuffs(forceGroup)
                         timers_i[j] = os.clock() + 5  -- item on reuse cooldown; retry in 5s
                     end
 
-                    -- Pet buff via DanNet: deferred to M9
+                    -- Not ported: buffing group members' pets via DanNet /dquery (mac:4581-4605).
 
                     ::jcontinue::
                 end
