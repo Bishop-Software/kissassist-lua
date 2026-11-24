@@ -122,6 +122,14 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_tank_combat',
+        path         = 'tests.unit.test_tank_combat',
+        useMock      = true,
+        clearModules = { 'modules.buffs', 'modules.config', 'modules.combat',
+                         'modules.combat.settings', 'modules.combat.util', 'modules.combat.abilities',
+                         'modules.combat.radar', 'modules.combat.targeting', 'modules.combat.fight' },
+    },
+    {
         name         = 'test_mq2melee',
         path         = 'tests.unit.test_mq2melee',
         useMock      = true,

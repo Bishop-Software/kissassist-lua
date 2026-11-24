@@ -222,6 +222,24 @@ local function checkEndurance(spellName)
     return result
 end
 
+-- Tank branch of CheckForCombat (mac:592-597): cast each [Buffs] |End entry whose
+-- endurance threshold I'm at or below, once its disc/AA is ready. Lets a tank
+-- or pullertank recover endurance between fights without a full CheckBuffs.
+function Buffs.checkEnduranceBuffs()
+    for _, slot in ipairs(_state.buffs.buffsArray or {}) do
+        local entry = slot and slot.name or ''
+        if entry ~= '' and entry:lower() ~= 'null' then
+            local spell, p2, p3 = Buffs._parseEntry(entry)
+            if p2 == 'end' and spell ~= '' then spell = _utils.resolveSpellRank(spell) end
+            if p2 == 'end' and spell ~= ''
+                    and (mq.TLO.Me.PctEndurance() or 100) <= (tonumber(p3) or 0)
+                    and (mq.TLO.Me.CombatAbilityReady(spell)() or mq.TLO.Me.AltAbilityReady(spell)()) then
+                checkEndurance(spell)
+            end
+        end
+    end
+end
+
 local BUFFS_FILE  = 'KissAssist_Buffs.ini'
 local PET_ROLES   = { pettank=true, pullerpettank=true, hunterpettank=true }
 

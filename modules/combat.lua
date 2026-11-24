@@ -7,7 +7,7 @@ local Targeting = require('modules.combat.targeting')
 local Fight     = require('modules.combat.fight')
 
 local Combat = {}
-local _state, _utils, _heal, _movement, _bard, _mez, _debuff, _comms, _charm
+local _state, _utils, _heal, _movement, _bard, _mez, _debuff, _comms, _charm, _buffs
 
 local isDeadOrGone  = Util.isDeadOrGone
 local distFromCamp  = Util.distFromCamp
@@ -54,6 +54,7 @@ function Combat.init(state, utils, cast, heal, movement, bard, cond, mez, debuff
     _debuff   = debuff
     _comms    = comms
     _charm    = charm
+    _buffs    = buffs
 
     Util.init(state)
     Abilities.init(state, utils, cast, cond, mez, Combat)
@@ -354,6 +355,29 @@ local function getCombatPosition(mobID)
     end
 end
 
+-- Tank branch of CheckForCombat (mac:587-599), for tank and pullertank after the
+-- combat pass. Returns early (the mac's /continue) while a mob in camp has aggro.
+function Combat.tankBetweenFights()
+    local mv     = _state.movement
+    local myName = mq.TLO.Me.CleanName() or ''
+    -- Assisting a puller in chase mode: keep up (mac:589)
+    if _state.session.chaseAssist and (mv.whoToChase or '') ~= myName and _movement then
+        _movement.doWeChase()
+    end
+    local mobCount = _state.combat.mobCount or 0
+    local aggro    = (tonumber(_state.combat.aggroTargetID) or 0) ~= 0
+    -- Back to camp: no mobs and >15 away, or one aggro mob and >75 away (mac:590)
+    if mv.returnToCamp and _movement and (mv.campX ~= 0 or mv.campY ~= 0) then
+        local d = distFromCamp(mq.TLO.Me.Y() or 0, mq.TLO.Me.X() or 0)
+        if (mobCount == 0 and d > 15) or (mobCount == 1 and aggro and d > 75) then
+            _movement.doWeMove(1, 'checkforcombat')
+        end
+    end
+    if mobCount > 0 and aggro then return end  -- mac:591 /continue
+    -- |End endurance buffs below their % (mac:592-597)
+    if _buffs and _state.buffs.buffsOn then _buffs.checkEnduranceBuffs() end
+end
+
 -- Mirrors Sub CheckForCombat (kissassist.mac:484).
 -- Called from the main loop each tick when dpsOn or meleeOn.
 -- skipCombat: 0=full combat path, 1=healer/no-DPS mode (cures/heals only, no melee)
@@ -417,8 +441,12 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                 local maID   = getMASpawn().ID() or 0
 
                 if _state.session.role ~= 'offtank' or maID ~= 0 then
-                    Combat.assist(fromWhere)
-                    -- Not ported: Assist returning 'switch' (mac:780) makes an offtank MA.
+                    -- Assist returns 'switch' for an offtank whose MA is more than
+                    -- 200 away: take over as tank (mac:502-507, 780).
+                    if Combat.assist(fromWhere) == 'switch' then
+                        mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
+                        break
+                    end
                 else
                     -- Offtank with dead MA: promote self to MA (mac:508-511)
                     mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
@@ -510,11 +538,16 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     -- CheckForAdds: scan for new mobs that entered camp during combat (mac:586)
     Combat.checkForAdds(fromWhere)
 
-    -- Tank/pullertank: camp movement and mob-count gating (mac:587–599)
-    -- Not ported: the tank branch's DoWeChase, DoWeMove, endurance-buff check and
-    -- MobCount/TankTimer gating (mac:587-599).
+    -- Tank/pullertank between fights (mac:587-599). The mac's CheckForCombat is a
+    -- while(1) and its `/continue`s keep the tank in it while a mob has aggro or
+    -- for 30 s after a CombatReset (TankTimer). Here checkForCombat is one pass
+    -- that the main loop calls twice per loop, and pulls are already held while a
+    -- mob has aggro (findMobToPull), so `/continue` maps to returning before the
+    -- endurance check; TankTimer has nothing left to skip and isn't ported.
     local role = _state.session.role
-    if role ~= 'tank' and role ~= 'pullertank' and role ~= 'manual' then
+    if role == 'tank' or role == 'pullertank' then
+        Combat.tankBetweenFights()
+    elseif role ~= 'manual' then
         -- Non-manual non-tank: CombatReset if our target died (mac:601)
         local myID = _state.combat.myTargetID
         if myID ~= 0 then
