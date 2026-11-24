@@ -119,7 +119,7 @@ local State = {
         dpsImmune          = {},   -- [mobID][spellName] = true: DPS spells the mob was immune to
         dpsSkip            = 20,  -- stop DPS rotation when mob HP% is at or below this (mac DPSSkip)
         dpsInterval        = 2,   -- fallback timer (seconds) for zero-duration spells (mac DPSInterval)
-        dpsOnOoc           = false, -- DPSOn==2: run DPS rotation out of combat
+        dpsOnOoc           = false, -- DPSOn==2: any HP + wait out the spell cooldown
         autoFireOn         = 0,    -- 0=off, 1=ranged autofire, 2=paused-this-fight (mob too close)
         addSpamTimer       = 0,    -- os.clock() expiry for add-detection announce debounce
     },

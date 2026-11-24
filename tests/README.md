@@ -91,7 +91,7 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | File | Assertions | What is tested |
 |---|---|---|
 | `integration/test_debug_cmds.lua` | 12 | `/debug on/off`, `/debug combat on/off`, `/debug all on/off`, `/kisscheck` and `/zoneinfo` no-crash |
-| `integration/test_toggle_cmds.lua` | 12 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard |
+| `integration/test_toggle_cmds.lua` | 19 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard |
 | `integration/test_camp_cmds.lua` | 11 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears flag; `/stayhere` sets flag and coords |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |

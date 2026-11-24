@@ -283,9 +283,13 @@ end
 
 -- Side effects of turning a variable on/off (mac Bind_ToggleVariable 8406-8470,
 -- Bind_ChangeVarInt 11256-11335). persist: also write the change to the INI.
-local function varSideEffects(field, on, whoToChase, persist)
+-- raw: the value as typed (DPSOn 2 needs more than on/off).
+local function varSideEffects(field, on, whoToChase, persist, raw)
     local mv = state.movement
-    if field == 'chaseAssist' then
+    if field == 'dpsOn' then
+        -- DPSOn 2 = any HP + wait out the spell cooldown (combat.dpsOnOoc)
+        state.combat.dpsOnOoc = on and tonumber(raw) == 2
+    elseif field == 'chaseAssist' then
         if on then
             if whoToChase and whoToChase ~= '' and whoToChase ~= 'null'
                and whoToChase ~= mv.whoToChase then
@@ -362,7 +366,7 @@ local function onToggleVariable(varName, val, extra)
     end
     local value, on = convertValue(tbl[field], field, val)
     tbl[field] = value
-    varSideEffects(field, on, extra, false)
+    varSideEffects(field, on, extra, false, val)
     printf('\ay>> Setting: (%s) to (%s) (%s)', varName, on and 'On' or 'Off', tostring(tbl[field]))
 end
 
@@ -404,7 +408,7 @@ local function onChangeVarInt(a1, a2, a3)
     if section then
         _config.set(section, name, tostring(value))
     end
-    varSideEffects(field, on, nil, section ~= nil)
+    varSideEffects(field, on, nil, section ~= nil, value)
     if section then _config.save() end
 end
 
@@ -893,7 +897,8 @@ local function onKissCheck(...)
     printf('HealsOn: \at%-2s\aw  CuresOn: \at%-2s\aw  BuffsOn: \at%s',
         tostring(state.heal.healsOn), tostring(state.heal.curesOn), tostring(state.buffs.buffsOn))
     printf('DPSOn:   \at%-5s\aw  MeleeOn: \at%s',
-        tostring(state.combat.dpsOn), tostring(state.combat.meleeOn))
+        state.combat.dpsOn and (state.combat.dpsOnOoc and '2' or '1') or '0',
+        tostring(state.combat.meleeOn))
     printf('PetOn:   \at%-5s\aw  LootOn:  \at%s',
         tostring(state.pet.on), tostring(state.loot.on))
     printf('Camp: \at%.1f, %.1f\aw  ReturnToCamp: \at%s',
