@@ -564,31 +564,8 @@ local function onKTDismount()
     if mq.TLO.Me.Mount.ID() then mq.cmd('/dismount') end
 end
 
--- KT task helpers — blocking multi-step interactions; full impl in M7 (movement.lua)
-local function onKTTarget(_, npcName)
-    utils.debug('general', 'KTTarget: ' .. tostring(npcName))
-    state.combat.eventFlag = true
-end
-
-local function onKTHail(_, mobID)
-    utils.debug('general', 'KTHail: ' .. tostring(mobID))
-    state.combat.eventFlag = true
-end
-
-local function onKTSay(_, sayWhat, mobID)
-    utils.debug('general', 'KTSay: ' .. tostring(sayWhat) .. ' -> ' .. tostring(mobID))
-    state.combat.eventFlag = true
-end
-
-local function onKTDoorClick(_, doorID)
-    utils.debug('general', 'KTDoorClick: ' .. tostring(doorID))
-    state.combat.eventFlag = true
-end
-
-local function onKTInvite()
-    utils.debug('general', 'KTInvite')
-    state.combat.eventFlag = true
-end
+-- The other KissTell task helpers (KTTarget, KTHail, KTSay, KTDoorClick, KTInvite;
+-- mac:14328-14460) are won't-do; their aliases are deleted in aliases.lua.
 
 local function onTaskUpdate(_, name)
     utils.debug('general', 'TaskUpdate: ' .. tostring(name))
@@ -714,12 +691,6 @@ local EVENT_DEFS = {
     { 'FSEQBC',          '#1# tells the fellowship, #2#',                        onFSEQBC         },
     { 'GUEQBC',          '#1# tells the guild, #2#',                             onGUEQBC         },
     { 'KTDismount',      '[MQ2] KTDismount#*#',                                  onKTDismount     },
-    { 'KTTarget',        '[MQ2] KTTarget #1#',                                   onKTTarget       },
-    { 'KTHail',          '[MQ2] KTHail #1#',                                     onKTHail         },
-    { 'KTSay',           '[MQ2] KTSay #1# #2#',                                  onKTSay          },
-    { 'KTDoorClick',     '[MQ2] KTDoorClick #1#',                                onKTDoorClick    },
-    { 'KTDoorClick',     '[MQ2] KTDoorClick#*#',                                 onKTDoorClick    },
-    { 'KTInvite',        '[MQ2] KTInvite #1#',                                   onKTInvite       },
     { 'TaskUpdate',      'Your task |#1#| has been updated#*#',                  onTaskUpdate     },
     { 'MLogOff',         '#*#KissAssist Debug Off Marker!',                      onMLogOff        },
 }
