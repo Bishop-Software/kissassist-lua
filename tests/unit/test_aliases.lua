@@ -29,14 +29,16 @@ function M.run(TH, _MockMQ)
     end
 
     -- ── LIST shape ──────────────────────────────────────────────────────────
-    TH.assert_eq(#Aliases.LIST, 57, 'LIST has the mac\'s 59 aliases minus /switchma and /dpsspam')
+    TH.assert_eq(#Aliases.LIST, 52, 'LIST has the mac\'s 59 aliases minus /switchma, /dpsspam and 5 KissTell')
     local names = {}
     for _, a in ipairs(Aliases.LIST) do names[a[1]] = a[2] end
     TH.assert_nil(names['/switchma'], '/switchma is not created (self-alias of a bound command)')
     TH.assert_nil(names['/dpsspam'], '/dpsspam is not created (the mac deletes it)')
     TH.assert_eq(names['/peton'], '/togglevariable PetOn', '/peton targets /togglevariable PetOn')
     TH.assert_eq(names['/autofireon'], '/togglevariable AutoFireOn', '/autofireon targets /togglevariable AutoFireOn')
-    TH.assert_eq(#Aliases.DELETES, 11, 'DELETES has the mac\'s 11 entries')
+    TH.assert_eq(#Aliases.DELETES, 16, 'DELETES has the mac\'s 11 entries plus 5 KissTell')
+    TH.assert_nil(names['/kttarget'], '/kttarget is not created (KissTell won\'t do)')
+    TH.assert_eq(names['/ktdismount'], '/echo KTDismount', '/ktdismount is still created')
 
     -- ── parse ───────────────────────────────────────────────────────────────
     local parsed = Aliases.parse(table.concat({
@@ -58,15 +60,15 @@ function M.run(TH, _MockMQ)
 
     -- ── sync: fresh install ─────────────────────────────────────────────────
     local sent, w, d = runSync('')
-    TH.assert_eq(w, 57, 'fresh install: writes every alias')
+    TH.assert_eq(w, 52, 'fresh install: writes every alias')
     TH.assert_eq(d, 0, 'fresh install: no deletes')
-    TH.assert_eq(#sent, 57, 'fresh install: one command per alias')
+    TH.assert_eq(#sent, 52, 'fresh install: one command per alias')
     TH.assert_true(contains(sent, '/squelch /alias /chaseon /changevarint General ChaseAssist 1'),
         'fresh install: /chaseon command is squelched and verbatim')
 
     -- Missing INI file (reader returns nil) behaves like a fresh install
     w = select(2, runSync(nil))
-    TH.assert_eq(w, 57, 'missing MacroQuest.ini: writes every alias')
+    TH.assert_eq(w, 52, 'missing MacroQuest.ini: writes every alias')
 
     -- ── sync: already matching ──────────────────────────────────────────────
     sent, w, d = runSync(matchingIni())
@@ -85,7 +87,7 @@ function M.run(TH, _MockMQ)
 
     -- ── sync: bound names skipped ───────────────────────────────────────────
     sent, w = runSync('', function(name) return name == '/peton' or name == '/chaseon' end)
-    TH.assert_eq(w, 55, 'bound names: skipped from the 57')
+    TH.assert_eq(w, 50, 'bound names: skipped from the 52')
     TH.assert_false(contains(sent, '/squelch /alias /peton /togglevariable PetOn'), 'bound /peton not aliased')
 
     -- ── sync: deletes ───────────────────────────────────────────────────────
@@ -95,6 +97,13 @@ function M.run(TH, _MockMQ)
     TH.assert_true(contains(sent, '/squelch /alias /debug delete'), 'deletes: /debug removed')
     TH.assert_true(contains(sent, '/squelch /alias /debugpull delete'), 'deletes: key match is case-insensitive')
     TH.assert_false(contains(sent, '/squelch /alias /unrelated delete'), 'deletes: other user aliases untouched')
+
+    -- Leftover KissTell aliases from the mac or an older port are removed
+    local _
+    sent, _, d = runSync(matchingIni() .. '\n/kthail=/echo KTHail\n/ktdismount=/echo KTDismount')
+    TH.assert_eq(d, 1, 'KissTell: leftover /kthail deleted')
+    TH.assert_true(contains(sent, '/squelch /alias /kthail delete'), 'KissTell: /kthail delete sent')
+    TH.assert_false(contains(sent, '/squelch /alias /ktdismount delete'), 'KissTell: /ktdismount kept')
 end
 
 return M

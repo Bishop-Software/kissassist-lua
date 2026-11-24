@@ -17,6 +17,8 @@ local Aliases = {}
 --   /switchma  -> /switchma : points at itself, and /switchma is a bound command
 --                             (an alias can't be added while a command exists).
 --   /dpsspam               : the mac creates it, then deletes it (mac:16643).
+--   /ktdoor /kthail /ktinvite /ktsay /kttarget : KissTell task helpers, won't do
+--                             (deleted below instead; /ktdismount is kept).
 Aliases.LIST = {
     { '/afktoolson',    '/changevarint AFKTools AFKToolsOn' },
     { '/assistat',      '/changevarint Melee AssistAt' },
@@ -40,11 +42,6 @@ Aliases.LIST = {
     { '/ktdismount',    '/echo KTDismount' },
     { '/katwistpause',  '/togglevariable TwistHold 1' },
     { '/katwistresume', '/togglevariable TwistHold 0' },
-    { '/ktdoor',        '/echo KTDoorClick' },
-    { '/kthail',        '/echo KTHail' },
-    { '/ktinvite',      '/echo KTInvite' },
-    { '/ktsay',         '/echo KTSay' },
-    { '/kttarget',      '/echo KTTarget' },
     { '/looton',        '/changevarint General LootOn' },
     { '/maxradius',     '/changevarint Pull MaxRadius' },
     { '/maxzrange',     '/changevarint Pull MaxZRange' },
@@ -77,10 +74,13 @@ Aliases.LIST = {
     { '/waithere',      '/togglevariable waithere' },
 }
 
--- mac:16633-16643: old aliases the mac removes on every start.
+-- mac:16633-16643: old aliases the mac removes on every start, plus the KissTell
+-- task-helper aliases the port doesn't support (they only echo to chat). The mac
+-- recreates those on its own start, so rolling a character back is unaffected.
 Aliases.DELETES = {
     '/debug', '/debugbuffs', '/debugcombat', '/debugcast', '/debugchainpull',
     '/debugheal', '/debugmez', '/debugmove', '/debugpull', '/debugrk', '/dpsspam',
+    '/ktdoor', '/kthail', '/ktinvite', '/ktsay', '/kttarget',
 }
 
 local function trim(s)
