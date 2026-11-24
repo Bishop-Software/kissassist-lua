@@ -77,8 +77,9 @@ local function assist(_fromWhere)
                     end
                 end
             elseif _state.session.role == 'offtank' then
-                -- MA out of range and we're offtank — nothing to do
-                return
+                -- MA more than 200 away and we're offtank: tell CheckForCombat to
+                -- make us the tank (mac:779-780 'return switch').
+                return 'switch'
             elseif aggroID ~= 0 then
                 if (mq.TLO.Spawn('id ' .. aggroID).Distance() or 999) <= _state.combat.meleeDistance then
                     mq.cmd('/squelch /target id ' .. aggroID)
