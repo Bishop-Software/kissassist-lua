@@ -66,6 +66,15 @@ function SupportUI.drawPet()
                 Config.set('Pet', 'PetTauntOverride', v and '1' or '0')
                 Config.save()
             end)
+            ImGui.SameLine(120)
+            checkbox('Heal on Med', s.pet.forceHealOnMed, function(v)
+                s.pet.forceHealOnMed = v
+                Config.set('Pet', 'PetForceHealOnMed', v and '1' or '0')
+                Config.save()
+            end)
+            if ImGui.IsItemHovered() then
+                ImGui.SetTooltip('Pet-tank pullers: heal the pet up to MedStop before every pull,\nnot only when it drops to half health.')
+            end
 
             -- Editable spell fields
             ImGui.Spacing()

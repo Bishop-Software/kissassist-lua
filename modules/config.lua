@@ -620,7 +620,7 @@ function Config.defaultCfg()
         Heals = {
             HealsOn = '0', HealsSize = '5', HealInterval = '0', AutoRezOn = '0',
             XTarHeal = '0', XTarHealList = '', HealGroupPetsOn = '0',
-            RezMeLast = '0', Heals = emptyArr(5),
+            RezMeLast = '0', RezGuildFellowship = '1', Heals = emptyArr(5),
         },
         Cures = {
             CuresOn = '0', CuresSize = '5', Cures = emptyArr(5),

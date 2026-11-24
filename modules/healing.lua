@@ -64,6 +64,8 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     if _state.heal.xTarHeal > 0 then Heal.setXTargetHealList(_state.heal.xTarHealList) end  -- mac:14784
     _state.heal.healGroupPetsOn = Config.get('Heals', 'HealGroupPetsOn', '0') == '1'
     _state.heal.rezMeLast       = Config.get('Heals', 'RezMeLast',       '0') == '1'
+    -- Lua-only switch for the OOC guild/fellowship rez pass; the mac always runs it.
+    _state.heal.rezGuildFellowship = Config.get('Heals', 'RezGuildFellowship', '1') ~= '0'
 
     local healsRaw = Config.get('Heals', 'Heals', nil)
     if type(healsRaw) == 'table' then
@@ -538,12 +540,69 @@ function Heal.doGroupHealStuff()
     _utils.debug('heals', 'doGroupHealStuff leave')
 end
 
+-- Port of DoPetMedStuff, the end of Sub DoWeMed (mac:4141-4163). A pullerpettank
+-- or hunterpettank whose pet is at or below 50% HP (or any time with
+-- PetForceHealOnMed) heals the pet up to MedStop before the next pull. The mac
+-- blocks in a loop; here heal.petMedding holds pulls (init.lua Phase 9,
+-- findMobToPull, the Pull tab's hold line) and each call casts one |pet heal.
+-- The hold ends when the pet is gone, reaches MedStop, or a mob has aggro.
+-- Like the mac, the heals are tried from the bottom of the list up and the
+-- entry's HP field only has to be non-zero (the pet need not be under it).
+local PET_MED_ROLES = { pullerpettank = true, hunterpettank = true }
+function Heal.doPetMedStuff()
+    local h     = _state.heal
+    local pet   = mq.TLO.Me.Pet
+    local petID = pet.ID() or 0
+    if not PET_MED_ROLES[_state.session.role] or petID == 0
+            or _state.combat.aggroTargetID ~= '' then
+        h.petMedding = false
+        return
+    end
+    local petPct = pet.PctHPs() or 100
+    if petPct >= h.medStop then
+        if h.petMedding then _utils.debug('heals', 'doPetMedStuff: pet healed up') end
+        h.petMedding = false
+        return
+    end
+    if mq.TLO.Me.Invis() then return end  -- mac:4141; a cast would break invis
+    if not h.petMedding then
+        if petPct > 50 and not _state.pet.forceHealOnMed then return end
+        h.petMedding = true
+        printf('\ayWaiting on pet to full health before next pull')
+    end
+
+    local list    = h.healsArray or {}
+    local petDist = pet.Distance() or 9999
+    for j = #list, 1, -1 do
+        local slot  = list[j]
+        local parts = {}
+        for p in ((slot.name or '') .. '|'):gmatch('([^|]*)|') do parts[#parts + 1] = p end
+        local spell  = parts[1] or ''
+        local hp     = tonumber(parts[2]) or 0
+        local condNo = slot.condNo or 0
+        if (parts[3] or ''):lower() == 'pet' and spell ~= '' and hp ~= 0
+                and (condNo == 0 or not _cond or _cond.eval(condNo)) then
+            local range = tonumber(mq.TLO.Spell(spell).Range()) or 0
+            if range == 0 then range = 100 end  -- as doPetHealStuff
+            if petDist < range then
+                _utils.debug('heals', string.format('doPetMedStuff: pet %d%% -> %s', petPct, spell))
+                _cast.castWhat(spell, petID, 'Med')
+                if _state.cast.castReturn == 'CAST_SUCCESS' then
+                    _comms.announce(string.format('%s on  >> %s <<', spell, pet.CleanName() or 'pet'), 'o')
+                end
+                return
+            end
+        end
+    end
+end
+
 -- Simplified port of Sub DoWeMed (mac:3836). Manages sit-to-med when out of combat.
 -- Not ported: the MeddingInterrupted state machine (mac:3875-3946) and bard TwistMed.
 -- Called from the main loop out-of-combat (init.lua).
 function Heal.doWeMed()
     if not _state.heal.medOn then
-        _state.heal.medding = false  -- MedOn turned off mid-med: don't keep holding pulls
+        _state.heal.medding    = false  -- MedOn turned off mid-med: don't keep holding pulls
+        _state.heal.petMedding = false
         return
     end
     if (mq.TLO.Me.Casting.ID() or 0) ~= 0 or mq.TLO.Window('CastingWindow').Open() then return end
@@ -551,10 +610,12 @@ function Heal.doWeMed()
     -- in progress, as the mac's med loop does (mac:4042-4053); otherwise a stale
     -- medding flag would keep holding pulls (chain pulls) through the fight.
     if not _state.heal.medCombat and _state.combat.aggroTargetID ~= '' then
-        _state.heal.medding = false
+        _state.heal.medding    = false
+        _state.heal.petMedding = false
         return
     end
     if mq.TLO.Me.Moving() then return end
+    Heal.doPetMedStuff()
 
     local stat = _state.heal.medStat
     if stat == '' then return end
@@ -873,7 +934,8 @@ end
 
 -- Port of Sub RezCheck (mac:6834). Scans for dead group members / self and rezzes them.
 -- Phase order: MA corpse → self (if !rezMeLast) → group slots 1-5 → self (if rezMeLast)
--- → OOC autoRezAll pass with CorpseRezCheck try-count tracking.
+-- → OOC guild/fellowship/XTarget pass → OOC autoRezAll pass with CorpseRezCheck
+-- try-count tracking.
 -- autoRezOn: 0=off 1=normal 2=OOC-only (mac:6836, 6840).
 function Heal.rezCheck()
     if _state.heal.autoRezOn == 0 then return end
@@ -1008,7 +1070,73 @@ function Heal.rezCheck()
         rezSelf()
     end
 
-    -- Phase 4: OOC autoRezAll — rez any nearby pccorpse up to 3 times (mac:7018-7081)
+    -- Phase 4: OOC rez of guild, fellowship and XTarHeal XTarget corpses (mac:6976-7018).
+    -- Each corpse at most every 3 minutes (oocRezTimers). Deviations: an unguilded
+    -- rezzer doesn't count unguilded corpses as guild mates (the mac's
+    -- Guild.Equal[${Me.Guild}] matches NULL to NULL), and the XTarget match is
+    -- per corpse (the mac never clears RezXTarget between corpses).
+    -- RezGuildFellowship=0 (Lua-only) drops the guild and fellowship matches;
+    -- XTarget corpses still follow XTarHeal.
+    local rezGF = _state.heal.rezGuildFellowship ~= false
+    if not _state.combat.combatStart and (rezGF or (_state.heal.xTarHeal or 0) > 0) then
+        local filter = 'pccorpse radius ' .. RZ_RADIUS .. ' zradius 50'
+        local corpseCount = mq.TLO.SpawnCount(filter)() or 0
+        if corpseCount > 0 then
+            local myCorpseID = mq.TLO.Spawn(
+                string.format('pccorpse %s radius %d zradius 50', meName, RZ_RADIUS)).ID() or 0
+            local myGuild = mq.TLO.Me.Guild() or ''
+            -- Corpses on the XTarHeal slots (the Auto Hater slot holds mobs; mac:6987-6996)
+            local xtCorpse = {}
+            if (_state.heal.xTarHeal or 0) > 0 then
+                for _, slot in ipairs(_state.heal.xTarToHeal or {}) do
+                    if slot ~= 0 and slot ~= _state.combat.xTSlot then
+                        local x  = mq.TLO.Me.XTarget(slot)
+                        local id = x.ID() or 0
+                        if id ~= 0 and (x.Type() or ''):lower() == 'corpse' then xtCorpse[id] = true end
+                    end
+                end
+            end
+            for j = 1, corpseCount do
+                local spell = rezWithCheck()
+                if not spell then break end
+                ---@diagnostic disable-next-line: undefined-field
+                local corpse = mq.TLO.NearestSpawn(j, filter)
+                local id     = corpse.ID() or 0
+                if id == 0 or id == myCorpseID then goto next_x end
+                if (corpse.Type() or ''):lower() ~= 'corpse' then goto next_x end
+                if os.clock() < (_state.heal.oocRezTimers[id] or 0) then goto next_x end
+                do
+                    local cname = corpse.CleanName() or ''
+                    local owner = cname:match("^(.-)'s corpse") or cname
+                    local guild = corpse.Guild() or ''
+                    local inGuild = rezGF and myGuild ~= '' and guild == myGuild
+                    local fm = rezGF and owner ~= '' and mq.TLO.Me.Fellowship.Member(owner) or nil
+                    local inFellowship = fm ~= nil and fm() ~= nil
+                    if not (inGuild or inFellowship or xtCorpse[id]) then goto next_x end
+                    -- A Call of the Wild style rez is for players who aren't in zone (mac:7003)
+                    if spell:find('Call of', 1, true)
+                            and (mq.TLO.SpawnCount('pc =' .. owner)() or 0) > 0 then
+                        goto next_x
+                    end
+                    mq.cmdf('/squelch /tar id %d', id)
+                    mq.delay(1000, function() return mq.TLO.Target.ID() == id end)
+                    if mq.TLO.Target.ID() ~= id then goto next_x end
+                    if (mq.TLO.Target.Distance() or 9999) > RZ_RADIUS then goto next_x end
+                    _utils.debug('heals', string.format('rezCheck: OOC rez %s (guild=%s fellowship=%s xtarget=%s)',
+                        cname, tostring(inGuild), tostring(inFellowship), tostring(xtCorpse[id] == true)))
+                    _cast.castWhat(spell, id, 'RezCheckX')
+                    if _state.cast.castReturn == 'CAST_SUCCESS' then
+                        _comms.announce(string.format('Rezzing =>> %s <<=', cname), 'o')
+                        _state.heal.oocRezTimers[id] = os.clock() + 180
+                        mq.cmd('/squelch /target clear')
+                    end
+                end
+                ::next_x::
+            end
+        end
+    end
+
+    -- Phase 5: OOC autoRezAll — rez any nearby pccorpse up to 3 times (mac:7018-7081)
     if not _state.combat.combatStart and _state.heal.autoRezAll then
         local corpseCount = mq.TLO.SpawnCount(
             'pccorpse radius ' .. RZ_RADIUS .. ' zradius 50')() or 0

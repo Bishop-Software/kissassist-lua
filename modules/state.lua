@@ -251,6 +251,7 @@ local State = {
 
     heal = {
         autoRezAll          = false,
+        rezGuildFellowship  = true,  -- RezGuildFellowship (Lua-only): OOC rez of guild/fellowship corpses (mac:6976)
         autoRezArray        = {},
         autoRezOn           = 0,   -- 0=off 1=normal 2=OOC-only (mac AutoRezOn)
         battleRezTimers     = {0,0,0,0,0},  -- per group slot 1-5; os.clock() expiry
@@ -262,6 +263,7 @@ local State = {
         healRemChk2         = 'Touch of the Divine',
         healRemChk3         = 'null',
         medding             = false,
+        petMedding          = false, -- DoPetMedStuff: pullerpettank/hunterpettank holds pulls until the pet is healed up
         meddingInterrupted  = false,
         medStat             = '',
         medStat2            = 'Endurance',
@@ -348,6 +350,7 @@ local State = {
         toysArray     = {},    -- PetToys array (set from INI)
         toysOn        = false, -- PetToysOn (set from INI)
         petRampageOn  = false, -- PetRampPullWait: wait for rampage pets before pulling (set from INI)
+        forceHealOnMed = false, -- PetForceHealOnMed: heal the pet up to MedStop before every pull, not only at 50% (set from INI)
     },
 
     mez = {
