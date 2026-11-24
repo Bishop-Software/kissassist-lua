@@ -40,8 +40,8 @@ end
 --                   the pulled mob is still heading for us and > 20 from the MA.
 --   pullerpettank:  bring the pet back, then send it at the first hater
 --                   within PetAttackRange of camp.
--- The merc is sent in when the mob reaches camp (mac:10525). Not ported: the
--- solo-puller-with-merc group Puller role (mac:9692, 10555). The ranged swap
+-- The merc is sent in when the mob reaches camp (mac:10525). A solo puller with a
+-- merc tank drops the group Puller role at the end (mac:10555). The ranged swap
 -- back (mac:10477) is done in finishPull before this runs.
 local function waitForMob()
     local s    = _state
@@ -141,6 +141,7 @@ local function waitForMob()
         if not keepWaiting then break end
     end
 
+    Pull.mercPullerRole(false)  -- mob reached us: let the merc tank it (mac:10555)
     if s.combat.myTargetID ~= 0 and _utils.pullAggroID() == 0 then pullReset() end
 end
 
@@ -655,6 +656,7 @@ function Execute.executePull(mobID)
     s.pull.beginMobID = tostring(mq.TLO.Me.XTarget(s.combat.xTSlot).ID() or 0)
 
     if r.withAlt == 'Ranged' then Execute.swapRangedIn() end  -- mac:9685-9687
+    Pull.mercPullerRole(true)  -- solo puller with a merc tank (mac:9692)
 
     -- Stuck-detection baseline; x2/y2 = where the last los /moveto was sent from.
     r.x1 = math.floor(mq.TLO.Me.X())

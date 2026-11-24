@@ -108,4 +108,32 @@ function Roles.roleToggle(on, mobID)
     end
 end
 
+-- Solo puller with a merc tank (mac:9692, 10555): a `puller` whose only group
+-- member is its merc, with the merc as main assist, takes the EQ group Puller
+-- role (3) for the pull so the merc doesn't run out to the mob, and drops it once
+-- the mob is within MeleeDistance. on: at pull start. off: end of WaitForMob.
+local function mercTankPuller()
+    local s = _state
+    if s.session.role ~= 'puller' then return false end
+    if (mq.TLO.Group.Members() or 0) ~= 1 then return false end
+    local ma = s.session.mainAssist or ''
+    return ma ~= '' and (mq.TLO.Spawn('=' .. ma).Type() or '') == 'Mercenary'
+end
+
+function Roles.mercPullerRole(on)
+    if not mercTankPuller() then return end
+    local name = mq.TLO.Me.CleanName() or ''
+    if on then
+        if isGroupPuller() then return end
+        mq.cmdf('/grouproles set %s 3', name)
+        mq.delay(1000, isGroupPuller)
+    else
+        if not isGroupPuller() then return end
+        local mob = mq.TLO.Spawn('id ' .. (_state.combat.myTargetID or 0))
+        if (mob.Distance() or 9999) > (_state.combat.meleeDistance or 75) then return end
+        mq.cmdf('/grouproles unset %s 3', name)
+        mq.delay(1000, function() return not isGroupPuller() end)
+    end
+end
+
 return Roles
