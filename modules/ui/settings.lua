@@ -139,6 +139,36 @@ function Settings.drawAfkTools()
             end
         end
     end
+
+    -- Fellowship campfire (mac Campfire / CampfireBack)
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('Fellowship Campfire')
+    checkbox('Place Campfire at Camp', (s.misc.campfireOn or 0) ~= 0, function(v)
+        s.misc.campfireOn = v and math.max(1, s.misc.campfireKit or 1) or 0
+        Config.set('General', 'CampfireOn', tostring(s.misc.campfireOn))
+        Config.save()
+    end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Out of combat, in camp: place a fellowship campfire when 3+ fellowship\n'
+            .. 'members are within 50 (retries every 5 minutes). Replaces one left in\n'
+            .. 'another zone; keeps one in a guild hall. (CampfireOn)')
+    end
+    -- TODO: campsite kit choice. CampfireOn N picks entry N of the Fellowship window's
+    -- kit list; entries past 1 need Fellowship Campfire Materials. The toggle only
+    -- turns it on/off (on = the INI's kit, else 1) until we know what the other kits are.
+    if ImGui.Button('Place Campfire Now##cfnow') then s.misc.pendingCampfire = true end
+
+    checkbox('Click Back to Camp', (s.afk.clickBacktoCamp or 0) ~= 0, function(v)
+        s.afk.clickBacktoCamp = v and 1 or 0
+        Config.set('AFKTools', 'ClickBacktoCamp', tostring(s.afk.clickBacktoCamp))
+        Config.save()
+    end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Dead and out of the camp zone: click the Fellowship Registration\n'
+            .. 'Insignia back to the campfire once it is ready. Puller roles that die\n'
+            .. 'far from camp respawn at bind first. (ClickBacktoCamp)')
+    end
 end
 
 function Settings.init(state)

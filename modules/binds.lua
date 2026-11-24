@@ -553,10 +553,9 @@ local function onBuffGroup(_flag)
     _buffs.checkBuffs(true)
 end
 
+-- /campfire: place a fellowship campfire (mac Bind_Campfire, mac:11840)
 local function onCampfire()
-    state.misc.campfireOn = true
-    mq.cmd('/usefinditem Fellowship Campfire')
-    printf('\ay>> Campfire placed at %.1f, %.1f', state.movement.campY, state.movement.campX)
+    require('modules.campfire').place()
 end
 
 -- Mirrors Bind_TooBuffList (kissassist.mac:16086). The "too buff" list holds the
