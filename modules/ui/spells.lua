@@ -114,9 +114,21 @@ function SpellsUI.drawBuffs()
 
     checkbox('Buffs On', s.buffs.buffsOn, function(v)
         s.buffs.buffsOn = v
-        Config.set('Buffs', 'BuffsOn', v and '1' or '0')
+        Config.set('Buffs', 'BuffsOn', v and (s.buffs.buffGroupPets and '2' or '1') or '0')
         Config.save()
     end)
+    if s.buffs.buffsOn then
+        -- BuffsOn=2: also buff group members' pets (mac:4579), checked with the
+        -- owner over actors (Lua characters) or DanNet (.mac characters).
+        checkbox('Buff Group Pets', s.buffs.buffGroupPets, function(v)
+            s.buffs.buffGroupPets = v
+            Config.set('Buffs', 'BuffsOn', v and '2' or '1')
+            Config.save()
+        end)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Also cast your group buffs on group members\' pets (BuffsOn=2).\nOwners running KissAssist Lua are asked directly; .mac owners need\nDanNetOn and MQ2DanNet. Not for cleric, paladin, wizard, bard and\npure melee owners.')
+        end
+    end
     checkbox('Rebuff On', s.buffs.rebuffOn, function(v)
         s.buffs.rebuffOn = v
         Config.set('Buffs', 'RebuffOn', v and '1' or '0')
