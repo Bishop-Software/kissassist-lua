@@ -178,6 +178,9 @@ function Holds.holdReasons()
         local cur = h.medStat == 'Endurance' and me.PctEndurance() or me.PctMana()
         add('medding (' .. pctText(h.medStat or 'Mana', cur, h.medStop or 100) .. ')')
     end
+    if h.petMedding then
+        add(string.format('healing pet (%d%% of %d%%)', me.Pet.PctHPs() or 0, h.medStop or 100))
+    end
     if s.pull.pauseHold then add('Pull Pause rest') end
     if Pull.heldByCond(true) then add(string.format('Pull Pause condition %d is true', s.pull.pauseCond or 0)) end
     if s.misc and s.misc.dragCorpse then add('dragging a corpse') end

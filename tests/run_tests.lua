@@ -122,6 +122,18 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_healing_pet_med',
+        path         = 'tests.unit.test_healing_pet_med',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
+        name         = 'test_healing_ooc_rez',
+        path         = 'tests.unit.test_healing_ooc_rez',
+        useMock      = true,
+        clearModules = { 'modules.healing', 'modules.config' },
+    },
+    {
         name         = 'test_pull_ranged_swap',
         path         = 'tests.unit.test_pull_ranged_swap',
         useMock      = true,

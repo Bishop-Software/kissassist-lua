@@ -208,9 +208,10 @@ function Search.findMobToPull(readyFlag, _a, b)
        (s.combat.aggroTargetID ~= '' and s.pull.chainPull == 0) then
         return 0
     end
-    -- heal.medding: the mac's DoWeMed loop keeps a medding puller from pulling (mac:3956).
+    -- heal.medding: the mac's DoWeMed loop keeps a medding puller from pulling (mac:3956);
+    -- heal.petMedding: its DoPetMedStuff loop waits on the pet's health (mac:4141).
     if mq.TLO.Me.Invis() or s.pull.hold or s.pull.pauseHold or s.pull.watchHold or s.dps.paused or
-       s.heal.medding or
+       s.heal.medding or s.heal.petMedding or
        (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 or
        (mq.TLO.Me.Buff('Revival Sickness').ID()         or 0) > 0 then
         return 0

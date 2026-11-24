@@ -41,6 +41,8 @@ function Status.drawStatus()
         combatLabel, cr, cg, cb = 'RETURNING', 1.0, 0.7, 0.2
     elseif s.heal.medding then
         combatLabel, cr, cg, cb = 'MEDDING',   0.4, 0.8, 1.0
+    elseif s.heal.petMedding then
+        combatLabel, cr, cg, cb = 'HEALING PET', 0.4, 0.8, 1.0
     elseif s.session.chaseAssist then
         local who = (s.movement.whoToChase or ''):sub(1, 10)
         combatLabel, cr, cg, cb = 'CHASING ' .. who, 0.8, 0.6, 1.0

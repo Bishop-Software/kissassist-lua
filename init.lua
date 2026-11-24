@@ -284,11 +284,12 @@ while not State.terminate do
         -- dragging a corpse (mac:417-418), during the PullWait respawn wait,
         -- during a PullPause rest or while the PullPause hold condition is true.
         -- Not while medding either: the mac's DoWeMed holds the whole loop until
-        -- MedStop (mac:3956), so a puller low on mana doesn't pull.
+        -- MedStop (mac:3956), so a puller low on mana doesn't pull. Nor while a
+        -- pet-tank puller heals its pet up (heal.petMedding, mac:4141).
         -- pullCheck runs even when no mob was found (mac:424): that is where the
         -- fail counter, hunter return-to-camp and PullWait live.
         if not State.pull.hold and not State.pull.pauseHold and not State.pull.watchHold
-           and not State.heal.medding and not State.misc.dragCorpse
+           and not State.heal.medding and not State.heal.petMedding and not State.misc.dragCorpse
            and not Pull.pullWaiting() and not Pull.heldByCond() and Pull.pullAbilityReady() then
             if State.pull.mob == 0 then Pull.findMobToPull(1, 1, 0) end
             local pullRet = Pull.pullCheck()

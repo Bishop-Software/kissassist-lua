@@ -44,6 +44,15 @@ function HealingUI.drawHealThresholds()
         Config.set('Heals', 'HealsOn', v and '1' or '0')
         Config.save()
     end)
+    ImGui.SameLine(160)
+    checkbox('Rez Guild/Fellowship', s.heal.rezGuildFellowship ~= false, function(v)
+        s.heal.rezGuildFellowship = v
+        Config.set('Heals', 'RezGuildFellowship', v and '1' or '0')
+        Config.save()
+    end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Out of combat, rez nearby corpses of guild and fellowship members.\nNeeds AutoRezOn and a rez in the heal list.')
+    end
 
     -- XTarget heals (XTarHeal / XTarHealList): heal the people in chosen XTarget slots.
     ImGui.PushItemWidth(170)
