@@ -347,6 +347,13 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.cast', 'modules.config', 'modules.utils' },
     },
+    {
+        name         = 'test_gap14_small',
+        path         = 'tests.unit.test_gap14_small',
+        useMock      = true,
+        clearModules = { 'modules.cast', 'modules.combat.abilities', 'modules.combat.util',
+                         'modules.config', 'modules.utils' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

@@ -976,6 +976,15 @@ local function findItemWorn(name)
     return false
 end
 
+-- Mirrors StopMoving (mac:10025): turn off whatever is moving us, then wait up to
+-- 3 s to come to a stop. AdvPath (/play off) isn't used by the port.
+function Cast.stopMoving()
+    if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
+    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+    if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
+    mq.delay(3000, function() return not mq.TLO.Me.Moving() end)
+end
+
 -- Mirrors CheckStuckGems (mac:16017). A "stuck gem" is the client thinking it is
 -- still casting (Me.Casting.ID set) with no casting window, so every gem looks busy.
 -- Casting the Origin AA and stopping it clears that state. The guards here are the
@@ -1131,13 +1140,11 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         return 'CAST_SUCCESS'
     end
 
-    -- Stand before spells with a cast time (non-bard). Not ported: the mac's
-    -- StopMoving (mac:10025) also turns off moveto/stick/nav and waits to stop.
+    -- Stop moving before spells with a cast time (non-bard) (mac:2538 StopMoving)
     if (mq.TLO.Spell(castWhat).CastTime() or 0) > 0
             and mq.TLO.Me.Moving()
             and not isBard then
-        mq.cmd('/squelch /stand')
-        mq.delay(250)
+        Cast.stopMoving()
     end
 
     utils.debug('cast', 'CastWhat: %s rtc=%d from=%s', castWhat, rtc, sentFrom)

@@ -104,6 +104,15 @@ function Utils.zoneIniGet(infoFile, zoneKey, key)
 end
 function Utils.setTimer(seconds) return os.clock() + seconds end
 
+-- The pet hold command for this character (mac:14828-14834): /pet ghold (greater
+-- hold) with Companion's Discipline rank 2+, else /pet hold. With no rank the mac
+-- sends "/pet  on" (empty hold type); /pet hold is used instead.
+-- rank: optional, for tests; defaults to the live AA rank.
+function Utils.petHoldCommand(rank)
+    rank = rank or mq.TLO.Me.AltAbility("Companion's Discipline").Rank() or 0
+    return rank > 1 and '/pet ghold on' or '/pet hold on'
+end
+
 -- True when petName is myName's familiar. EQ names it "Name`s familiar" with a
 -- backtick, as the mac matches (mac:5235, 8490); an apostrophe is accepted too.
 -- Case-insensitive, like the mac's .Equal[].

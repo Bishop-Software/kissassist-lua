@@ -1,5 +1,5 @@
 -- tests/unit/test_utils.lua
--- Tests Utils.timerExpired, Utils.setTimer, Utils.setFlag, Utils.setAll, Utils.isFamiliarName.
+-- Tests Utils.timerExpired, setTimer, setFlag, setAll, isFamiliarName, petHoldCommand.
 -- No mq dependency — runs without mock injection.
 local M = {}
 
@@ -69,6 +69,12 @@ function M.run(TH, _MockMQ)
     TH.assert_false(Utils.isFamiliarName(nil, 'Toon'), 'isFamiliarName: no pet')
     TH.assert_false(Utils.isFamiliarName('', 'Toon'), 'isFamiliarName: empty pet name')
     TH.assert_false(Utils.isFamiliarName('`s familiar', nil), 'isFamiliarName: no character name')
+
+    -- petHoldCommand (mac:14828-14834): ghold at Companion's Discipline rank 2+
+    TH.assert_eq(Utils.petHoldCommand(2), '/pet ghold on', 'petHoldCommand: rank 2 -> ghold')
+    TH.assert_eq(Utils.petHoldCommand(5), '/pet ghold on', 'petHoldCommand: rank 5 -> ghold')
+    TH.assert_eq(Utils.petHoldCommand(1), '/pet hold on', 'petHoldCommand: rank 1 -> hold')
+    TH.assert_eq(Utils.petHoldCommand(0), '/pet hold on', 'petHoldCommand: no AA -> hold')
 end
 
 return M
