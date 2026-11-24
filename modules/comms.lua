@@ -110,12 +110,12 @@ local function onMessage(message)
         end
 
     elseif msgType == 'SWITCHMA' then
+        -- Queued for Comms.tick: Roles.switchMA runs combatReset, which waits with
+        -- mq.delay, and this runs inside the actor callback.
         local newMA = data.newMA or ''
         if newMA ~= '' then
-            _state.session.mainAssist = newMA
-            _state.session.iAmMA = (newMA:lower() == (mq.TLO.Me.CleanName() or ''):lower())
-            _utils.debug('comms', 'SWITCHMA from %s: new MA=%s iAmMA=%s', data.from, newMA, tostring(_state.session.iAmMA))
-            printf('\awMain Assist changed to \at%s\aw via group broadcast (IAmMA=%s)', newMA, tostring(_state.session.iAmMA))
+            _state.session.pendingSwitchMA = { newMA = newMA, newRole = data.newRole }
+            _utils.debug('comms', 'SWITCHMA from %s: new MA=%s role=%s', tostring(data.from), newMA, tostring(data.newRole))
         end
 
     elseif msgType == 'DEBUFFS' then
@@ -268,7 +268,14 @@ Comms._onChatRelay = onChatRelay
 
 -- Called each main loop iteration. Actors are event-driven via mq.doevents(),
 -- so no polling is needed; this is a placeholder for future DanNet-specific polling.
+-- Main-loop work queued by actor messages (runs where mq.delay is allowed).
 function Comms.tick()
+    local p = _state.session.pendingSwitchMA
+    if p then
+        _state.session.pendingSwitchMA = nil
+        printf('\awSwitchMA from the group:')
+        require('modules.roles').switchMA(p.newMA, p.newRole, false)
+    end
 end
 
 return Comms

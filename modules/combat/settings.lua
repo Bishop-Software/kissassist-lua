@@ -125,18 +125,7 @@ function Settings.load(state, utils)
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'
 
-    -- Manual role: disable all automation at startup (mac:8827-8834)
-    if _state.session.role == 'manual' then
-        if Config.get('Melee', 'UseMQ2Melee', '0') == '1' then
-            mq.cmd('/squelch /melee aggro=0')
-        end
-        _state.combat.meleeOn        = false
-        _state.combat.dpsOn          = false
-        _state.combat.dpsOnOoc       = false
-        _state.session.chaseAssist   = false
-        _state.movement.returnToCamp = false
-        _state.buffs.buffsOn         = false
-    end
+    -- The manual role's "everything off" setup is in modules/roles.lua (checkRoles).
 
     -- Assist-at percent: prefer INI; fall back to CLI-parsed session value (default 95)
     _state.combat.assistAt    = tonumber(Config.get('Melee', 'AssistAt',

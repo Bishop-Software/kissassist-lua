@@ -8,6 +8,7 @@ local State = {
 
     session = {
         role            = 'assist',
+        myOriginalRole  = 'assist', -- role at startup; /switchma returns to it (mac MyOriginalRole)
         assistAt        = 95,
         mainAssist      = '',
         mainAssistClass = '',
@@ -353,6 +354,9 @@ local State = {
         on             = 0,      -- 0=Off 1=Single&AE 2=Single 3=AE
         broke          = false,
         immuneIDs      = '',
+        immuneList     = '',     -- MezImmune names for this zone, comma-separated (Info INI)
+        aaImmune       = false,  -- AAMezImmune: add a mob that's immune to the list
+        immuneNotified = {},     -- [mobID] = mq.gettime() before which "MEZ Immune Detected" is quiet
         mobCount       = 0,
         mobAECount     = 0,
         aeClosest      = 0,

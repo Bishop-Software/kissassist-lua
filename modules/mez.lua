@@ -47,6 +47,99 @@ function Mez.init(state, utils, cast, _bard)  -- bard: unused, kept for the init
 
     -- PetBreakMezSpell lives in [Pet] section (mac:14822)
     _state.mez.petBreakSpell    = Config.get('Pet', 'PetBreakMezSpell',  '') or ''
+
+    Mez.loadZoneLists()
+end
+
+-- ─── MezImmune list (per zone, KissAssist_Info.ini) ──────────────────────────
+-- mac:14885-14895 loads [<zone>] MezImmune (comma list of names) and AAMezImmune,
+-- and puts the names in MQ alert list 4. Alert list 4 is used by the tank's
+-- target pick (combat/targeting.lua, mac:853: kill the unmezzable mob first);
+-- Mez.isImmuneName does the mez-candidate skip (mac:7372-7380).
+
+-- Splits a MezImmune value into names: trimmed, no empties, 'null' = none.
+-- Entries containing ':' are skipped, as AlertAddToList does (mac:13850).
+function Mez.parseImmuneList(raw)
+    local out = {}
+    raw = tostring(raw or '')
+    if raw:lower():find('null', 1, true) then return out end  -- mac: MezImmune.Find[null]
+    for entry in raw:gmatch('[^,]+') do
+        local name = entry:match('^%s*(.-)%s*$')
+        if name ~= '' and not name:find(':', 1, true) then out[#out + 1] = name end
+    end
+    return out
+end
+
+-- Alert list 4 commands for a name list (AlertAddToList, mac:13842-13858):
+-- '*' entries match by part of the name, the rest by the exact name ('=').
+function Mez.alertCommands(names)
+    local cmds = { '/squelch /alert clear 4' }
+    for _, name in ipairs(names) do
+        if name:find('*', 1, true) then
+            cmds[#cmds + 1] = string.format('/squelch /alert add 4 "%s"', (name:gsub('%*', '')))
+        else
+            cmds[#cmds + 1] = string.format('/squelch /alert add 4 "=%s"', name)
+        end
+    end
+    return cmds
+end
+
+-- True if name is on this zone's MezImmune list (case-insensitive; a '*' entry
+-- matches any name containing it).
+function Mez.isImmuneName(name)
+    name = tostring(name or ''):lower()
+    if name == '' then return false end
+    for _, entry in ipairs(Mez.parseImmuneList(_state.mez.immuneList)) do
+        local e = entry:lower()
+        if e:find('*', 1, true) then
+            local part = e:gsub('%*', '')
+            if part ~= '' and name:find(part, 1, true) then return true end
+        elseif e == name then
+            return true
+        end
+    end
+    return false
+end
+
+-- Loads this zone's MezImmune and AAMezImmune and rebuilds alert list 4.
+-- Called from Mez.init and after zoning. cmd is injectable for tests.
+-- Unlike the mac, alert list 4 is also cleared when the new zone has no list,
+-- so the last zone's names don't linger.
+function Mez.loadZoneLists(cmd)
+    local run  = cmd or mq.cmd
+    local file = _state.session.infoFileName or 'KissAssist_Info.ini'
+    local zone = _state.session.zoneName or ''
+    local raw  = _utils.zoneIniGet(file, zone, 'MezImmune') or ''
+    local names = Mez.parseImmuneList(raw)
+    _state.mez.immuneList = table.concat(names, ',')
+    _state.mez.aaImmune   = (_utils.zoneIniGet(file, zone, 'AAMezImmune') or '0') == '1'
+    for _, c in ipairs(Mez.alertCommands(names)) do run(c) end
+    _utils.debug('mez', 'MezImmune for %s: %s (AAMezImmune=%s)', zone,
+        _state.mez.immuneList ~= '' and _state.mez.immuneList or 'none', tostring(_state.mez.aaImmune))
+end
+
+-- Adds name to this zone's MezImmune list: the Info INI, state and alert list 4
+-- (Bind_AddMezImmune, mac:8226-8263). Used by /addimmune and by AAMezImmune on a
+-- CAST_IMMUNE mez result (mac:7551). Returns false if it was already listed.
+function Mez.addImmuneName(name, cmd)
+    local run = cmd or mq.cmd
+    name = tostring(name or ''):match('^%s*(.-)%s*$')
+    if name == '' then return false end
+    if Mez.isImmuneName(name) then
+        printf('\ay>> %s << already on Mez Immune List.', name)
+        return false
+    end
+    local list = _state.mez.immuneList or ''
+    list = list == '' and name or (list .. ',' .. name)
+    _state.mez.immuneList = list
+    local file = _state.session.infoFileName or ''
+    local zone = _state.session.zoneName or ''
+    if file ~= '' and zone ~= '' then
+        run(string.format('/ini "%s" "%s" "MezImmune" "%s"', file, zone, list))
+    end
+    run(string.format('/squelch /alert add 4 "=%s"', name))
+    printf('\ayMezImmune -> %s <- Adding to Mez Immune list.', name)
+    return true
 end
 
 -- Scan XTarget haters within MezRadius; populate mezArray, mobCount, mobAECount, aeClosest.
@@ -220,6 +313,8 @@ local function mezMobs(mobID, slotIndex)
                 _state.mez.immuneIDs = ids .. '|' .. tostring(mobID)
             end
             printf('\ay[Mez] Immune -> %s (ID:%d)', mobName, mobID)
+            -- AAMezImmune: remember the name for this zone (mac:7552)
+            if _state.mez.aaImmune and mobName ~= tostring(mobID) then Mez.addImmuneName(mobName) end
             return
         elseif result == 'CAST_RESISTED' and tryNum < 2 then
             printf('\ay[Mez] Resisted -> %s (ID:%d), retrying', mobName, mobID)
@@ -354,6 +449,18 @@ function Mez.check(sentFrom)
 
         -- Giant body type — always immune (mac:7366-7368)
         if (mob.Body.Name() or '') == 'Giant' then goto continue_mez end
+
+        -- On this zone's MezImmune list (mac:7372-7380). The mac broadcasts this
+        -- once a minute per slot; here it prints once a minute per mob.
+        if Mez.isImmuneName(mob.CleanName()) then
+            local seen = _state.mez.immuneNotified
+            local now  = mq.gettime()
+            if (seen[mobID] or 0) <= now then
+                seen[mobID] = now + 60000
+                printf('\ay[Mez] MEZ Immune Detected -> %s <- ID:%s', mob.CleanName() or '', tostring(mobID))
+            end
+            goto continue_mez
+        end
 
         -- Runtime immune IDs (mac:7405-7408)
         local ids = _state.mez.immuneIDs or ''

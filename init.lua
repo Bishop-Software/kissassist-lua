@@ -30,6 +30,7 @@ local Merc     = require('modules.merc')
 local GroupWatch = require('modules.groupwatch')
 local Startup  = require('modules.startup')
 local Misc     = require('modules.misc')
+local Roles    = require('modules.roles')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -135,12 +136,12 @@ Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, 
 Afk.init(State, Utils, Combat, Comms, Config)
 GroupWatch.init(State, Utils, Cond, Comms, Combat)
 Pull.setGroupWatch(GroupWatch)
--- Hunter and puller role overrides (mac CheckRoles). After Combat.init, which
--- loads AssistAt, MeleeOn and the pet settings these replace.
-Pull.setupHunterRole()
-Pull.setupPullerRole()
--- StickHow 'auto' -> per-role stick (mac CheckRoles); needs the role and UseMQ2Melee.
-Movement.resolveStickHow()
+-- Per-role setup (mac CheckRoles 1, mac:345). After every module's init, since it
+-- overrides settings they load (AssistAt, MeleeOn, HealsOn, ...). saveBaseline
+-- first keeps the INI values and the original role for /switchma.
+Roles.init(State, Utils, Pull, Movement, Combat, Comms)
+Roles.saveBaseline()
+Roles.checkRoles(1)
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
 
@@ -184,6 +185,7 @@ while not State.terminate do
         Pull.pickMoveUse(true)
         Combat.loadNamedList()
         Charm.loadZoneLists()
+        Mez.loadZoneLists()   -- MezImmune + alert list 4 for the new zone
         Combat.combatReset(0, 'zoned')
     end
     -- #132: broadcast buff state once after zone-in, when buffs have fully populated
