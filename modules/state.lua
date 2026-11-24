@@ -316,6 +316,8 @@ local State = {
         kaBegForPetList    = '',
         -- Step 6.1
         buffsOn            = false,
+        buffGroupPets      = false,  -- BuffsOn=2: also buff group members' pets (mac:4579-4610)
+        petBuffReplies     = {},     -- [reqID] = PETBUFFA actor reply (Buffs._groupPetTargetActor)
         buffsArray         = {},
         rebuffOn           = false,
         checkBuffsTimer    = 10,   -- seconds between buff check passes (INI CheckBuffsTimer)

@@ -150,6 +150,20 @@ local function onMessage(message)
             _utils.debug('comms', 'BUFFSTATE from id=%s buffs=%d', tostring(spawnID), count)
         end
 
+    elseif msgType == 'PETBUFFQ' then
+        -- A buffer with BuffsOn=2 asks about my pet (Buffs._groupPetTargetActor).
+        -- Only TLO reads, so it's fine to answer straight from the actor callback.
+        if data.reqID and data.buff and data.from ~= '' then
+            local info = require('modules.buffs').petBuffInfo(data.buff)
+            info.reqID = data.reqID
+            Comms.send(data.from, 'PETBUFFA', info)
+        end
+
+    elseif msgType == 'PETBUFFA' then
+        if data.reqID and _state.buffs.petBuffReplies then
+            _state.buffs.petBuffReplies[data.reqID] = data
+        end
+
     elseif msgType == 'CHATRELAY' then
         onChatRelay(data)
 

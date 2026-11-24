@@ -222,6 +222,118 @@ local function checkEndurance(spellName)
     return result
 end
 
+-- ─── Group pets over DanNet (BuffsOn=2, mac:4579-4610) ───────────────────────
+
+-- Classes whose pets the mac never buffs (mac:4580).
+local NON_PET_CLASSES = {
+    CLR = true, PAL = true, WIZ = true, BRD = true, BER = true,
+    MNK = true, ROG = true, RNG = true, WAR = true,
+}
+
+-- DanNet answers are strings; read them as the mac's ${Bool[...]} does.
+local function dnTrue(v)
+    if v == nil then return false end
+    local u = tostring(v):upper()
+    return u ~= '' and u ~= 'NULL' and u ~= 'FALSE' and u ~= '0'
+end
+Buffs._dnTrue = dnTrue
+
+-- The DanNet peer name for a character (plain 'name', or 'server_name' with
+-- full names on), or nil when they aren't a DanNet peer.
+function Buffs._danNetPeer(name)
+    local want = (name or ''):lower()
+    if want == '' then return nil end
+    for peer in ((mq.TLO.DanNet.Peers() or ''):lower()):gmatch('([^|]+)') do
+        if peer == want or peer:match('_([^_]+)$') == want then return peer end
+    end
+    return nil
+end
+
+-- /dquery a peer and wait for a fresh answer (QReceived changes). Returns the
+-- answer string, or nil on timeout. Lua can't read the mac's -o variable, so
+-- the answer comes from the DanNet TLO.
+function Buffs._dquery(peer, query, timeoutMs)
+    -- DanNet's Q/QReceived members aren't in the mq type definitions (checked live).
+    ---@diagnostic disable-next-line: undefined-field
+    local function received() return mq.TLO.DanNet(peer).QReceived(query)() or 0 end
+    local before = received()
+    mq.cmdf('/squelch /dquery %s -q "%s"', peer, query)
+    mq.delay(timeoutMs or 1000, function() return received() ~= before end)
+    if received() == before then return nil end
+    ---@diagnostic disable-next-line: undefined-field
+    return mq.TLO.DanNet(peer).Q(query)()
+end
+
+-- The pet ID of group member <name> when it should get <buff>: they're a
+-- DanNet peer, the buff isn't blocked on their pet, the pet doesn't have it,
+-- and it stacks (mac:4582-4590). Otherwise nil.
+function Buffs._groupPetTargetDanNet(name, buff)
+    local peer = Buffs._danNetPeer(name)
+    if not peer then return nil end
+    if dnTrue(Buffs._dquery(peer, string.format('Me.BlockedPetBuff[%s].ID', buff))) then return nil end
+    if dnTrue(Buffs._dquery(peer, string.format('Me.Pet.Buff[%s]', buff))) then return nil end
+    if not dnTrue(Buffs._dquery(peer, string.format('Spell[%s].StacksPet[0]', buff))) then return nil end
+    local petID = tonumber(Buffs._dquery(peer, 'Me.Pet.ID')) or 0
+    return petID > 0 and petID or nil
+end
+
+-- The same four facts about MY pet, read locally: what a pet owner sends back
+-- for a PETBUFFQ actor request (Comms), and what the buffer uses for its own pet.
+function Buffs.petBuffInfo(buff)
+    local pet = mq.TLO.Me.Pet
+    local slot = pet.Buff(buff)()
+    return {
+        petID   = pet.ID() or 0,
+        has     = slot ~= nil and slot ~= 0,
+        blocked = (mq.TLO.Me.BlockedPetBuff(buff).ID() or 0) ~= 0,
+        stacks  = mq.TLO.Spell(buff).StacksPet() == true,  -- same as the mac's StacksPet[0] (checked live)
+    }
+end
+
+-- Decide from a petBuffInfo table: the pet ID to buff, or nil.
+function Buffs._petTargetFromInfo(info)
+    if type(info) ~= 'table' or info.blocked or info.has or not info.stacks then return nil end
+    local petID = tonumber(info.petID) or 0
+    return petID > 0 and petID or nil
+end
+
+-- Ask a Lua KissAssist pet owner over actors (PETBUFFQ -> PETBUFFA, see
+-- Comms) and wait up to timeoutMs for the answer. nil on no answer.
+local _petReqSeq = 0
+function Buffs._groupPetTargetActor(name, buff, timeoutMs)
+    if not (_comms and _comms.send) then return nil end
+    _petReqSeq = _petReqSeq + 1
+    local reqID = string.format('%s:%d', mq.TLO.Me.CleanName() or '', _petReqSeq)
+    local replies = _state.buffs.petBuffReplies
+    replies[reqID] = nil
+    _comms.send(name, 'PETBUFFQ', { buff = buff, reqID = reqID })
+    mq.delay(timeoutMs or 1000, function() return replies[reqID] ~= nil end)
+    local info = replies[reqID]
+    replies[reqID] = nil
+    return Buffs._petTargetFromInfo(info)
+end
+
+-- True when <name> (spawn <id>) runs the Lua port: its actor BUFFSTATE is
+-- fresh, or it has sent us a BUFFS message.
+local function isLuaPeer(name, id)
+    local b = _state.buffs
+    if ((b.memberBuffsExpiry or {})[id] or 0) > os.clock() then return true end
+    return (b.remote or {})[name] ~= nil
+end
+
+-- Group member <name>'s pet ID when it should get <buff>, or nil. My own pet
+-- is checked locally; a Lua KissAssist owner is asked over actors; anyone
+-- else (a .mac character) over DanNet, when DanNet is on (mac:4581-4590).
+function Buffs._groupPetTarget(name, id, buff)
+    if name == '' then return nil end
+    if name:lower() == (mq.TLO.Me.CleanName() or ''):lower() then
+        return Buffs._petTargetFromInfo(Buffs.petBuffInfo(buff))
+    end
+    if isLuaPeer(name, id) then return Buffs._groupPetTargetActor(name, buff) end
+    if _state.session.danNetOn then return Buffs._groupPetTargetDanNet(name, buff) end
+    return nil
+end
+
 -- Tank branch of CheckForCombat (mac:592-597): cast each [Buffs] |End entry whose
 -- endurance threshold I'm at or below, once its disc/AA is ready. Lets a tank
 -- or pullertank recover endurance between fights without a full CheckBuffs.
@@ -1064,7 +1176,38 @@ function Buffs.checkBuffs(forceGroup)
                         timers_i[j] = os.clock() + 5  -- item on reuse cooldown; retry in 5s
                     end
 
-                    -- Not ported: buffing group members' pets via DanNet /dquery (mac:4581-4605).
+                    -- BuffsOn=2: also buff this member's pet (mac:4579-4610), checked
+                    -- over actors for Lua characters or DanNet for .mac ones. Like
+                    -- the mac, pets have no buff timer of their own: they're checked
+                    -- each time the member's buff is.
+                    if _state.buffs.buffGroupPets
+                            and not NON_PET_CLASSES[memberClass]
+                            and (mq.TLO.Group.Member(j).Pet.ID() or 0) ~= 0 then
+                        local owner = mq.TLO.Group.Member(j).CleanName() or ''
+                        local petID = Buffs._groupPetTarget(owner, memberID,
+                            buffToCheck ~= '' and buffToCheck or spellToCast)
+                        if petID then
+                            mq.doevents()
+                            -- Wait for a memmed spell to be ready (bounded; the mac waits forever).
+                            if mq.TLO.Me.Gem(spellToCast)() then
+                                local deadline = os.clock() + 6
+                                while (mq.TLO.Me.SpellInCooldown() or not mq.TLO.Me.SpellReady(spellToCast)())
+                                        and os.clock() < deadline do
+                                    mq.delay(250)
+                                end
+                            end
+                            local petResult = _cast.castWhat(spellToCast, petID, 'buffs-nomem')
+                            if petResult == 'CAST_SUCCESS' then
+                                printf('\awBuffing \at%s\aw on \at%s\aw Pet \at%s', spellToCast, owner,
+                                    mq.TLO.Group.Member(j).Pet.CleanName() or '')
+                                mq.doevents()
+                            elseif petResult == 'CAST_COMPONENTS' then
+                                mq.cmd(string.format('/echo You are missing components. Turning off %s.', spellToCast))
+                                _state.buffs.buffsArray[i].name = 'NULL'
+                                goto jcontinue
+                            end
+                        end
+                    end
 
                     ::jcontinue::
                 end
@@ -1409,7 +1552,10 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
     end
 
     -- [Buffs] section
-    _state.buffs.buffsOn         = Config.get('Buffs', 'BuffsOn',        '0') == '1'
+    -- BuffsOn: 0 off, 1 on, 2 on and also buff group members' pets over DanNet (mac:4579)
+    local buffsOnVal             = tonumber(Config.get('Buffs', 'BuffsOn', '0')) or 0
+    _state.buffs.buffsOn         = buffsOnVal >= 1
+    _state.buffs.buffGroupPets   = buffsOnVal == 2
     _state.buffs.rebuffOn        = Config.get('Buffs', 'RebuffOn',       '1') == '1'
     _state.buffs.checkBuffsTimer = tonumber(Config.get('Buffs', 'CheckBuffsTimer', '10')) or 10
     _state.buffs.powerSource     = Config.get('Buffs', 'PowerSource',    '') or ''

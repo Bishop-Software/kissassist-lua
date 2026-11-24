@@ -130,6 +130,12 @@ local unitTests = {
                          'modules.combat.radar', 'modules.combat.targeting', 'modules.combat.fight' },
     },
     {
+        name         = 'test_group_pet_buffs',
+        path         = 'tests.unit.test_group_pet_buffs',
+        useMock      = true,
+        clearModules = { 'modules.buffs', 'modules.config' },
+    },
+    {
         name         = 'test_memmyspells_bard',
         path         = 'tests.unit.test_memmyspells_bard',
         useMock      = true,
