@@ -46,10 +46,26 @@ function CombatUI.drawMelee()
             printf('\ayMQ2Melee plugin is not loaded. Load it with /plugin mq2melee first.')
             return
         end
-        Config.set('Melee', 'UseMQ2Melee', v and '1' or '0')
+        Config.set('Melee', 'UseMQ2Melee', v and tostring(s.combat.mq2MeleeMode or 1) or '0')
         Config.save()
         Movement.resolveStickHow()  -- MQ2Melee does its own sticking
     end)
+    if s.combat.useMQ2Melee then
+        -- UseMQ2Melee 1 / 2: MQ2Melee's stickmode 0 (automatic) / 1 (its INI stickcmd)
+        ImGui.PushItemWidth(170)
+        local mode, changed = ImGui.Combo('MQ2Melee Stick##mq2meleemode', s.combat.mq2MeleeMode or 1,
+            { 'Automatic', 'MQ2Melee INI stickcmd' })
+        ImGui.PopItemWidth()
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('How MQ2Melee sticks to the target: on its own, or with the stickcmd\nfrom your MQ2Melee INI (UseMQ2Melee=2)')
+        end
+        if changed and mode ~= s.combat.mq2MeleeMode then
+            s.combat.mq2MeleeMode = mode
+            mq.cmdf('/squelch /melee stickmode=%d', mode == 2 and 1 or 0)
+            Config.set('Melee', 'UseMQ2Melee', tostring(mode))
+            Config.save()
+        end
+    end
 
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(v)
         s.combat.autoFireOn = v and 1 or 0

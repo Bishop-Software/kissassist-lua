@@ -8,6 +8,7 @@ read_globals = {
     "mq",
     "printf",
     "ImGui",
+    "ImGuiCol",
     "ImGuiTableFlags",
     "ImGuiTableColumnFlags",
     "ImGuiWindowFlags",
