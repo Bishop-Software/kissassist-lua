@@ -85,7 +85,12 @@ end
 -- checkStick only sends /killthis, so without the plugin nothing attacks.
 -- Unlike the mac (mac:16348-16366) we don't load it ourselves: MQ2Melee skips
 -- its casting checks for bards and can fire abilities mid-song; loading it
--- coincided with broken bard songs in testing.
+-- coincided with broken bard songs in testing. With the setting off we also
+-- don't unload it (mac:16369-16371): melee=0 + off is enough to keep it out of
+-- the way, and the Combat tab switch can turn it back on mid-session.
+-- combat.mq2MeleeMode (UseMQ2Melee 1 or 2) picks MQ2Melee's stickmode: 1 = its
+-- own automatic sticking (stickmode=0), 2 = the stickcmd from MQ2Melee's INI
+-- (stickmode=1) (mac:16356-16361).
 function Settings.setMQ2Melee(state, on)
     if on then
         if not mq.TLO.Plugin('MQ2Melee').IsLoaded() then
@@ -96,7 +101,7 @@ function Settings.setMQ2Melee(state, on)
         mq.cmd('/squelch /melee melee=1')
         mq.cmd('/squelch /melee petassist=0')
         mq.cmd('/squelch /melee on')
-        mq.cmd('/squelch /melee stickmode=0')
+        mq.cmdf('/squelch /melee stickmode=%d', state.combat.mq2MeleeMode == 2 and 1 or 0)
     elseif mq.TLO.Plugin('MQ2Melee').IsLoaded() then
         -- Stop the plugin attacking/sticking on its own so it doesn't fight
         -- our /attack + /stick handling.
@@ -118,10 +123,17 @@ function Settings.load(state, utils)
     _state.combat.dpsSkip     = tonumber(Config.get('DPS', 'DPSSkip',     '20')) or 20
     _state.combat.dpsInterval = tonumber(Config.get('DPS', 'DPSInterval', '2'))  or 2
     _state.combat.meleeOn           = Config.get('Melee', 'MeleeOn',           '1') == '1'
-    _state.combat.useMQ2Melee = false
-    if Config.get('Melee', 'UseMQ2Melee', '0') == '1'
-       and not Settings.setMQ2Melee(_state, true) then
-        printf('\ayMQ2Melee plugin is not loaded. Setting UseMQ2Melee off for this session.')
+    -- UseMQ2Melee: 0 off, 1 on (MQ2Melee sticks), 2 on with MQ2Melee's INI stickcmd (mac:16348-16374)
+    local mq2MeleeVal = tonumber(Config.get('Melee', 'UseMQ2Melee', '0')) or 0
+    _state.combat.useMQ2Melee  = false
+    _state.combat.mq2MeleeMode = mq2MeleeVal == 2 and 2 or 1
+    if mq2MeleeVal >= 1 then
+        if not Settings.setMQ2Melee(_state, true) then
+            printf('\ayMQ2Melee plugin is not loaded. Setting UseMQ2Melee off for this session.')
+        end
+    elseif mq.TLO.Plugin('MQ2Melee').IsLoaded() then
+        -- Off but loaded: stop it attacking/sticking on its own settings.
+        Settings.setMQ2Melee(_state, false)
     end
     _state.combat.targetSwitchingOn = Config.get('Melee', 'TargetSwitchingOn', '0') == '1'
     _state.combat.manualTargetMode  = Config.get('Melee', 'ManualTargetMode',  '0') == '1'

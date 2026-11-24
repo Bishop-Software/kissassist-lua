@@ -129,24 +129,70 @@ local function onBurn(what, st)
     -- Burn rotation in M4 (combat.lua)
 end
 
-local function onBackOff(onOffFlag, _waitFlag)
+-- /backoff [on|off|1|0] [waitFlag]: Bind_BackOff (mac:13717-13767). on/1 backs
+-- off, off/0 resumes, no argument toggles. Backing off stops the fight (melee,
+-- MQ2Melee, stick, CombatReset); resuming turns MQ2Melee back on. With waitFlag
+-- the MA gets 3 seconds to target a new mob, which becomes the new target.
+-- Afterwards, with ReturnToCamp, head back to camp (unless waitFlag).
+local function onBackOff(onOffFlag, waitFlag)
     local flag = (onOffFlag or ''):lower()
     local pausing
     if flag == 'on' or flag == '1' then
-        pausing = false
-    elseif flag == 'off' or flag == '0' then
         pausing = true
+    elseif flag == 'off' or flag == '0' then
+        pausing = false
     else
         pausing = not state.dps.paused
     end
-    state.dps.paused = pausing
+    local wait = (tonumber(waitFlag) or 0) ~= 0
+    local c    = state.combat
+
     if pausing then
-        state.combat.combatStart = false
-        printf('\awBacking off — DPS paused.')
+        state.dps.paused = true
+        c.combatStart    = false
+        if c.useMQ2Melee then mq.cmd('/squelch /melee off') end
+        mq.cmd('/squelch /attack off')
+        if mq.TLO.Stick.Active() then mq.cmd('/stick off') end
+        _combat.combatReset(0, 'backoff')
+        printf('\awBacking off - All Combat has been reset.')
     else
-        printf('\awResuming — DPS active.')
+        printf('\awResetting. No Longer Backing off.')
+        if wait and state.session.iAmMA then
+            if (mq.TLO.Me.Casting.ID() or 0) ~= 0 then
+                mq.cmd('/stopcast')
+                state.cast.castResult = 'CAST_CANCELLED'
+            end
+            printf('\awPausing for new target. Switch to new target now.')
+            mq.cmd('/beep')
+            local oldTarget = mq.TLO.Target.ID() or 0
+            local function switched()
+                local t = mq.TLO.Target.ID() or 0
+                return t ~= 0 and t ~= oldTarget
+            end
+            mq.delay(3000, switched)
+            if switched() then
+                -- CombatTargetCheck 2 runs while still paused, with target switching forced on.
+                local saved = c.targetSwitchingOn
+                c.targetSwitchingOn = true
+                _combat.combatTargetCheck(2)
+                c.targetSwitchingOn = saved
+                printf('\awTarget Switched from Backoff command.')
+            else
+                printf('\awTarget NOT Switched. You can always try again.')
+            end
+        end
+        if c.useMQ2Melee then mq.cmd('/squelch /melee on') end
+        state.dps.paused = false
     end
-    -- CombatReset + /stick off in M4 (combat.lua)
+
+    local mv = state.movement
+    if mv.returnToCamp and not wait and (mv.campX ~= 0 or mv.campY ~= 0) then
+        local dy = (mq.TLO.Me.Y() or 0) - mv.campY
+        local dx = (mq.TLO.Me.X() or 0) - mv.campX
+        if math.sqrt(dx * dx + dy * dy) > 15 then
+            require('modules.movement').doWeMove(0, 'bind_backoff')
+        end
+    end
 end
 
 local function onSwitch(_lockOnFlag, newTargetID)

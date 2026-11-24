@@ -122,6 +122,12 @@ local unitTests = {
         clearModules = { 'modules.healing', 'modules.config' },
     },
     {
+        name         = 'test_mq2melee',
+        path         = 'tests.unit.test_mq2melee',
+        useMock      = true,
+        clearModules = { 'modules.binds', 'modules.combat.settings' },
+    },
+    {
         name         = 'test_healing_pet_med',
         path         = 'tests.unit.test_healing_pet_med',
         useMock      = true,

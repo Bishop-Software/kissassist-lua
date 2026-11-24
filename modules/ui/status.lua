@@ -33,6 +33,8 @@ function Status.drawStatus()
     local combatLabel, cr, cg, cb
     if s.session.iAmDead then
         combatLabel, cr, cg, cb = 'DEAD',      1.0, 0.2, 0.2
+    elseif s.dps.paused then
+        combatLabel, cr, cg, cb = 'BACKED OFF', 1.0, 0.6, 0.2
     elseif s.combat.combatStart then
         combatLabel, cr, cg, cb = 'FIGHTING',  1.0, 0.4, 0.4
     elseif s.pull.pulling then
@@ -123,7 +125,7 @@ function Status.drawStatus()
 end
 
 function Status.drawCampButtons()
-    local bw = math.floor((ImGui.GetContentRegionAvail() - 16) / 5)
+    local bw = math.floor((ImGui.GetContentRegionAvail() - 20) / 6)
     if ImGui.Button('Camp Here', bw, 0) then mq.cmd('/makecamphere') end
     ImGui.SameLine()
     if ImGui.Button('Camp Off',  bw, 0) then mq.cmd('/campoff')      end
@@ -133,8 +135,20 @@ function Status.drawCampButtons()
     if ImGui.Button('Stay Here', bw, 0) then mq.cmd('/stayhere')     end
     ImGui.SameLine()
     if not _state.combat.combatStart then ImGui.BeginDisabled() end
-    if ImGui.Button('Burn Now',  -1, 0) then mq.cmd('/burn')         end
+    if ImGui.Button('Burn Now',  bw, 0) then mq.cmd('/burn')         end
     if not _state.combat.combatStart then ImGui.EndDisabled() end
+    ImGui.SameLine()
+    -- /backoff on|off (Bind_BackOff): highlighted while backed off.
+    local paused = _state.dps.paused
+    if paused then ImGui.PushStyleColor(ImGuiCol.Button, 0.8, 0.45, 0.1, 1.0) end
+    if ImGui.Button(paused and 'Resume##backoff' or 'Back Off##backoff', -1, 0) then
+        mq.cmd(paused and '/backoff off' or '/backoff on')
+    end
+    if paused then ImGui.PopStyleColor() end
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip(paused and 'Backed off: click to resume fighting (/backoff off)'
+            or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)')
+    end
 end
 
 function Status.init(state)
