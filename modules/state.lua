@@ -545,7 +545,9 @@ local State = {
         tempAmmo             = '',
         campfireOn           = false,
         myCmd                = '',  -- custom command string from INI [General] MyCmd
-        winTitleText         = 'null',
+        -- Window title, an MQ expression re-parsed on each set (mac:16250).
+        -- A startup line can change it; 'null' leaves the title alone.
+        winTitleText         = '${Me.Name} (Lvl:${Me.Level} ${Zone.ShortName})',
     },
 
     arrays = {

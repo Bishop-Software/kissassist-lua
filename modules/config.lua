@@ -159,6 +159,37 @@ local function purgeOrphanedFields(cfg)
     end
 end
 
+-- [StartupCommands] (mac StartupCommands, mac:15946): CommandSize plus Command1..N.
+-- readFn(section, key) returns an INI value or nil. Returns nil when the INI has
+-- no CommandSize, so callers can tell "no section" from "empty section".
+function Config.readStartupCommands(readFn)
+    local size = readFn('StartupCommands', 'CommandSize')
+    if size == nil then return nil end
+    local n = tonumber(size) or 0
+    local cmds = {}
+    for i = 1, n do
+        -- Pad with '' so ipairs walks the whole list (see ra in migrateIni).
+        cmds[i] = readFn('StartupCommands', 'Command' .. i) or ''
+    end
+    return { CommandSize = tostring(n), Command = cmds }
+end
+
+-- One-time backfill for pickles made before [StartupCommands] was migrated (#318).
+-- The INI is renamed to .bak by migration, so look there too. Returns true if
+-- cfg changed. Writes an empty section when there's nothing to import, so the
+-- INI is only checked once.
+function Config.backfillStartupCommands(cfg, iniFile, readIni)
+    if cfg.StartupCommands ~= nil then return false end
+    readIni = readIni or function(file, section, key) return mq.TLO.Ini(file, section, key)() end
+    local found
+    for _, file in ipairs({ iniFile, mq.configDir .. '/' .. iniFile .. '.bak' }) do
+        found = Config.readStartupCommands(function(s, k) return readIni(file, s, k) end)
+        if found then break end
+    end
+    cfg.StartupCommands = found or { CommandSize = '0', Command = {} }
+    return true
+end
+
 -- Step 1.4b: Migrate an existing .ini to mq.pickle() on first run.
 -- KissAssist_Buffs.ini and KissAssist_Info.ini stay as .ini — they are shared
 -- cross-character files; pickle conversion is unsafe while chars still run .mac.
@@ -202,6 +233,8 @@ function Config.migrateIni(state)
                 cfg.Spells.Gems = gems
                 dirty = true
             end
+            -- One-time: import [StartupCommands] from the INI / .bak (#318)
+            if Config.backfillStartupCommands(cfg, iniFile) then dirty = true end
             if dirty then mq.pickle(picklePath, cfg) end
             printf('\agKissAssist: \awLoaded config from \at%s', pickleName)
             return cfg
@@ -501,6 +534,9 @@ function Config.migrateIni(state)
         Cond     = ra('KConditions','Cond', condSize),
     }
 
+    -- [StartupCommands] — lines run once at startup (mac:15946)
+    cfg.StartupCommands = Config.readStartupCommands(r) or { CommandSize = '0', Command = {} }
+
     -- 3. Bard: convert MQ2Twist slot lists → MQ2Medley sections (one-time migration).
     migrateBardMedley(r, cfg)
 
@@ -637,6 +673,9 @@ function Config.defaultCfg()
         },
         KConditions = {
             ConOn = '0', CondSize = '5', Cond = emptyArr(5),
+        },
+        StartupCommands = {
+            CommandSize = '0', Command = {},
         },
     }
 end

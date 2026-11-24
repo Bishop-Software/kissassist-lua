@@ -28,6 +28,7 @@ local Charm    = require('modules.charm')
 local Afk      = require('modules.afk')
 local Merc     = require('modules.merc')
 local GroupWatch = require('modules.groupwatch')
+local Startup  = require('modules.startup')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -78,6 +79,7 @@ Config.load(State)
 -- Load condition expressions from [KConditions] INI section
 Cond.init(State, Utils)
 Cond.load()
+Startup.init(State, Cond)  -- early: the zone event sets the window title
 
 -- Wire loot settings from INI into State
 State.loot.on       = tonumber(Config.get('General', 'LootOn',       '1')) or 1
@@ -136,6 +138,13 @@ Pull.setupPullerRole()
 Movement.resolveStickHow()
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
+
+-- mac:355-356 (WinTitle, StartupCommands). After Binds.register, since startup
+-- lines often call KissAssist commands (/burn off, /togglevariable ...). The
+-- commands run first so a '/varset WinTitleText null' line can stop the title
+-- being set at all; the mac sets the default title before reading them.
+Startup.runCommands()
+Startup.setWinTitle()
 
 printf('\agKissAssist ready. \awEntering main loop.')
 

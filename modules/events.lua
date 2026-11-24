@@ -1,4 +1,5 @@
-local mq = require('mq')
+local mq      = require('mq')
+local Startup = require('modules.startup')
 
 local Events = {}
 
@@ -311,7 +312,8 @@ local function onZoned(_, message)
     -- #132: broadcast our own buff state once buffs repopulate after zone-in
     state.buffs.pendingZoneBroadcast = true
     -- CombatReset + zone list reload run from the main loop (zoneListsPending).
-    -- WinTitle and LoadSpawnMaster aren't ported.
+    -- LoadSpawnMaster isn't ported.
+    Startup.setWinTitle()  -- mac:11153
 end
 
 local function onJoined(_, joinee)
