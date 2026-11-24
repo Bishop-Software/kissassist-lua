@@ -196,6 +196,8 @@ while not State.terminate do
         State.buffs.pendingZoneBroadcast = false
         Comms.broadcastBuffState()
     end
+    -- Phase 1.4: stuck gem (mac:367; skipped while ChainPull is 2, like the mac)
+    if (State.pull.chainPull or 0) ~= 2 then Cast.checkStuckGems() end
     -- Phase 1.5: AFK safety monitor (mac:375 / mac:414)
     if State.afk.on > 0 then Afk.check() end
     -- Phase 2: combat (first pass — mac:MainLoop1)
