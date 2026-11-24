@@ -341,6 +341,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.mez', 'modules.config' },
     },
+    {
+        name         = 'test_stuck_gems',
+        path         = 'tests.unit.test_stuck_gems',
+        useMock      = true,
+        clearModules = { 'modules.cast', 'modules.config', 'modules.utils' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

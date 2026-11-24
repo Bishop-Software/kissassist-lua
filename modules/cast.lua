@@ -226,22 +226,6 @@ local function castSpell(spellName, sentFrom)
         return 'CAST_NO_RESULT'
     end
 
-    -- Stuck-gem check (mac:16013-16025 translated to re-mem approach)
-    if state.cast.checkStuckGem and sentFrom ~= 'bard' then
-        local gemNum = mq.TLO.Me.Gem(spellName)()
-        ---@diagnostic disable-next-line: undefined-field
-        if gemNum and (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
-            printf('\ayKissAssist: stuck gem — slot %d has wrong spell; re-memming %s', gemNum, spellName)
-            castMemSpell(spellName, gemNum, 0)
-            mq.delay(500)
-            ---@diagnostic disable-next-line: undefined-field
-            if (mq.TLO.Me.Gem(gemNum).Name() or ''):lower() ~= spellName:lower() then
-                printf('\arKissAssist: stuck gem could not be fixed for %s', spellName)
-                return 'CAST_STUCK_GEM'
-            end
-        end
-    end
-
     local wasSitting  = mq.TLO.Me.Sitting()
     local castResult  = 'CAST_SUCCESS'
     local maxTries    = 2
@@ -992,6 +976,29 @@ local function findItemWorn(name)
     return false
 end
 
+-- Mirrors CheckStuckGems (mac:16017). A "stuck gem" is the client thinking it is
+-- still casting (Me.Casting.ID set) with no casting window, so every gem looks busy.
+-- Casting the Origin AA and stopping it clears that state. The guards here are the
+-- ones both mac callers apply (main loop mac:367, CastWhat mac:2488): CheckStuckGem
+-- on, not a bard, Casting.ID set; plus the sub's own window/invis check.
+-- Returns true if Origin was used.
+function Cast.checkStuckGems()
+    if not state.cast.checkStuckGem or state.session.iAmABard then return false end
+    if (mq.TLO.Me.Casting.ID() or 0) == 0 then return false end
+    if mq.TLO.Window('CastingWindow').Open() or mq.TLO.Me.Invis() then return false end
+    if mq.TLO.Me.AltAbilityReady('Origin')() then
+        printf('\ay***** Stuck Gem Detected *****\aw %s', tostring(mq.TLO.Me.SpellInCooldown()))
+        mq.cmdf('/alt act %d', mq.TLO.Me.AltAbility('Origin').ID() or 0)
+        mq.delay(5000, function() return mq.TLO.Window('CastingWindow').Open() == true end)
+        mq.cmd('/stopcast')
+        mq.delay(1000)
+        return true
+    end
+    printf('\ayStuck gem: Origin AA not ready.')
+    mq.delay(2000)
+    return false
+end
+
 function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
     -- Non-bard: bail immediately if already casting with the window open
     if not state.session.iAmABard then
@@ -1054,7 +1061,8 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         if not isBard
                 and (mq.TLO.Me.Casting.ID() or 0) ~= 0
                 and not mq.TLO.Window('CastingWindow').Open() then
-            -- Casting but window closed → gem may be stuck; re-mem handled in castSpell
+            -- Casting but no cast window: the client is stuck "casting" (mac:2488)
+            Cast.checkStuckGems()
             rtc = mq.TLO.Me.Gem(castWhat)() and 5 or 7
         elseif not hasItem and not mq.TLO.Me.Gem(castWhat)() and not hasAA then
             rtc = 7     -- in book but not memed → needs CastMem
