@@ -110,7 +110,8 @@ end
 function Settings.load(state, utils)
     local _state = state
 
-    -- Engagement toggles; DPSOn==2 enables out-of-combat DPS rotation (mac DPSOn)
+    -- DPSOn: 0 off; 1 on, each entry from its HP%; 2 on at any HP and wait out the
+    -- global spell cooldown instead of skipping a gem spell (mac:1727, 1750)
     local dpsOnVal            = tonumber(Config.get('DPS', 'DPSOn', '0')) or 0
     _state.combat.dpsOn       = dpsOnVal >= 1
     _state.combat.dpsOnOoc    = dpsOnVal == 2

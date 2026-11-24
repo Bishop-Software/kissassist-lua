@@ -1580,7 +1580,7 @@ function Cast.combatCast()
         -- Lower bound: stop entire rotation when mob is near death (mac DPSSkip)
         local dpsSkip = state.combat.dpsSkip or 0
         if dpsSkip > 0 and targetHP <= dpsSkip then return end
-        -- Upper bound: skip slot when mob HP above threshold; bypassed in OOC mode (DPSOn==2)
+        -- Upper bound: skip slot when mob HP is above the entry's HP%; DPSOn=2 ignores it
         if state.combat.dpsOn and not state.combat.dpsOnOoc and targetHP > dpsAt then goto next_dps end
 
         -- Resolve cast target
@@ -1617,8 +1617,9 @@ function Cast.combatCast()
             while os.clock() < t and mq.TLO.Me.Combat() do mq.delay(50) end
         end
 
-        -- Skip gem-spell if under global spell cooldown. Not ported: DPSOn==2 waits
-        -- the cooldown out instead (mac:1750-1753).
+        -- Global spell cooldown on a memorized gem spell (mac:1743-1757): DPSOn=1
+        -- skips the entry; DPSOn=2 waits the cooldown out and then casts it, so the
+        -- list keeps strict priority order.
         if mq.TLO.Me.SpellInCooldown() and not state.session.iAmABard then
             -- Only weave entries fire during the global cooldown (mac:1742-1747).
             if hasWeave() then
@@ -1626,7 +1627,9 @@ function Cast.combatCast()
                 weaveCheck = true
             end
             if mq.TLO.Me.Gem(spellName)() and (mq.TLO.Spawn('id ' .. myID).ID() or 0) ~= 0 then
-                goto next_dps
+                if not state.combat.dpsOnOoc then goto next_dps end
+                mq.delay(3000, function() return not mq.TLO.Me.SpellInCooldown() end)
+                if mq.TLO.Me.SpellInCooldown() then goto next_dps end
             end
         end
 

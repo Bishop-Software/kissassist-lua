@@ -12,6 +12,8 @@ local GLT_LABELS  = Helpers.GLT_LABELS
 local ATGT_VALUES = Helpers.ATGT_VALUES
 local ATGT_LABELS = Helpers.ATGT_LABELS
 
+local DPS_MODE_LABELS = { 'Off', 'On (each entry from its HP%)', 'On, any HP (wait for spell cooldown)' }
+
 local CombatUI = {}
 local _state
 
@@ -431,11 +433,24 @@ end
 function CombatUI.drawDPS()
     local s = _state
 
-    checkbox('DPS', s.combat.dpsOn, function(v)
-        s.combat.dpsOn = v
-        Config.set('DPS', 'DPSOn', v and '1' or '0')
+    -- DPSOn 0/1/2 (mac:1727, 1750); 2 is held in combat.dpsOnOoc
+    local dpsMode = s.combat.dpsOn and (s.combat.dpsOnOoc and 2 or 1) or 0
+    ImGui.PushItemWidth(260)
+    local newMode, modeChanged = ImGui.Combo('DPS##dpson', dpsMode + 1, DPS_MODE_LABELS)
+    ImGui.PopItemWidth()
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Off: no DPS rotation.\n'
+            .. 'On: each entry starts once the mob is at or below its HP%%; a spell on\n'
+            .. '  the global cooldown is skipped for now.\n'
+            .. 'On, any HP: entries start at any HP, and the rotation waits out the\n'
+            .. '  global spell cooldown so it keeps strict priority order (DPSOn=2).')
+    end
+    if modeChanged then
+        s.combat.dpsOn    = newMode > 1
+        s.combat.dpsOnOoc = newMode == 3
+        Config.set('DPS', 'DPSOn', tostring(newMode - 1))
         Config.save()
-    end)
+    end
 
     ImGui.Spacing()
     intInput('DPS Skip %',   s.combat.dpsSkip,     0,  100, 'DPS', 'DPSSkip',     function(v) s.combat.dpsSkip     = v end)

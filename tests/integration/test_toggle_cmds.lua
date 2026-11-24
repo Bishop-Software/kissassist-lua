@@ -32,6 +32,21 @@ function M.run(mq, State, TH)
     TH.assert_eq(State.heal.healsOn, 0, '/togglevariable HealsOn off')
     State.heal.healsOn = origHealsOn
 
+    -- DPSOn 2: any HP + wait out the spell cooldown (combat.dpsOnOoc) ------------
+    local origDpsOn, origDpsOoc = State.combat.dpsOn, State.combat.dpsOnOoc
+    mq.cmd('/togglevariable DPSOn 2') ; mq.delay(D)
+    TH.assert_true(State.combat.dpsOn, '/togglevariable DPSOn 2 -> dpsOn')
+    TH.assert_true(State.combat.dpsOnOoc, '/togglevariable DPSOn 2 -> dpsOnOoc (mode 2)')
+    mq.cmd('/togglevariable DPSOn 1') ; mq.delay(D)
+    TH.assert_true(State.combat.dpsOn, '/togglevariable DPSOn 1 -> dpsOn')
+    TH.assert_false(State.combat.dpsOnOoc, '/togglevariable DPSOn 1 -> mode 1, dpsOnOoc cleared')
+    mq.cmd('/changevarint DPSOn 2') ; mq.delay(D)
+    TH.assert_true(State.combat.dpsOnOoc, '/changevarint DPSOn 2 (not saved) -> mode 2')
+    mq.cmd('/togglevariable DPSOn off') ; mq.delay(D)
+    TH.assert_false(State.combat.dpsOn, '/togglevariable DPSOn off -> dpsOn off')
+    TH.assert_false(State.combat.dpsOnOoc, '/togglevariable DPSOn off -> dpsOnOoc cleared')
+    State.combat.dpsOn, State.combat.dpsOnOoc = origDpsOn, origDpsOoc
+
     -- Mac name the port spells differently: PetOn -> pet.on -----------------------
     local origPetOn = State.pet.on
     mq.cmd('/togglevariable PetOn on') ; mq.delay(D)
