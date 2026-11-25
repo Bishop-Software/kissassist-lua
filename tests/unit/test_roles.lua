@@ -227,6 +227,35 @@ function M.run(TH, MockMQ)
     TH.assert_false(Roles.switchMA('', 'tank', false, rec), 'switchMA empty name → refused')
     TH.assert_false(Roles.switchMA('NULL', 'tank', false, rec), 'switchMA null name → refused')
     TH.assert_eq(calls.reset, 0, 'switchMA refused: no combatReset')
+
+    -- ── UI Switch MA helpers (#346) ─────────────────────────────────────────
+    local names, idx = Roles.maChoices({ me = 'Toon', members = { 'Toon', 'Tanky', 'Mercy' },
+        pet = 'Petone', currentMA = 'Tanky' })
+    TH.assert_eq(table.concat(names, ','), 'Toon,Tanky,Mercy,Petone', 'maChoices: me, members, pet; me not repeated')
+    TH.assert_eq(idx, 2, 'maChoices: index of the current MA')
+
+    names, idx = Roles.maChoices({ me = 'Toon', members = { 'tanky' }, pet = '', currentMA = 'TANKY' })
+    TH.assert_eq(#names, 2, 'maChoices: no pet -> not listed')
+    TH.assert_eq(idx, 2, 'maChoices: current MA matched case-insensitively')
+
+    names, idx = Roles.maChoices({ me = 'Toon', members = {}, pet = '', currentMA = 'Raider' })
+    TH.assert_eq(names[1], 'Raider', 'maChoices: MA outside the group listed first')
+    TH.assert_eq(idx, 1, 'maChoices: ... and selected')
+
+    names, idx = Roles.maChoices({ me = 'Toon', members = {}, pet = '', currentMA = '' })
+    TH.assert_eq(#names, 1, 'maChoices: no MA -> just me')
+    TH.assert_eq(idx, 1, 'maChoices: no MA -> first entry selected')
+
+    TH.assert_eq(Roles.switchMACommand('Tanky', 'tank', true), '/switchma Tanky tank',
+        'switchMACommand: broadcast -> no third arg')
+    TH.assert_eq(Roles.switchMACommand('Tanky', 'offtank', false), '/switchma Tanky offtank 1',
+        'switchMACommand: no broadcast -> 1')
+    TH.assert_eq(Roles.MA_ROLE_CHOICES[1], 'tank', 'MA_ROLE_CHOICES: tank first (the bind default)')
+    local allKnown = true
+    for _, r in ipairs(Roles.MA_ROLE_CHOICES) do
+        if not require('modules.config').ROLES[r] then allKnown = false end
+    end
+    TH.assert_true(allKnown, 'MA_ROLE_CHOICES: every entry is a role /switchma accepts')
 end
 
 return M
