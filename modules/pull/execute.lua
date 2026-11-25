@@ -333,8 +333,11 @@ local function pullWithPet(mobID)
     mq.cmd('/pet back off')
 end
 
--- Mirrors Sub PullWithCast (kissassist.mac:10287). Used for nav/los spell/AA/item pulls.
-local function pullWithCast(mobID)
+-- Mirrors Sub PullWithCast (kissassist.mac:10288). Used for nav/los spell/AA/item pulls.
+-- Returns a shorter pull distance (80%) when the mob is out of sight, so the
+-- next pass of the approach loop moves closer (mac:10299-10302, 9906-9907);
+-- nil otherwise.
+local function pullWithCast(mobID, pullDist)
     local s = _state
     stopMoving()
     if mq.TLO.Target.ID() then
@@ -346,7 +349,12 @@ local function pullWithCast(mobID)
         mq.doevents()
         if hasAggro() then s.pull.pulled = true; return end
         local sp = mq.TLO.Spawn('id ' .. mobID)
-        if not (sp() and sp.LineOfSight()) then return end
+        if not (sp() and sp.LineOfSight()) then
+            -- Whole number, as the mac (int PullDistCast, ${Int[...]} at mac:9907).
+            -- * 8 / 10, not * 0.8: in game the FPU runs at reduced precision and
+            -- 100 * 0.8 comes out just under 80 (floor 79).
+            return pullDist and math.floor(pullDist * 8 / 10) or nil
+        end
         if not mq.TLO.Me.Moving() then
             local result = _cast.castWhat(s.pull.withAlt, mobID, 'Pull', 0, 0)
             if result == 'CAST_FIZZLE' then
@@ -356,7 +364,8 @@ local function pullWithCast(mobID)
                    or hasAggro() then
                     s.pull.pulled = true
                 end
-                mq.delay(100, function() return hasAggro() end)
+                -- Give the aggro a second to land (mac /delay 10 ${PullAggroTargetID}).
+                mq.delay(1000, function() return hasAggro() end)
                 break
             end
         else
@@ -554,7 +563,8 @@ local function btcrCheck(r)
 end
 
 -- In pull range: stop, validate, pull with the PullWith method (mac:9859-9922).
--- Returns DONE once it has tried; nil when the mob isn't in range yet.
+-- Returns DONE once the pull landed or was aborted; nil when the mob isn't in
+-- range yet or the attempt didn't land (the loop tries again, mac:9921).
 local function dispatch(r)
     local s, sp, mobID, withAlt = _state, r.sp, r.mobID, r.withAlt
     if not sp() then return end
@@ -597,9 +607,19 @@ local function dispatch(r)
         pullWithPet(mobID)
     else
         -- nav/los/spell/AA/item cast pull.
-        pullWithCast(mobID)
+        local closer = pullWithCast(mobID, r.pullDist)
+        if closer then r.pullDist = closer end
     end
-    return DONE
+    -- A pull that didn't land doesn't end the approach: in los/nav mode the
+    -- loop tries again from here until the pull timer runs out (mac:9921),
+    -- which then ignores the mob and goes back to camp (btcr).
+    if Execute.dispatchDone(s.pull.pulled, hasAggro(), r.returnStat) then return DONE end
+end
+
+-- Pure. Whether a pull attempt ends the approach loop: it landed (pulled or
+-- aggro) or the pull was aborted (btcr). Otherwise the loop keeps trying.
+function Execute.dispatchDone(pulled, aggro, returnStat)
+    return (pulled or aggro or returnStat == 'btcr') and true or false
 end
 
 -- After the loop (mac:9924–9969): give up on a mob we couldn't pull, or walk
@@ -705,5 +725,7 @@ function Execute.executePull(mobID)
 
     return finishPull(r)
 end
+
+Execute._pullWithCast = pullWithCast  -- for tests
 
 return Execute
