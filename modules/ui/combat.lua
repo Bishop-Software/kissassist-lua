@@ -4,6 +4,7 @@ local mq = require('mq')
 local Helpers    = require('modules.ui.helpers')
 local CombatSettings = require('modules.combat.settings')
 local Movement   = require('modules.movement')
+local Roles      = require('modules.roles')
 local Config     = Helpers.Config
 local checkbox   = Helpers.checkbox
 local intInput   = Helpers.intInput
@@ -16,6 +17,43 @@ local DPS_MODE_LABELS = { 'Off', 'On (each entry from its HP%)', 'On, any HP (wa
 
 local CombatUI = {}
 local _state
+
+-- Switch MA picks (Melee panel). Index into Roles.MA_ROLE_CHOICES; 1 = tank.
+local _maPick, _maRolePick, _maBroadcast = nil, 1, true
+
+-- Main Assist: show the current MA and switch it through /switchma (#346).
+local function drawSwitchMA(s)
+    ImGui.Separator()
+    ImGui.Text('Main Assist:')
+    ImGui.SameLine()
+    ImGui.TextColored(0.4, 0.9, 1.0, 1.0, s.session.mainAssist ~= '' and s.session.mainAssist or '(none)')
+    ImGui.SameLine()
+    ImGui.TextDisabled(string.format('(my role: %s)', s.session.role or '?'))
+
+    local names, curIdx = Roles.maChoices(Roles.maSnapshot())
+    if #names == 0 then return end
+    if not _maPick or _maPick > #names then _maPick = curIdx end
+    ImGui.PushItemWidth(150)
+    local pick, pickChanged = ImGui.Combo('##switchmaname', _maPick, names)
+    if pickChanged then _maPick = pick end
+    ImGui.SameLine()
+    local role, roleChanged = ImGui.Combo('##switchmarole', _maRolePick, Roles.MA_ROLE_CHOICES)
+    if roleChanged then _maRolePick = role end
+    ImGui.PopItemWidth()
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Role for the new main assist (only the new MA takes it;\neveryone else goes back to the role they started with)')
+    end
+    ImGui.SameLine()
+    if ImGui.Button('Switch MA##switchma') then
+        mq.cmd(Roles.switchMACommand(names[_maPick], Roles.MA_ROLE_CHOICES[_maRolePick], _maBroadcast))
+        _maPick = nil  -- re-read the current MA next frame
+    end
+    ImGui.SameLine()
+    _maBroadcast = ImGui.Checkbox('Broadcast##switchmabc', _maBroadcast)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Tell the other KissAssist characters in the group to switch too (/switchma)')
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- Melee panel
@@ -143,6 +181,8 @@ function CombatUI.drawMelee()
         Movement.resolveStickHow()
     end
     ImGui.PopItemWidth()
+
+    drawSwitchMA(s)
 end
 
 -- ---------------------------------------------------------------------------

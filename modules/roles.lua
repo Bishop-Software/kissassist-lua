@@ -233,4 +233,60 @@ function Roles.switchMA(newMA, newRole, broadcast, cmd)
     return true
 end
 
+-- ── Switch MA from the UI (Combat tab > Melee) ──────────────────────────────
+-- Roles offered for the new MA, in the order the UI lists them. /switchma
+-- defaults to tank (the mac's default), so tank comes first.
+Roles.MA_ROLE_CHOICES = {
+    'tank', 'pettank', 'offtank', 'assist', 'pullertank', 'pullerpettank',
+    'puller', 'hunter', 'hunterpettank', 'petassist', 'manual',
+}
+
+-- Pure. snap = { me, members = {names}, pet, currentMA }. Returns the names the
+-- UI offers (me, then the other group members incl. mercs, then my pet; no
+-- duplicates, case-insensitive) and the index of the current MA in it. A current
+-- MA outside the group is listed first so the combo can show it.
+function Roles.maChoices(snap)
+    local list, seen = {}, {}
+    local function add(n)
+        n = tostring(n or '')
+        if n == '' or n:lower() == 'null' or seen[n:lower()] then return end
+        seen[n:lower()] = true
+        list[#list + 1] = n
+    end
+    add(snap.me)
+    for _, n in ipairs(snap.members or {}) do add(n) end
+    add(snap.pet)
+    local cur = tostring(snap.currentMA or '')
+    if cur ~= '' and cur:lower() ~= 'null' and not seen[cur:lower()] then
+        table.insert(list, 1, cur)
+        seen[cur:lower()] = true
+    end
+    local idx = 1
+    for i, n in ipairs(list) do
+        if n:lower() == cur:lower() then idx = i end
+    end
+    return list, idx
+end
+
+-- Reads the group for maChoices().
+function Roles.maSnapshot()
+    local members = {}
+    for i = 1, (mq.TLO.Group.Members() or 0) do
+        local n = mq.TLO.Group.Member(i).CleanName()
+        if n and n ~= '' then members[#members + 1] = n end
+    end
+    local petID = mq.TLO.Me.Pet.ID() or 0
+    return {
+        me        = mq.TLO.Me.CleanName() or '',
+        members   = members,
+        pet       = petID > 0 and (mq.TLO.Me.Pet.CleanName() or '') or '',
+        currentMA = _state.session.mainAssist or '',
+    }
+end
+
+-- Pure. The /switchma line the UI sends (bind args: name role [1 = don't broadcast]).
+function Roles.switchMACommand(name, role, broadcast)
+    return string.format('/switchma %s %s%s', name, role or 'tank', broadcast and '' or ' 1')
+end
+
 return Roles

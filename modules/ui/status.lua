@@ -125,7 +125,7 @@ function Status.drawStatus()
 end
 
 function Status.drawCampButtons()
-    local bw = math.floor((ImGui.GetContentRegionAvail() - 20) / 6)
+    local bw = math.floor((ImGui.GetContentRegionAvail() - 24) / 7)
     if ImGui.Button('Camp Here', bw, 0) then mq.cmd('/makecamphere') end
     ImGui.SameLine()
     if ImGui.Button('Camp Off',  bw, 0) then mq.cmd('/campoff')      end
@@ -137,6 +137,14 @@ function Status.drawCampButtons()
     if not _state.combat.combatStart then ImGui.BeginDisabled() end
     if ImGui.Button('Burn Now',  bw, 0) then mq.cmd('/burn')         end
     if not _state.combat.combatStart then ImGui.EndDisabled() end
+    ImGui.SameLine()
+    -- /buffgroup: a buff pass now (skipped in combat, so disabled then).
+    if _state.combat.combatStart then ImGui.BeginDisabled() end
+    if ImGui.Button('Buff Now',  bw, 0) then mq.cmd('/buffgroup')    end
+    if _state.combat.combatStart then ImGui.EndDisabled() end
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Run a buff pass now (/buffgroup); not during a fight')
+    end
     ImGui.SameLine()
     -- /backoff on|off (Bind_BackOff): highlighted while backed off.
     local paused = _state.dps.paused
