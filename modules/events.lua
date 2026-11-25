@@ -168,8 +168,9 @@ local function onGotHit(_, mob)
     utils.debug('combat', 'GotHit: ' .. tostring(mob))
     state.combat.eventFlag    = true
     state.timers.sitToMed     = os.clock() + 6  -- delay sit-to-med on hit; M7 uses configured value
-    state.combat.gotHitToggle = true
-    -- Full pettank/pullertank movement response in M7 (movement.lua)
+    -- The response (pet tank, puller tank waiting in camp) runs from GotHit.respond()
+    -- in the main loop, fight() and waitForMob (mac:11054-11113).
+    require('modules.gothit').note(mob)
 end
 
 local function onAttackCalled(_, caller, mobID)

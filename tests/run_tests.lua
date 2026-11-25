@@ -398,6 +398,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.campfire', 'modules.config' },
     },
+    {
+        name         = 'test_gothit',
+        path         = 'tests.unit.test_gothit',
+        useMock      = true,
+        clearModules = { 'modules.gothit' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

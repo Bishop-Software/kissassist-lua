@@ -173,6 +173,56 @@ function M.run(TH, MockMQ)
     Misc.init(st)
     TH.assert_eq(st.misc.acceptInvitesOn, 1, 'init: AcceptInvitesOn defaults to 1')
     TH.assert_eq(st.misc.rezAcceptOn, '1|90', 'init: RezAcceptOn defaults to 1|90')
+
+    -- ── CanIDoStuff: decideBusy (mac:8532) ──────────────────────────────────
+    local function bsnap(over)
+        local b = { combatState = 'COMBAT', moving = false, meState = 'STAND', invis = false,
+                    stunned = false, ducking = false, class = 'CLR', lootOpen = false, window = nil }
+        for k, v in pairs(over or {}) do b[k] = v end
+        return b
+    end
+    local function bstate(over)
+        local b = { combat = { combatStart = false, aggroTargetID = '' }, session = { chaseAssist = false } }
+        for k, v in pairs(over or {}) do b[k] = v end
+        return b
+    end
+    local busy = Misc.decideBusy
+
+    TH.assert_nil(busy(bsnap(), bstate()), 'busy: combat state, nothing holding -> free')
+    TH.assert_nil(busy(bsnap({ combatState = 'ACTIVE', window = 'MerchantWnd' }), bstate()),
+        'busy: not in the combat state -> free even with a merchant open')
+    TH.assert_nil(busy(bsnap({ window = 'BankWnd' }),
+        bstate({ combat = { combatStart = true, aggroTargetID = '' } })), 'busy: our own fight -> free')
+    TH.assert_nil(busy(bsnap({ window = 'BankWnd' }),
+        bstate({ combat = { combatStart = false, aggroTargetID = '123' } })), 'busy: aggro target -> free')
+
+    TH.assert_eq(busy(bsnap({ window = 'MerchantWnd' }), bstate()), 'MerchantWnd open', 'busy: merchant window')
+    TH.assert_eq(busy(bsnap({ window = 'SpellBookWnd' }), bstate()), 'SpellBookWnd open', 'busy: spellbook')
+    TH.assert_eq(busy(bsnap({ moving = true }), bstate()), 'moving', 'busy: moving')
+    TH.assert_eq(busy(bsnap({ meState = 'FEIGN' }), bstate()), 'feigned', 'busy: feigned')
+    TH.assert_eq(busy(bsnap({ stunned = true }), bstate()), 'stunned', 'busy: stunned')
+    TH.assert_eq(busy(bsnap({ ducking = true }), bstate()), 'ducking', 'busy: ducking')
+    TH.assert_eq(busy(bsnap({ meState = 'BIND' }), bstate()), 'binding wounds', 'busy: binding wounds')
+    TH.assert_nil(busy(bsnap({ meState = 'BIND', lootOpen = true }), bstate()), 'busy: BIND with the loot window -> free')
+
+    TH.assert_eq(busy(bsnap({ invis = true }), bstate()), 'invisible', 'busy: invisible, not chasing')
+    TH.assert_nil(busy(bsnap({ invis = true }), bstate({ session = { chaseAssist = true } })),
+        'busy: invisible while chasing -> free')
+    TH.assert_nil(busy(bsnap({ invis = true, class = 'ROG' }), bstate()), 'busy: invisible rogue -> free')
+
+    -- canIDoStuff: reads the game through the mock
+    MockMQ.reset()
+    MockMQ.set('TLO.Me.CombatState', 'COMBAT')
+    MockMQ.set('TLO.Window', function(w)
+        return { Open = function() return w == 'GiveWnd' end }
+    end)
+    st = newState()
+    st.combat.combatStart, st.combat.aggroTargetID = false, ''
+    st.session = { chaseAssist = false, iAmABard = false }
+    Misc.init(st)
+    TH.assert_false(Misc.canIDoStuff(), 'canIDoStuff: give window open in the combat state -> hold')
+    MockMQ.set('TLO.Me.CombatState', 'ACTIVE')
+    TH.assert_true(Misc.canIDoStuff(), 'canIDoStuff: out of the combat state -> go on')
 end
 
 return M

@@ -119,4 +119,73 @@ function Misc.doMiscStuff()
     for _, cmd in ipairs(cmds) do mq.cmd(cmd) end
 end
 
+-- ── CanIDoStuff (mac:8532) ──────────────────────────────────────────────────
+-- In the combat state with no fight of our own (Me.CombatState COMBAT, no
+-- CombatStart, no aggro target), the mac waits here, draining events, while we
+-- are moving, feigned, stunned, ducking, binding wounds, invisible (not chasing,
+-- not a rogue) or have a merchant, give, bank, tribute or spellbook window open.
+-- The port doesn't wait: the main loop skips the rest of the pass (pet, merc,
+-- buffs, bard, med, pull) and comes back. Not ported: AssignLooter (loot is
+-- won't do); the IAmDead reset is done in combat.lua and events.lua.
+
+-- Windows that hold us (mac:8564).
+Misc.BUSY_WINDOWS = {
+    'MerchantWnd', 'GiveWnd', 'SpellBookWnd', 'BigBankWnd', 'BankWnd',
+    'GuildBankWnd', 'TributeMasterWnd', 'GuildTributeMasterWnd',
+}
+
+-- Reads everything decideBusy() needs from the game, once.
+function Misc.busySnapshot()
+    local me = mq.TLO.Me
+    local snap = {
+        combatState = me.CombatState() or '',
+        moving      = me.Moving() == true,
+        meState     = (me.State() or ''):upper(),
+        invis       = me.Invis() == true,
+        stunned     = me.Stunned() == true,
+        ducking     = me.Ducking() == true,
+        class       = me.Class.ShortName() or '',
+        lootOpen    = mq.TLO.Window('LootWnd').Open() == true,
+        window      = nil,
+    }
+    for _, w in ipairs(Misc.BUSY_WINDOWS) do
+        if mq.TLO.Window(w).Open() then snap.window = w; break end
+    end
+    return snap
+end
+
+-- Pure. Returns the reason we can't do stuff this pass, or nil if we can.
+function Misc.decideBusy(snap, s)
+    local aggro = tonumber(s.combat.aggroTargetID) or 0
+    if s.combat.combatStart or aggro > 0 or snap.combatState ~= 'COMBAT' then return nil end
+    if snap.moving then return 'moving' end
+    if snap.meState == 'FEIGN' then return 'feigned' end
+    if not s.session.chaseAssist and snap.invis and snap.class ~= 'ROG' then return 'invisible' end
+    if snap.stunned then return 'stunned' end
+    if snap.ducking then return 'ducking' end
+    if snap.meState == 'BIND' and not snap.lootOpen then return 'binding wounds' end
+    if snap.window then return snap.window .. ' open' end
+    return nil
+end
+
+-- Main loop check. Returns false when the rest of the pass should be skipped.
+-- A bard's medley stops while invisible (mac:8546), as it would have in the
+-- bard phase this pass skips.
+function Misc.canIDoStuff()
+    local s = _state
+    local snap = Misc.busySnapshot()
+    local reason = Misc.decideBusy(snap, s)
+    if reason ~= Misc._lastBusy then  -- once per change, not every pass
+        Utils.debug('general', 'CanIDoStuff: %s', reason and ('holding, ' .. reason) or 'free')
+        Misc._lastBusy = reason
+    end
+    if not reason then return true end
+    if snap.invis and s.session.iAmABard then
+        require('modules.bard').stopMedley()
+        s.bard.twisting    = false
+        s.bard.dpsTwisting = false
+    end
+    return false
+end
+
 return Misc

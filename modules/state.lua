@@ -79,7 +79,8 @@ local State = {
         combatStart        = false,
         eventByPass        = false,
         eventFlag          = false,
-        gotHitToggle       = false,
+        gotHitToggle       = false,  -- a GotHit event is waiting for GotHit.respond()
+        gotHitBy           = '',     -- name from that GotHit event (mac AttackingMob)
         lastCalledTargetID = 0,
         lastTargetID       = 0,
         missingComponent   = false,
@@ -201,6 +202,8 @@ local State = {
         pullOnReturn     = false,  -- set from INI [Pull] PullOnReturn
         pullWait         = 5,      -- set from INI [Pull] PullWait (seconds)
         pulled           = false,
+        waitingForMob    = false,  -- in waitForMob (the mac's WaitTimer running)
+        gotHitEndWait    = false,  -- hit while waiting in camp: waitForMob stops (mac WaitTimer 0)
         pulling          = false,
         range            = 0,
         ranking          = false,  -- /setpullranking, per session
@@ -355,6 +358,7 @@ local State = {
         toysOn        = false, -- PetToysOn (set from INI)
         petRampageOn  = false, -- PetRampPullWait: wait for rampage pets before pulling (set from INI)
         forceHealOnMed = false, -- PetForceHealOnMed: heal the pet up to MedStop before every pull, not only at 50% (set from INI)
+        moveWhenHit   = false, -- MoveWhenHit: a pet tank that gets hit steps away or goes back to camp (set from INI, mac:14826)
     },
 
     mez = {
