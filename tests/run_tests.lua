@@ -411,6 +411,18 @@ local unitTests = {
         clearModules = { 'modules.cantsee' },
     },
     {
+        name         = 'test_pause',
+        path         = 'tests.unit.test_pause',
+        useMock      = true,
+        clearModules = { 'modules.pause' },
+    },
+    {
+        name         = 'test_tlo',
+        path         = 'tests.unit.test_tlo',
+        useMock      = true,
+        clearModules = { 'modules.tlo' },
+    },
+    {
         name         = 'test_status_layout',
         path         = 'tests.unit.test_status_layout',
         useMock      = true,

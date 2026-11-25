@@ -19,7 +19,7 @@ function M.run(TH, MockMQ)
 
     -- ── pullWithCast ────────────────────────────────────────────────────────
     local aggro = 0
-    local state = { pull = { pulled = false, withAlt = 'Snare' } }
+    local state = { pull = { pulled = false, withAlt = 'Snare' }, session = {} }
     local castResult, casts = 'CAST_SUCCESS', 0
     local cast = { castWhat = function() casts = casts + 1; return castResult end }
     Util.init(state, { pullAggroID = function() return aggro end })
@@ -67,6 +67,14 @@ function M.run(TH, MockMQ)
     Execute._pullWithCast(42, 100)
     TH.assert_true(state.pull.pulled, 'aggro already: pulled')
     TH.assert_eq(casts, 0, 'aggro already: no cast')
+
+    -- Soft pause (#353): paused, the attempt stops before casting.
+    aggro, casts, state.pull.pulled, castResult = 0, 0, false, 'CAST_SUCCESS'
+    state.session.paused = true
+    Execute._pullWithCast(42, 100)
+    TH.assert_eq(casts, 0, 'paused: no cast')
+    TH.assert_false(state.pull.pulled, 'paused: not pulled')
+    state.session.paused = false
 end
 
 return M

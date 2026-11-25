@@ -214,6 +214,8 @@ local function tickPreamble(myID, fromWhere)
     until not _state.combat.eventFlag
 
     if _state.terminate then return BREAK end
+    -- Soft pause (#353): /kapause already stopped attack/stick and reset combat.
+    if _state.session.paused then return BREAK end
 
     -- Died mid-fight (or now hovering as a corpse): stop the loop so we
     -- don't spam casts/attacks while dead ("too distracted to cast").
@@ -311,7 +313,7 @@ local function dpsPass(myID, role, fromWhere, chainPath)
     if chainPuller ~= (chainPath == true) then return nil, myID end
 
     -- Dead/paused: exit combat (mac:1185-1187)
-    if not chainPath and (isDeadOrGone(myID) or _state.dps.paused) then
+    if not chainPath and (isDeadOrGone(myID) or _state.dps.paused or _state.session.paused) then
         Combat.combatReset(0, fromWhere .. '_inner')
         return BREAK, myID
     end
@@ -528,6 +530,9 @@ local function fight(fromWhere)
                 _heal.checkHealth('Combat2')
             end
 
+            -- Paused by a bind during the casts above (#353)
+            if _state.session.paused then break end
+
             -- Sync target state (mac:1216)
             Combat.combatTargetCheck(1)
             myID = _state.combat.myTargetID
@@ -568,7 +573,7 @@ local function fight(fromWhere)
     end
 
     -- Mana item cast after rotation (mac:1213 CastMana combat)
-    if _buffs and _state.buffs.buffsOn then _buffs.castMana() end
+    if _buffs and _state.buffs.buffsOn and not _state.session.paused then _buffs.castMana() end
 
     _utils.debug('combat', 'fight: done from=%s', tostring(fromWhere))
 end

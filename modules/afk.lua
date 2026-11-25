@@ -70,8 +70,13 @@ function Afk.check()
     -- Skip while in active combat with heals running (mac:11672)
     if _state.heal.healsOn ~= 0 and _state.combat.aggroTargetID ~= '' then return end
 
+    -- Soft pause (#353): a paused toon is already holding, so skip the two holds
+    -- below (the stranger hold also fights); camp-out and the GM end/unload/quit
+    -- actions still run.
+    local paused = _state.session.paused
+
     -- Stranger detection (AFKToolsOn == 1 or 2) (mac:11673-11693)
-    if (_state.afk.on == 1 or _state.afk.on == 2) and posseLoaded() then
+    if (_state.afk.on == 1 or _state.afk.on == 2) and not paused and posseLoaded() then
         local holding = false
         while (mq.TLO.Posse.Strangers() or 0) >= 1 do ---@diagnostic disable-line: undefined-field
             if not holding then
@@ -96,7 +101,7 @@ function Afk.check()
         if (mq.TLO.SpawnCount('GM')() or 0) >= 1 then
             local action = _state.afk.gmAction
 
-            if action == 1 then
+            if action == 1 and not paused then
                 -- Hold until GM leaves (mac:11697-11704)
                 local holding = false
                 while (mq.TLO.SpawnCount('GM')() or 0) >= 1 do

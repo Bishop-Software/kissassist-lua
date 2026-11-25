@@ -39,6 +39,17 @@ local function dist2D(y1, x1, y2, x2)
     return math.sqrt((y1 - y2)^2 + (x1 - x2)^2)
 end
 
+-- Soft pause (#353): camp returns and chasing stop while paused, unless
+-- MoveWhilePaused is on.
+local function moveBlocked()
+    return _state.session.paused == true and not _state.session.moveWhilePaused
+end
+
+-- Dead, hovering or paused: leave a movement loop.
+local function mustStop()
+    return _state.session.iAmDead or mq.TLO.Me.Hovering() or moveBlocked()
+end
+
 local function isPullerRole(role)
     return role == 'puller' or role == 'pullertank' or role == 'pullerpettank'
 end
@@ -104,6 +115,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
 
     if not mv.returnToCamp and (forceFlag or 0) == 0 then return end
     if mv.campX == 0 and mv.campY == 0 then return end
+    if moveBlocked() then return end
 
     mq.doevents()
 
@@ -148,7 +160,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
             local x1, y1 = math.floor(mq.TLO.Me.X()), math.floor(mq.TLO.Me.Y())
             while true do
                 mq.doevents()
-                if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+                if mustStop() then
                     if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
                     return
                 end
@@ -157,7 +169,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
 
                 while true do
                     mq.delay(50)
-                    if mq.TLO.Me.Hovering() then break end
+                    if mq.TLO.Me.Hovering() or moveBlocked() then break end
                     local cx = math.floor(mq.TLO.Me.X())
                     local cy = math.floor(mq.TLO.Me.Y())
                     if mq.TLO.Me.Stunned() then
@@ -181,6 +193,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
                     -- PullOnReturn: after a failed pull, look for another mob on the
                     -- way back (mac:3446-3455). The mac checks every half second.
                     if mv.checkOnReturn and _pull and not _state.pull.pulled
+                       and not _state.session.paused  -- MoveWhilePaused: walk back, don't pull
                        and d < _state.pull.maxRadius * 0.9 and os.clock() >= nextReturnCheck then
                         nextReturnCheck = os.clock() + 0.5
                         if _pull.findMobToPull(0, 1, 0) > 0 then
@@ -202,7 +215,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
             mq.cmdf('/squelch /play %s reverse nodoor smart', _state.session.pullPath)
             while true do
                 mq.doevents()
-                if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+                if mustStop() then
                     if mq.TLO.AdvPath.State() then mq.cmd('/squelch /play off') end
                     return
                 end
@@ -217,14 +230,14 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
     elseif _state.pull.moveUse == 'nav' then
         -- Non-puller MQ2Nav return to camp (mac:3521-3546)
         mq.doevents()
-        if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+        if mustStop() then
             if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
             return
         end
         if not mq.TLO.Me.Mount.ID() and mq.TLO.Me.Sitting() then mq.cmd('/stand') end
         mq.cmdf('/squelch /nav locxyz %f %f %f', mv.campX, mv.campY, mv.campZ)
         while true do
-            if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+            if mustStop() then
                 if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
                 return
             end
@@ -257,7 +270,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
     local _y1     = mv.campY + 20
 
     while true do
-        if _state.session.iAmDead or mq.TLO.Me.Hovering() then
+        if mustStop() then
             mq.cmd('/squelch /moveto off')
             return
         end
@@ -309,7 +322,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
         mq.cmdf('/squelch /moveto loc %f %f %f mdist 15', campYRandom, campXRandom, mv.campZ)
         local uwExp = os.clock() + 20
         while dist2D(campYRandom, campXRandom, mq.TLO.Me.Y(), mq.TLO.Me.X()) > 15
-              and os.clock() < uwExp do
+              and os.clock() < uwExp and not moveBlocked() do
             mq.delay(50)
         end
         if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
@@ -330,7 +343,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
         mq.cmdf('/squelch /moveto loc %f %f %f mdist 15', mv.campY, mv.campX, mv.campZ)
         local uwExp2 = os.clock() + 30
         while dist2D(mv.campY, mv.campX, mq.TLO.Me.Y(), mq.TLO.Me.X()) > 15
-              and os.clock() < uwExp2 do
+              and os.clock() < uwExp2 and not moveBlocked() do
             mq.delay(50)
         end
         if mq.TLO.MoveTo.Moving() then mq.cmd('/squelch /moveto off') end
@@ -344,6 +357,7 @@ function Movement.doWeChase()
     local role = _state.session.role
 
     if not _state.session.chaseAssist then return end
+    if moveBlocked() then return end
     local chaseSpawn = mq.TLO.Spawn('=' .. mv.whoToChase)
     if mq.TLO.Me.Hovering() or (chaseSpawn.ID() or 0) == 0 then return end
 
@@ -376,6 +390,7 @@ function Movement.doWeChase()
         end
 
         mq.doevents()
+        if moveBlocked() then break end  -- /kapause already stopped stick/nav/moveto
 
         -- Leash: disable ChaseAssist if target drifted too far
         local spawnID = chaseSpawn.ID() or 0
@@ -398,6 +413,7 @@ function Movement.doWeChase()
             local loopExp     = os.clock() + 50
 
             while true do
+                if moveBlocked() then break end
                 spawnID = chaseSpawn.ID() or 0
                 if spawnID == 0 then break end
                 if meshLoaded then
@@ -524,7 +540,7 @@ function Movement.checkStick(flag, useAttack)
     end
 
     local myID = comb.myTargetID
-    if myID == 0 then return end
+    if myID == 0 or sess.paused then return end  -- soft pause (#353)
     local mob  = mq.TLO.Spawn('id ' .. myID)
     local maDist = comb.meleeDistance
     local cr     = mv.campRadius
@@ -553,6 +569,7 @@ function Movement.checkStick(flag, useAttack)
             if _state.pull.moveUse == 'nav' then
                 local navExp = os.clock() + 30
                 while os.clock() < navExp do
+                    if sess.paused then break end
                     if not mq.TLO.Navigation.Active() then
                         mq.cmdf('/squelch /nav id %d dist=%d', myID, _dist)
                     end

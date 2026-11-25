@@ -1219,6 +1219,11 @@ function Binds.register(s, b, cast, combat, config, comms)
     end)
 
     -- Script control
+    -- /kapause [on|off|1|0]: soft pause (#353); no argument toggles.
+    bind('/kapause', function(arg)
+        local Pause = require('modules.pause')
+        Pause.set(Pause.parseArg(arg))
+    end)
     bind('/kastop', function()
         printf('\arKissAssist stopping...\ax')
         state.terminate = true

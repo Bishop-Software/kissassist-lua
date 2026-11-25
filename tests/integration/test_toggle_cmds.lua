@@ -89,6 +89,31 @@ function M.run(mq, State, TH)
     TH.assert_true(ok2, '/togglevariable unknown var no crash')
     local ok3 = pcall(function() mq.cmd('/togglevariable DPSMeter on') mq.delay(D) end)
     TH.assert_true(ok3, '/togglevariable unsupported mac var no crash')
+
+    -- /kapause soft pause (#353): on/off/1/0, no argument toggles -----------------
+    -- Pausing stops attack/stick/nav and resets combat, so run it out of combat.
+    local origPaused = State.session.paused
+    mq.cmd('/kapause off') ; mq.delay(D)
+    TH.assert_false(State.session.paused, '/kapause off')
+    mq.cmd('/kapause on') ; mq.delay(D)
+    TH.assert_true(State.session.paused, '/kapause on')
+    mq.cmd('/kapause on') ; mq.delay(D)
+    TH.assert_true(State.session.paused, '/kapause on twice stays paused')
+    mq.cmd('/kapause') ; mq.delay(D)
+    TH.assert_false(State.session.paused, '/kapause (no arg) toggles off')
+    mq.cmd('/kapause') ; mq.delay(D)
+    TH.assert_true(State.session.paused, '/kapause (no arg) toggles on')
+    mq.cmd('/kapause 0') ; mq.delay(D)
+    TH.assert_false(State.session.paused, '/kapause 0')
+    mq.cmd('/kapause 1') ; mq.delay(D)
+    TH.assert_true(State.session.paused, '/kapause 1')
+    -- ${KissAssist} TLO reports it
+    TH.assert_eq(mq.parse('${KissAssist.Paused}'), 'TRUE', '${KissAssist.Paused} TRUE while paused')
+    TH.assert_eq(mq.parse('${KissAssist.State}'), 'Paused', '${KissAssist.State} Paused')
+    mq.cmd('/kapause off') ; mq.delay(D)
+    TH.assert_eq(mq.parse('${KissAssist.Paused}'), 'FALSE', '${KissAssist.Paused} FALSE after /kapause off')
+    TH.assert_eq(mq.parse('${KissAssist}'), 'Running', '${KissAssist} Running')
+    mq.cmd(origPaused and '/kapause on' or '/kapause off') ; mq.delay(D)
 end
 
 return M

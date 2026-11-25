@@ -127,7 +127,7 @@ function Pull.pullCheck()
 
     -- Guards (mac:9313).
     if s.pull.hold or s.pull.watchHold then return end
-    if s.dps.paused  then return end
+    if s.dps.paused or s.session.paused then return end
     if (mq.TLO.Me.Buff('Resurrection Sickness').ID() or 0) > 0 then return end
     if (mq.TLO.Me.Buff('Revival Sickness').ID()       or 0) > 0 then return end
     if (s.movement.campX == 0 and s.movement.campY == 0) then return end
