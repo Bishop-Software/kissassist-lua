@@ -84,6 +84,50 @@ function M.run(TH, MockMQ)
     Afk.check()
     TH.assert_true(state.terminate == nil, 'out of camp zone: GM check skipped')
     state.afk.on = 0
+
+    -- ── Soft pause (#353): the stranger and GM holds are skipped ──────────────
+    local fights = 0
+    local combat = { checkForCombat = function() fights = fights + 1 end }
+    Afk.init(state, {}, combat, comms, config)
+    -- Strangers in camp for the first 2 checks, then gone (so a hold ends)
+    local function strangers()
+        local n = 0
+        return function() n = n + 1; return n <= 2 and 1 or 0 end
+    end
+    local function strangerSetup(paused)
+        reset(0, 100)
+        fights = 0
+        state.session.paused = paused
+        state.afk.on = 2
+        MockMQ.set('TLO.Plugin', function() return { IsLoaded = function() return true end } end)
+        MockMQ.set('TLO.Posse.Strangers', strangers())
+    end
+
+    strangerSetup(false)
+    Afk.check()
+    TH.assert_true(fights > 0, 'not paused: stranger hold keeps fighting')
+    TH.assert_true(MockMQ.cmdCalled('/beep'), 'not paused: stranger hold beeps')
+
+    strangerSetup(true)
+    Afk.check()
+    TH.assert_eq(fights, 0, 'paused: stranger hold skipped, no fighting')
+    TH.assert_false(MockMQ.cmdCalled('/beep'), 'paused: no stranger hold beep')
+
+    -- GM in zone the whole time: hold (action 1) is skipped, end (action 2) still runs
+    reset(0, 100)
+    state.session.paused = true
+    state.afk.on = 3
+    state.afk.gmAction = 1
+    MockMQ.set('TLO.SpawnCount', function() return function() return 1 end end)
+    Afk.check()
+    TH.assert_false(MockMQ.cmdCalled('/beep'), 'paused: GM hold skipped (returns, no beep)')
+    TH.assert_true(state.terminate == nil, 'paused: GM hold keeps running')
+    state.afk.gmAction = 2
+    Afk.check()
+    TH.assert_true(state.terminate == true, 'paused: GM action 2 still ends kissassist')
+
+    state.session.paused = nil
+    state.afk.on = 0
 end
 
 return M

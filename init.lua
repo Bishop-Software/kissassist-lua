@@ -35,6 +35,8 @@ local Campfire = require('modules.campfire')
 local GotHit   = require('modules.gothit')
 local CantSee  = require('modules.cantsee')
 local UI       = require('modules.ui')
+local Pause    = require('modules.pause')
+local Tlo      = require('modules.tlo')
 
 local VERSION = Config.VERSION
 
@@ -139,6 +141,8 @@ Debuff.init(State, Utils, Cast, Heal, Cond, Combat)
 Charm.init(State, Utils, Cast, Pet, Bard, Comms)
 Merc.init(State, Utils)
 Combat.init(State, Utils, Cast, Heal, Movement, Bard, Cond, Mez, Debuff, Buffs, Comms, Merc, Charm)
+Pause.init(State, Combat, Bard)
+Pause.loadSettings(Config)
 Afk.init(State, Utils, Combat, Comms, Config)
 GroupWatch.init(State, Utils, Cond, Comms, Combat)
 Pull.setGroupWatch(GroupWatch)
@@ -150,6 +154,8 @@ Roles.saveBaseline()
 Roles.checkRoles(1)
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
+Tlo.init(State)
+Tlo.register()  -- ${KissAssist} (#353)
 
 -- mac:355-356 (WinTitle, StartupCommands). After Binds.register, since startup
 -- lines often call KissAssist commands (/burn off, /togglevariable ...). The
@@ -159,6 +165,9 @@ Startup.runCommands()
 Startup.setWinTitle()
 
 printf('\agKissAssist ready. \awEntering main loop.')
+if Pause.isPaused() then  -- started with the 'paused' argument (#353)
+    printf('\ayKissAssist started paused.\aw Use \at/kapause off\aw to begin.')
+end
 
 -- Expose live State globally so integration tests can access it via mq_eval:
 --   require('tests.integration.test_debug_cmds').run(mq, KAState, TH)
@@ -178,8 +187,15 @@ local _ok, _err = pcall(function()
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
-    GotHit.respond()  -- Event_GotHit's pet tank / puller wait response (mac:11054)
-    CantSee.respond() -- Event_CantSee: face, get back in sight, re-stick (mac:10820)
+    if Pause.isPaused() then
+        -- Drop hits and can't-see messages while paused, so they don't fire
+        -- stale moves on resume.
+        State.combat.gotHitToggle     = false
+        State.movement.cantSeePending = false
+    else
+        GotHit.respond()  -- Event_GotHit's pet tank / puller wait response (mac:11054)
+        CantSee.respond() -- Event_CantSee: face, get back in sight, re-stick (mac:10820)
+    end
     Cast.checkTribute()
     if State.misc.pendingCampfire then  -- UI "Place Campfire Now" (the UI can't wait)
         State.misc.pendingCampfire = false
@@ -207,6 +223,26 @@ while not State.terminate do
             and mq.TLO.Me.BuffsPopulated() then
         State.buffs.pendingZoneBroadcast = false
         Comms.broadcastBuffState()
+    end
+    -- Soft pause (#353): events, the UI's queued actions, zone-in reloads and
+    -- tribute above still run; then only the AFK safety monitor, the optional
+    -- [General] *WhilePaused settings, and comms.
+    if Pause.isPaused() then
+        if State.afk.on > 0 then Afk.check() end
+        if State.session.healWhilePaused then
+            Heal.writeDebuffs()
+            Heal.checkCures()
+            Heal.checkHealth('Paused')
+        end
+        -- No mob-count gate here, unlike Phase 4: the radar doesn't run while
+        -- paused, so the count is stale. The movement loops check
+        -- MoveWhilePaused themselves.
+        if State.session.moveWhilePaused then
+            if State.movement.returnToCamp then Movement.doWeMove(0, 'paused') end
+            if State.session.chaseAssist then Movement.doWeChase() end
+        end
+        Pause.warnAggro()
+        goto pass_done
     end
     -- Phase 1.4: stuck gem (mac:367; skipped while ChainPull is 2, like the mac)
     if (State.pull.chainPull or 0) ~= 2 then
@@ -319,6 +355,7 @@ while not State.terminate do
     end
     -- Phase 11: loot
     if State.loot.on == 1 and not State.combat.combatStart then Loot.tick() end
+    ::pass_done::  -- soft pause skips to here
     -- Phase 12: comms (Lua addition — no .mac equivalent)
     Comms.tick()
     mq.delay(50)
@@ -330,6 +367,7 @@ end
 
 Events.unregister()
 Binds.unregister()
+Tlo.unregister()
 Pull.clearArc()  -- remove the pull arc's map markers
 if State.session.iAmABard then Bard.stopMedley() end
 printf('\ayKissAssist \aw%s stopped.', VERSION)

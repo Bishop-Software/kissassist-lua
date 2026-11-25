@@ -708,6 +708,7 @@ function Buffs.checkBuffs(forceGroup)
 
         -- Drain events (mac:4208-4211)
         mq.doevents()
+        if _state.session.paused then return end  -- soft pause (#353)
 
         -- A called target (/switchnow) with no aggro target: re-sync the combat
         -- target before buffing (mac:4212 CombatTargetCheck 0), so the aggro bail

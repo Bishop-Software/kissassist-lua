@@ -36,6 +36,10 @@ function Config.parseArgs(state, args)
             state.session.forceAlias = true
         elseif a == 'autoload' then
             state.session.loadFromIni = true
+        elseif a == 'paused' then
+            -- Start soft-paused (#353); /kapause off to begin. Checked before the
+            -- bare-name MA fallback below.
+            state.session.paused = true
         elseif a == 'ma' and args[i+1] then
             state.session.mainAssist = args[i+1]
             i = i + 1
@@ -312,6 +316,10 @@ function Config.migrateIni(state)
         BurnMedley       = r('General','BurnMedley') or 'burn',
         GoMMedley        = r('General','GoMMedley') or 'gomSong',
         MountOn          = r('General','MountOn'),
+        -- Lua port only (#353): what keeps running under /kapause
+        HealWhilePaused      = r('General','HealWhilePaused'),
+        MoveWhilePaused      = r('General','MoveWhilePaused'),
+        WarnAggroWhilePaused = r('General','WarnAggroWhilePaused'),
     }
 
     local gemsArr = {}
@@ -592,6 +600,7 @@ function Config.defaultCfg()
             UseSpawnMaster   = '0', TwistOn = '0',
             OOCMedley = 'ooc', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
+            HealWhilePaused  = '0', MoveWhilePaused = '0', WarnAggroWhilePaused = '0',  -- Lua port only (#353)
         },
         Spells = {
             CastingInterruptOn = '62', CheckStuckGem = '1',

@@ -28,7 +28,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_utils.lua` | `timerExpired()` / `setTimer()` math; `setFlag` / `setAll` helpers |
 | `unit/test_helpers_module.lua` | `dist2D`, `applyDAMod` (all DAMod forms: `+N`, `-N`, absolute, empty) |
 | `unit/test_cond.lua` | `Cond.evalStr()` / `Cond.eval()`: truthy/falsy `mq.parse` results, TLO-expanded comparisons including `!=`, all `TARGETCHECK` sub-conditions |
-| `unit/test_config_args.lua` | `Config.parseArgs()`: roles, MA name, `assistAt` clamping, startup keyword and debug flags |
+| `unit/test_config_args.lua` | `Config.parseArgs()`: roles, MA name, `assistAt` clamping, startup keyword and debug flags; `paused` starts soft-paused and isn't taken as the MA name (#353) |
 | `unit/test_config_cond.lua` | `Config.parseCondArray()` with case-insensitive `\|condN` detection (#172) |
 | `unit/test_config_burn.lua` | `Config.parseBurnEntry()`: `.mac` Burn layout `Spell\|Target[\|abort][\|condN]`, old UI layout tolerated |
 | `unit/test_charm.lua` | `Charm.init` (charm-class flag, INI defaults) and charm helpers |
@@ -50,6 +50,10 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_pause.lua` | PullPause (`Pull.setPullPause` / `pullPauseCheck` / `heldByCond`): pull X minutes then rest Y, idle restart, manual hold, `\|condN` hold condition (#61) |
 | `unit/test_pull_role.lua` | `Pull.roleToggle()` (PullRoleToggle): pullerpettank group leader with a merc takes the group Puller role for a pull outside camp and drops it back in camp (#61) |
 | `unit/test_pull_chain.lua` | `Pull.chainPullNextMob()` (the `.mac`'s `ChainPullNextMob`): mid-fight hand-off to the next pull below ChainPullHP, and every case that keeps fighting instead; chain pull is puller-only (#257) |
+| `unit/test_pull_retry.lua` | A failed pull retries in place (`dispatchDone`); `pullWithCast` shrinks the pull distance out of sight, retries fizzles, and stops without casting while soft-paused (#351, #353) |
+| `unit/test_afk_camp_on_death.lua` | CampOnDeath camp-out (#243); while soft-paused the stranger and GM holds are skipped but GM end/unload/quit still run (#353) |
+| `unit/test_pause.lua` | Soft pause (#353): `Pause.set` is idempotent, stops attack/melee/stick/nav/moveto/advpath/pet/medley and resets combat when pausing, turns MQ2Melee back on when resuming (not while backed off); `parseArg` on/off/1/0/toggle; `loadSettings` (`*WhilePaused`); `warnAggro` throttle |
+| `unit/test_tlo.lua` | `${KissAssist}` TLO (#353): member values, registration through a faked `mq.DataType` / `mq.AddTopLevelObject`, name already in use, unregister |
 
 Counts change as tests are added; the runner prints the current total.
 
@@ -91,14 +95,14 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | File | Assertions | What is tested |
 |---|---|---|
 | `integration/test_debug_cmds.lua` | 12 | `/debug on/off`, `/debug combat on/off`, `/debug all on/off`, `/kisscheck` and `/zoneinfo` no-crash |
-| `integration/test_toggle_cmds.lua` | 19 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard |
+| `integration/test_toggle_cmds.lua` | 30 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard; `/kapause` on/off/0/1/toggle and `${KissAssist.Paused}` / `.State` / `${KissAssist}` (#353, pauses briefly, so run it out of combat) |
 | `integration/test_camp_cmds.lua` | 11 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears flag; `/stayhere` sets flag and coords |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
 | `integration/test_switchtarget.lua` | ~6 | `/kaswitchtarget` updates the aggro/combat target fields |
 | `integration/test_recent.lua` | 15–16 | Recent PRs without a fight (#246): mac aliases in `MacroQuest.ini` (delete list and KissTell gone, `/ktdismount` kept); window title = parsed `WinTitleText`; CheckStuckGems leaves a normal client alone, Origin/CastingWindow lookups resolve; `petHoldCommand` follows the live Companion's Discipline rank; `stopMoving` returns at once when still; with a pet and PetHoldOn, the pet is really on hold/ghold. Re-sets the window title; puts the pet on hold if PetHoldOn |
 
-**Total: ~70 integration assertions**
+**Total: ~81 integration assertions**
 
 ---
 
@@ -107,7 +111,7 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | File | Purpose |
 |---|---|
 | `tests/run_tests.lua` | Unit test runner — runs the suites in its explicit list (register new `unit/test_*.lua` files there) |
-| `tests/mock_mq.lua` | Programmable fake `mq` module: stubbed TLO, `cmd`, `parse`, `event`, `bind`, `delay` |
+| `tests/mock_mq.lua` | Programmable fake `mq` module: stubbed TLO, `cmd`, `parse`, `event`, `bind`, `delay`. No `DataType` / `AddTopLevelObject`; `test_tlo` adds fakes and removes them again |
 | `tests/test_helpers.lua` | Assert utilities used by both unit and integration tests: `assert_eq`, `assert_true`, `assert_false`, `assert_near`, `assert_raises`, `printSummary` |
 
 ---
@@ -124,3 +128,4 @@ The following require live combat, group members, or specific game states and re
 - Cross-character `.mac` interop (Milestone 12)
 - Feign death, group escape, corpse recovery
 - Stranger/GM hold sequences (AFK Tools)
+- Soft pause (`/kapause`, #353) in action: the main loop doing nothing while paused; a pause sent mid-fight, mid-pull, mid-return-to-camp, mid-chase or mid-buff-cycle stopping it at once; `HealWhilePaused` / `MoveWhilePaused` / `WarnAggroWhilePaused`; the Pause button and PAUSED status; MQ2Boxr reading `${KissAssist.Paused}`

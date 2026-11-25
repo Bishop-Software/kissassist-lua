@@ -170,6 +170,21 @@ function M.run(TH, _MockMQ)
         TH.assert_eq(s.session.assistAt,   50,        'combined: assistAt=50')
         TH.assert_true(s.debug.general,               'combined: debug.general')
     end
+
+    -- paused keyword (#353): starts soft-paused, not taken as the MA name ----
+    do
+        local s = newState()
+        Config.parseArgs(s, {'assist', 'Warlord', 'paused'})
+        TH.assert_true(s.session.paused,                'paused: session.paused set')
+        TH.assert_eq(s.session.mainAssist, 'Warlord',   'paused: MA name still parsed')
+        s = newState()
+        Config.parseArgs(s, {'PAUSED'})
+        TH.assert_true(s.session.paused,                'PAUSED (any case): session.paused set')
+        TH.assert_eq(s.session.mainAssist, '',          'PAUSED: not taken as the MA name')
+        s = newState()
+        Config.parseArgs(s, {'assist'})
+        TH.assert_true(not s.session.paused,            'no paused keyword: not paused')
+    end
 end
 
 return M

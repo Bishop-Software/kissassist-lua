@@ -43,6 +43,10 @@ local State = {
         chaseAssist     = false,
         pullPath        = 'null',
         heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
+        paused          = false,  -- /kapause soft pause (#353); see modules/pause.lua
+        healWhilePaused = false,  -- [General] HealWhilePaused: cures/heals keep running while paused
+        moveWhilePaused = false,  -- [General] MoveWhilePaused: camp return / chase keep running while paused
+        warnAggroWhilePaused = false, -- [General] WarnAggroWhilePaused: warn + beep on aggro while paused
     },
 
     debug = {

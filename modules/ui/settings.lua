@@ -29,6 +29,25 @@ function Settings.drawControls()
     intInput('Chase Distance', s.movement.chaseDistance, 1, 500, 'General', 'ChaseDistance', function(v) s.movement.chaseDistance = v end)
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
+
+    -- What keeps running under /kapause (#353)
+    ImGui.Spacing()
+    ImGui.Separator()
+    ImGui.Text('While Paused (/kapause)')
+    local function pauseToggle(label, field, key, tip)
+        checkbox(label, s.session[field], function(v)
+            s.session[field] = v
+            Config.set('General', key, v and '1' or '0')
+            Config.save()
+        end)
+        if ImGui.IsItemHovered() then ImGui.SetTooltip(tip .. ' (' .. key .. ')') end
+    end
+    pauseToggle('Heal While Paused', 'healWhilePaused', 'HealWhilePaused',
+        'Keep curing and healing while paused')
+    pauseToggle('Move While Paused', 'moveWhilePaused', 'MoveWhilePaused',
+        'Keep returning to camp and chasing while paused')
+    pauseToggle('Warn on Aggro While Paused', 'warnAggroWhilePaused', 'WarnAggroWhilePaused',
+        'Warn and beep (every 10s) when something has aggro while paused')
 end
 
 function Settings.drawConditions()

@@ -33,6 +33,8 @@ function Status.drawStatus()
     local combatLabel, cr, cg, cb
     if s.session.iAmDead then
         combatLabel, cr, cg, cb = 'DEAD',      1.0, 0.2, 0.2
+    elseif s.session.paused then
+        combatLabel, cr, cg, cb = 'PAUSED',    1.0, 0.3, 0.8
     elseif s.dps.paused then
         combatLabel, cr, cg, cb = 'BACKED OFF', 1.0, 0.6, 0.2
     elseif s.combat.combatStart then
@@ -155,6 +157,7 @@ function Status.drawCampButtons()
     local s = _state
     local inFight = s.combat.combatStart
     local paused  = s.dps.paused
+    local kaPaused = s.session.paused
     local buttons = {
         { 'Camp Here', '/makecamphere' },
         { 'Camp Off',  '/campoff' },
@@ -169,6 +172,11 @@ function Status.drawCampButtons()
           color = paused and { 0.8, 0.45, 0.1, 1.0 } or nil,
           tip = paused and 'Backed off: click to resume fighting (/backoff off)'
               or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)' },
+        -- /kapause on|off (#353): highlighted while paused.
+        { kaPaused and 'Unpause##kapause' or 'Pause##kapause', kaPaused and '/kapause off' or '/kapause on',
+          color = kaPaused and { 0.7, 0.15, 0.5, 1.0 } or nil,
+          tip = kaPaused and 'Paused: click to resume all automation (/kapause off)'
+              or 'Pause all automation; commands and this window keep working (/kapause on)' },
     }
 
     local spacing = styleX('ItemSpacing', 8)

@@ -388,6 +388,7 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
     waitTime   = waitTime   or 0
 
     if _state.session.role == 'manual' then return end
+    if _state.session.paused then return end  -- soft pause (#353)
 
     -- ChaseAssist + moving guard: don't interrupt a moving non-MA chaser (mac:485)
     if _state.session.chaseAssist and mq.TLO.Me.Moving() then
