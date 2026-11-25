@@ -33,6 +33,7 @@ local Misc     = require('modules.misc')
 local Roles    = require('modules.roles')
 local Campfire = require('modules.campfire')
 local GotHit   = require('modules.gothit')
+local CantSee  = require('modules.cantsee')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -125,6 +126,7 @@ Heal.init(State, Utils, Cast, Cond, Movement, Comms)
 Movement.init(State, Utils)
 Campfire.init(State, Movement)
 GotHit.init(State)
+CantSee.init(State)
 Comms.init(State, Utils)
 Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
@@ -177,6 +179,7 @@ while not State.terminate do
     -- Phase 1: events
     mq.doevents()
     GotHit.respond()  -- Event_GotHit's pet tank / puller wait response (mac:11054)
+    CantSee.respond() -- Event_CantSee: face, get back in sight, re-stick (mac:10820)
     Cast.checkTribute()
     if State.misc.pendingCampfire then  -- UI "Place Campfire Now" (the UI can't wait)
         State.misc.pendingCampfire = false

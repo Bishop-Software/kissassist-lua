@@ -278,10 +278,20 @@ local function pullWithRanged(mobID)
         mq.cmd('/face fast nolook')
         mq.cmd('/look 0')
     end
+    s.movement.cantSee = false  -- mac:9765
     local tries = 0
     while tries < 3 do
         mq.doevents()
         if hasAggro() then s.pull.pulled = true; return end
+        -- "You cannot see your target.": face it, wait a second and try again (mac:10113-10118)
+        if s.movement.cantSee then
+            if mq.TLO.Target.ID() then
+                mq.cmd((s.movement.faceMobOn or 0) == 2 and '/squelch /face nolook' or '/squelch /face fast nolook')
+            end
+            mq.delay(1000)
+            s.movement.cantSee = false
+            _utils.debug('pull', 'Could Not see Target. Trying Again.')
+        end
         local tID   = mq.TLO.Target.ID()       or 0
         local tDist = mq.TLO.Target.Distance3D() or 0
         if tID == mobID and tDist >= 30 and mq.TLO.Target.LineOfSight() then

@@ -230,7 +230,8 @@ local State = {
         campZone        = 0,
         campZoneName    = '',
         cantHit         = false,
-        cantSee         = false,
+        cantSee         = false,  -- CantSee while pulling: the ranged pull faces and retries (mac CantSee)
+        cantSeePending  = false,  -- CantSee outside a pull, waiting for CantSee.respond()
         chaseOnValue    = 1,   -- ChaseAssist mode when on: 1=stop during fights, 2=always chase
         chaseDistance   = 25,  -- INI [General] ChaseDistance (mac default 25)
         checkOnReturn   = false,
