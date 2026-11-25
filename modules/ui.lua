@@ -36,6 +36,11 @@ local function draw()
     if _pendingW > 0 then
         ImGui.SetNextWindowSize(_pendingW, _pendingH, 1)  -- 1 = ImGuiCond_Always
         _pendingW, _pendingH = 0, 0
+    elseif miniMode then
+        -- Mini mode has NoResize: re-fit the height to the content every frame
+        -- (height 0 = auto-fit), so a wrapped button row or the "No Camp Set"
+        -- line isn't cut off.
+        ImGui.SetNextWindowSize(MINI_W, MINI_H, 1)
     end
     local winFlags = miniMode and ImGuiWindowFlags.NoResize or 0
     local shouldDraw
