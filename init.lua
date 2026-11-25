@@ -32,6 +32,7 @@ local Startup  = require('modules.startup')
 local Misc     = require('modules.misc')
 local Roles    = require('modules.roles')
 local Campfire = require('modules.campfire')
+local GotHit   = require('modules.gothit')
 local UI       = require('modules.ui')
 
 local VERSION = Config.VERSION
@@ -123,6 +124,7 @@ Cast.setCond(Cond)
 Heal.init(State, Utils, Cast, Cond, Movement, Comms)
 Movement.init(State, Utils)
 Campfire.init(State, Movement)
+GotHit.init(State)
 Comms.init(State, Utils)
 Buffs.init(State, Utils, Cast, Heal, Comms, Cond)
 Pet.init(State, Utils, Cast, Buffs, Movement)
@@ -174,6 +176,7 @@ local _ok, _err = pcall(function()
 while not State.terminate do
     -- Phase 1: events
     mq.doevents()
+    GotHit.respond()  -- Event_GotHit's pet tank / puller wait response (mac:11054)
     Cast.checkTribute()
     if State.misc.pendingCampfire then  -- UI "Place Campfire Now" (the UI can't wait)
         State.misc.pendingCampfire = false
@@ -232,7 +235,7 @@ while not State.terminate do
     Buffs.castMount()  -- post-rez mount attempt (mac:6906/6968)
     -- GroupWatch (mac:411). While the main assist is missing, only events and
     -- combat run, as in the mac's wait loop (mac:10646-10659).
-    if GroupWatch.check() then goto groupwatch_paused end
+    if GroupWatch.check() then goto pass_held end
     -- Phase 3.5: charm
     if State.session.iAmACharmClass and State.charm.on then Charm.check('MainLoop') end
     -- Phase 4: movement
@@ -246,6 +249,11 @@ while not State.terminate do
         Movement.doWeMove(0, 'mainloop')
     end
     if State.session.chaseAssist then Movement.doWeChase() end
+    -- Phase 4.5: CanIDoStuff (mac:392). In the combat state with no fight of our own,
+    -- skip the rest of the pass while moving, feigned, stunned, invisible or with a
+    -- merchant/bank/spellbook-type window open; the mac waits there instead. The
+    -- campfire and DoMiscStuff phases it would skip do nothing in combat anyway.
+    if not Misc.canIDoStuff() then goto pass_held end
     -- Phase 5: pet
     if State.pet.on and not State.combat.combatStart then Pet.doPetStuff() end
     if State.pet.on then Buffs.checkPetBuffs() end
@@ -299,7 +307,7 @@ while not State.terminate do
             if State.pull.pullOnReturn and pullRet == 'oor' then Pull.findMobOnReturn() end
         end
     end
-    ::groupwatch_paused::
+    ::pass_held::  -- GroupWatch or CanIDoStuff holding: only combat and comms run
     -- Phase 10: combat (second pass — mac:MainLoop2, 200ms wait catches post-buff aggro)
     if State.combat.dpsOn or State.combat.meleeOn then
         Combat.checkForCombat(0, 'main2', 200)

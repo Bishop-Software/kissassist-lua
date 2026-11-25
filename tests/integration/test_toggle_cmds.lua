@@ -53,6 +53,14 @@ function M.run(mq, State, TH)
     TH.assert_true(State.pet.on, '/togglevariable PetOn on -> pet.on')
     State.pet.on = origPetOn
 
+    -- MoveWhenHit (pet.moveWhenHit) is supported now (#334); /movewhenhit is the mac alias
+    local origMWH = State.pet.moveWhenHit
+    mq.cmd('/togglevariable MoveWhenHit on') ; mq.delay(D)
+    TH.assert_true(State.pet.moveWhenHit, '/togglevariable MoveWhenHit on -> pet.moveWhenHit')
+    mq.cmd('/movewhenhit off') ; mq.delay(D)
+    TH.assert_false(State.pet.moveWhenHit, '/movewhenhit off (alias) -> pet.moveWhenHit off')
+    State.pet.moveWhenHit = origMWH
+
     -- waithere: stop chasing and returning to camp --------------------------------
     local origChase, origRTC = State.session.chaseAssist, State.movement.returnToCamp
     State.session.chaseAssist, State.movement.returnToCamp = true, true

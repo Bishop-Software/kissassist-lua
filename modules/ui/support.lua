@@ -76,6 +76,16 @@ function SupportUI.drawPet()
                 ImGui.SetTooltip('Pet-tank pullers: heal the pet up to MedStop before every pull,\nnot only when it drops to half health.')
             end
 
+            -- Row 5
+            checkbox('Move When Hit', s.pet.moveWhenHit, function(v)
+                s.pet.moveWhenHit = v
+                Config.set('Pet', 'MoveWhenHit', v and '1' or '0')
+                Config.save()
+            end)
+            if ImGui.IsItemHovered() then
+                ImGui.SetTooltip('Pet tanks: when a mob hits you, step away from it, or go back\nto camp if you are out of camp with Return to Camp on.')
+            end
+
             -- Editable spell fields
             ImGui.Spacing()
             ImGui.Separator()

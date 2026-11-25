@@ -43,7 +43,7 @@ end
 -- The merc is sent in when the mob reaches camp (mac:10525). A solo puller with a
 -- merc tank drops the group Puller role at the end (mac:10555). The ranged swap
 -- back (mac:10477) is done in finishPull before this runs.
-local function waitForMob()
+local function waitForMobLoop()
     local s    = _state
     local role = s.session.role
     if role == 'hunter' or role == 'hunterpettank' or s.dps.paused then return end
@@ -69,6 +69,7 @@ local function waitForMob()
             mq.cmd(fm == 1 and '/face fast nolook' or '/face nolook')
         end
         mq.doevents()
+        require('modules.gothit').respond()  -- Event_GotHit (mac:11069)
         if s.combat.myTargetID == 0 then
             _combat.combatTargetCheck(0)
             if s.combat.myTargetID == 0 then
@@ -82,8 +83,9 @@ local function waitForMob()
         end
         -- The mac's AggroTargetID is live: the XTarget slot, else the radar's pick.
         local aggro = xtSlotID(s.combat.xTSlot) > 0 or (s.combat.aggroTargetID or '') ~= ''
-        if not aggro or os.clock() > deadline then
-            _utils.debug('pull', 'waitForMob: no aggro or timed out')
+        -- gotHitEndWait: a puller tank got hit while waiting (mac WaitTimer 0, mac:11075)
+        if not aggro or os.clock() > deadline or s.pull.gotHitEndWait then
+            _utils.debug('pull', 'waitForMob: no aggro, timed out or got hit')
             local tid = mq.TLO.Target.ID() or 0
             if tid > 0 then Pull.ignoreAdd(tid, 'waitformob') end
             pullReset()
@@ -143,6 +145,17 @@ local function waitForMob()
 
     Pull.mercPullerRole(false)  -- mob reached us: let the merc tank it (mac:10555)
     if s.combat.myTargetID ~= 0 and _utils.pullAggroID() == 0 then pullReset() end
+end
+
+-- waitingForMob stands in for the mac's WaitTimer: Event_GotHit only ends the wait
+-- while it runs (mac:11069).
+local function waitForMob()
+    local s = _state
+    s.pull.waitingForMob = true
+    s.pull.gotHitEndWait = false
+    waitForMobLoop()
+    s.pull.waitingForMob = false
+    s.pull.gotHitEndWait = false
 end
 
 -- Mirrors Sub PullWithMelee (kissassist.mac:10040). Closes in and swings until the

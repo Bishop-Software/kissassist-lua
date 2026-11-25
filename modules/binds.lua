@@ -283,7 +283,7 @@ local MAC_VAR_NAMES = {
 
 -- Mac variables that have no counterpart in the port.
 local UNSUPPORTED_VARS = {
-    dpsmeter = true, dpsspam = true, dpswriteon = true, movewhenhit = true,
+    dpsmeter = true, dpsspam = true, dpswriteon = true,
 }
 
 -- Find a variable by its mac or port name. Returns table, field (or nil).

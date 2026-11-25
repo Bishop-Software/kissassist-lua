@@ -222,6 +222,9 @@ local function tickPreamble(myID, fromWhere)
         return BREAK
     end
 
+    -- Event_GotHit's response, which the mac runs inside the /doevents above (mac:11054)
+    require('modules.gothit').respond()
+
     -- Manual target mode: if player switches in-game target to a different
     -- NPC mid-fight, break out so checkForCombat picks up the new target.
     if _state.combat.manualTargetMode then

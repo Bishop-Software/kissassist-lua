@@ -41,6 +41,7 @@ function Pet.init(state, utils, cast, buffs, movement)
     _state.pet.toysDone      = false
     _state.pet.petRampageOn  = Config.get('Pet', 'PetRampPullWait', '0') == '1'
     _state.pet.forceHealOnMed = Config.get('Pet', 'PetForceHealOnMed', '0') == '1'  -- mac:4141
+    _state.pet.moveWhenHit    = (tonumber(Config.get('Pet', 'MoveWhenHit', '0')) or 0) ~= 0  -- mac:14826
 
     _utils.debug('pet', 'Pet.init: spell=%s focusOn=%d holdOn=%d suspend=%s',
         _state.pet.spell, _state.pet.focusOn,
