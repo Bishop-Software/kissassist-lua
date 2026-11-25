@@ -404,6 +404,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.gothit' },
     },
+    {
+        name         = 'test_cantsee',
+        path         = 'tests.unit.test_cantsee',
+        useMock      = true,
+        clearModules = { 'modules.cantsee' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

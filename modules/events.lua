@@ -197,7 +197,9 @@ end
 
 local function onCantSee()
     utils.debug('move', 'CantSee')
-    state.movement.cantSee = true
+    -- While pulling: flag for the ranged pull's retry. Otherwise the response
+    -- (face, move back into sight, re-stick) runs from CantSee.respond() (mac:10820).
+    require('modules.cantsee').note()
 end
 
 local function onTooClose()
