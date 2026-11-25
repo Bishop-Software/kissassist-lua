@@ -416,6 +416,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.ui.status' },
     },
+    {
+        name         = 'test_pull_retry',
+        path         = 'tests.unit.test_pull_retry',
+        useMock      = true,
+        clearModules = { 'modules.pull.execute', 'modules.pull.util' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')
