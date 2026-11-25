@@ -124,38 +124,69 @@ function Status.drawStatus()
     end
 end
 
+-- Pure. How many buttons go on a row and how wide each is, so that every
+-- label fits: as many per row as fit at the widest label's width, then the
+-- rows balanced (7 buttons that fit 5 a row go 4 + 3, not 5 + 2).
+function Status.buttonLayout(avail, need, spacing, n)
+    if n <= 0 then return 0, 0 end
+    local perRow = math.floor((avail + spacing) / (need + spacing))
+    perRow = math.max(1, math.min(n, perRow))
+    local rows = math.ceil(n / perRow)
+    perRow = math.ceil(n / rows)
+    local bw = math.floor((avail - spacing * (perRow - 1)) / perRow)
+    return perRow, bw
+end
+
+-- ImGui style values, with defaults if the binding doesn't expose them.
+local function styleX(field, default)
+    local ok, v = pcall(function() return ImGui.GetStyle()[field].x end)
+    return (ok and type(v) == 'number') and v or default
+end
+
+local function textWidth(text)
+    local a = ImGui.CalcTextSize(text)
+    if type(a) == 'number' then return a end
+    return (a and a.x) or (#text * 7)
+end
+
+-- The button row under the status block, in full and mini mode. Wraps onto a
+-- second row when the window is too narrow for every label.
 function Status.drawCampButtons()
-    local bw = math.floor((ImGui.GetContentRegionAvail() - 24) / 7)
-    if ImGui.Button('Camp Here', bw, 0) then mq.cmd('/makecamphere') end
-    ImGui.SameLine()
-    if ImGui.Button('Camp Off',  bw, 0) then mq.cmd('/campoff')      end
-    ImGui.SameLine()
-    if ImGui.Button('Chase Me',  bw, 0) then mq.cmd('/chaseme')      end
-    ImGui.SameLine()
-    if ImGui.Button('Stay Here', bw, 0) then mq.cmd('/stayhere')     end
-    ImGui.SameLine()
-    if not _state.combat.combatStart then ImGui.BeginDisabled() end
-    if ImGui.Button('Burn Now',  bw, 0) then mq.cmd('/burn')         end
-    if not _state.combat.combatStart then ImGui.EndDisabled() end
-    ImGui.SameLine()
-    -- /buffgroup: a buff pass now (skipped in combat, so disabled then).
-    if _state.combat.combatStart then ImGui.BeginDisabled() end
-    if ImGui.Button('Buff Now',  bw, 0) then mq.cmd('/buffgroup')    end
-    if _state.combat.combatStart then ImGui.EndDisabled() end
-    if ImGui.IsItemHovered() then
-        ImGui.SetTooltip('Run a buff pass now (/buffgroup); not during a fight')
+    local s = _state
+    local inFight = s.combat.combatStart
+    local paused  = s.dps.paused
+    local buttons = {
+        { 'Camp Here', '/makecamphere' },
+        { 'Camp Off',  '/campoff' },
+        { 'Chase Me',  '/chaseme' },
+        { 'Stay Here', '/stayhere' },
+        { 'Burn Now',  '/burn', disabled = not inFight },
+        -- /buffgroup: a buff pass now (skipped in combat, so disabled then).
+        { 'Buff Now',  '/buffgroup', disabled = inFight,
+          tip = 'Run a buff pass now (/buffgroup); not during a fight' },
+        -- /backoff on|off (Bind_BackOff): highlighted while backed off.
+        { paused and 'Resume##backoff' or 'Back Off##backoff', paused and '/backoff off' or '/backoff on',
+          color = paused and { 0.8, 0.45, 0.1, 1.0 } or nil,
+          tip = paused and 'Backed off: click to resume fighting (/backoff off)'
+              or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)' },
+    }
+
+    local spacing = styleX('ItemSpacing', 8)
+    local pad     = styleX('FramePadding', 4) * 2
+    local need = 0
+    for _, b in ipairs(buttons) do
+        need = math.max(need, textWidth((b[1]:gsub('##.*$', ''))) + pad)
     end
-    ImGui.SameLine()
-    -- /backoff on|off (Bind_BackOff): highlighted while backed off.
-    local paused = _state.dps.paused
-    if paused then ImGui.PushStyleColor(ImGuiCol.Button, 0.8, 0.45, 0.1, 1.0) end
-    if ImGui.Button(paused and 'Resume##backoff' or 'Back Off##backoff', -1, 0) then
-        mq.cmd(paused and '/backoff off' or '/backoff on')
-    end
-    if paused then ImGui.PopStyleColor() end
-    if ImGui.IsItemHovered() then
-        ImGui.SetTooltip(paused and 'Backed off: click to resume fighting (/backoff off)'
-            or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)')
+    local perRow, bw = Status.buttonLayout(ImGui.GetContentRegionAvail(), need, spacing, #buttons)
+
+    for i, b in ipairs(buttons) do
+        if (i - 1) % perRow ~= 0 then ImGui.SameLine() end
+        if b.disabled then ImGui.BeginDisabled() end
+        if b.color then ImGui.PushStyleColor(ImGuiCol.Button, b.color[1], b.color[2], b.color[3], b.color[4]) end
+        if ImGui.Button(b[1], bw, 0) then mq.cmd(b[2]) end
+        if b.color then ImGui.PopStyleColor() end
+        if b.disabled then ImGui.EndDisabled() end
+        if b.tip and ImGui.IsItemHovered() then ImGui.SetTooltip(b.tip) end
     end
 end
 
