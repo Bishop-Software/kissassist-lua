@@ -36,6 +36,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_healing_rez.lua` | Rez spells extracted from `[Heals]` into the auto-rez list |
 | `unit/test_comms_announce.lua` | `Comms.announce` uses `/dgtell` only with DanNet on and peers present, else `/echo` |
 | `unit/test_merc.lua` | Merc "never assists" regression: `Mercenary.State` handling |
+| `unit/test_bard_aa_ready.lua` | Bard `castWhat` with an AA on cooldown: direct-cast senders (Regenother, Buffs) return `CAST_RECOVER` without stopping the medley or sending `/alt act`; queued senders aren't queued until it's ready |
 | `unit/test_dps_immune.lua` | `Cast.combatCast` stops recasting a DPS spell on a mob that was immune to it, still casts it on other mobs |
 | `unit/test_pull_aggro.lua` | `Utils.pullAggroID()` (the `.mac`'s `PullAggroTargetID`): XTarget-based pull aggro for normal and chain pulls (#224) |
 | `unit/test_pull_arc.lua` | `Pull.pullAngles()` (the `.mac`'s `SetPullAngles`, including wrap through 0/360) and `Pull.headingTo()` (#226) |

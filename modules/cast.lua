@@ -365,10 +365,14 @@ local function castAA(whatAA, sentFrom)
     -- cleanly. Gate on readiness so a cooling-down AA isn't queued, and let combatCast
     -- set a slot timer on the returned CAST_SUCCESS so it isn't re-queued per tick.
     if state.session.iAmABard and _bard then
+        -- castWhat sends a bard here even with the AA on cooldown. Check before the
+        -- direct path too: otherwise it stops the medley, the wait below sees "not
+        -- ready, not casting" and reports CAST_SUCCESS (e.g. a |Endgroup Rallying
+        -- Call re-"cast" every pass, stopping and restarting the medley each time).
+        if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
         if BARD_DIRECT_CAST[sentFrom] then
             _bard.pauseMedley()  -- fall through to direct /alt act; castWhat resumes
         else
-            if not mq.TLO.Me.AltAbilityReady(whatAA)() then return 'CAST_RECOVER' end
             local urgent = BARD_URGENT[sentFrom] or false
             utils.debug('cast', 'CastAA (bard queue): %s', whatAA)
             return _bard.queueCast(whatAA, urgent, urgent)
