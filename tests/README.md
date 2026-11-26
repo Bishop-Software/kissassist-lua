@@ -47,6 +47,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_ranking.lua` | `Pull.setRanking()` (the `.mac`'s `UpdatePullRanking`) and `Pull.nameAllowed()`: `:`-marked MobsToPull entries become the pull-first list while ranking is on; off strips the marks (#146) |
 | `unit/test_pull_move.lua` | `Pull.pickMoveUse()` (the `.mac`'s startup pick): nav when MQ2Nav has a mesh, else los; advpath only with a loaded path; re-picked after zoning (#264) |
 | `unit/test_pull_level.lua` | `Pull.setPullLevel()` / `levelGained()` (PullLevel fixed/linked/auto/off) and `Pull.chainPullBusy()` (ChainPullHP) (#61) |
+| `unit/test_pull_hold.lua` | `Pull.holdReasons()`, the Pull tab's held line: each hold (Pull off, medding, Group Watch waits, PullPause, corpse drag, PullWait, no camp, non-puller role) and the PullWith method not ready (spell recast seconds left, not memorized, Ranged) |
 | `unit/test_pull_pause.lua` | PullPause (`Pull.setPullPause` / `pullPauseCheck` / `heldByCond`): pull X minutes then rest Y, idle restart, manual hold, `\|condN` hold condition (#61) |
 | `unit/test_pull_role.lua` | `Pull.roleToggle()` (PullRoleToggle): pullerpettank group leader with a merc takes the group Puller role for a pull outside camp and drops it back in camp (#61) |
 | `unit/test_pull_chain.lua` | `Pull.chainPullNextMob()` (the `.mac`'s `ChainPullNextMob`): mid-fight hand-off to the next pull below ChainPullHP, and every case that keeps fighting instead; chain pull is puller-only (#257) |
