@@ -186,6 +186,12 @@ local unitTests = {
         clearModules = { 'modules.merc', 'modules.config' },
     },
     {
+        name         = 'test_bard_aa_ready',
+        path         = 'tests.unit.test_bard_aa_ready',
+        useMock      = true,
+        clearModules = { 'modules.cast', 'modules.config' },
+    },
+    {
         name         = 'test_dps_immune',
         path         = 'tests.unit.test_dps_immune',
         useMock      = true,
