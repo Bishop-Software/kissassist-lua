@@ -1,5 +1,5 @@
 -- tests/integration/test_camp_cmds.lua
--- Integration tests for /makecamphere, /stayhere, /campoff binds.
+-- Integration tests for /makecamphere, /stayhere, /campoff, /campon binds.
 -- Covers test plan section S2.4.x.
 --
 -- Run in-game while kissassist is running: /katest camp_cmds
@@ -36,10 +36,22 @@ function M.run(mq, State, TH)
     TH.assert_near(State.movement.campZ, preZ, 1.0, '/makecamphere → campZ matches Me.FloorZ')
     TH.assert_eq(State.movement.campZone, zoneID,   '/makecamphere → campZone matches Zone.ID')
 
-    -- /campoff --------------------------------------------------------------
+    -- /campoff (this toon only) keeps the spot; /campon goes back to it ------
+    -- (/campoff group isn't run here: it would break camp for the live group.)
     mq.cmd('/campoff') ; mq.delay(D)
     TH.assert_false(State.movement.returnToCamp, '/campoff → returnToCamp=false')
-    TH.assert_eq(State.movement.campX, 0, '/campoff → campX cleared')
+    TH.assert_near(State.movement.campX, preX, 1.0, '/campoff → camp spot kept')
+
+    State.session.chaseAssist = true
+    mq.cmd('/campon') ; mq.delay(D)
+    TH.assert_true(State.movement.returnToCamp, '/campon → returnToCamp=true')
+    TH.assert_false(State.session.chaseAssist,  '/campon → chaseAssist=false')
+    TH.assert_near(State.movement.campX, preX, 1.0, '/campon → same camp spot')
+
+    State.movement.returnToCamp = false
+    State.movement.campX, State.movement.campY = 0, 0
+    mq.cmd('/campon') ; mq.delay(D)
+    TH.assert_false(State.movement.returnToCamp, '/campon with no camp → stays off')
 
     -- /stayhere ------------------------------------------------------------
     State.movement.returnToCamp = false

@@ -344,6 +344,12 @@ local unitTests = {
         clearModules = { 'modules.config' },
     },
     {
+        name         = 'test_camp_toggle',
+        path         = 'tests.unit.test_camp_toggle',
+        useMock      = true,
+        clearModules = { 'modules.binds', 'modules.comms', 'modules.config' },
+    },
+    {
         name         = 'test_comms_chat_relay',
         path         = 'tests.unit.test_comms_chat_relay',
         useMock      = true,

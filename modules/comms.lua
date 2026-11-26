@@ -51,7 +51,7 @@ end
 
 -- Messages that change our camp, chase target or main assist. Only a member of
 -- our own group/raid may send these; the mac sends them group-only (/dgge).
-local GROUP_ONLY = { CAMP = true, STAY = true, CHASE = true, SWITCHMA = true }
+local GROUP_ONLY = { CAMP = true, CAMPOFF = true, STAY = true, CHASE = true, SWITCHMA = true }
 
 local function inMyGroupOrRaid(name)
     if name == '' then return false end
@@ -88,6 +88,13 @@ local function onMessage(message)
         _state.movement.returnToCamp = true
         _state.session.chaseAssist   = false
         _utils.debug('comms', 'CAMP from %s: %.1f %.1f', data.from, data.y or 0, data.x or 0)
+
+    elseif msgType == 'CAMPOFF' then
+        -- /campoff group: the group breaks camp (the spot is cleared)
+        _state.movement.returnToCamp = false
+        _state.movement.campX, _state.movement.campY, _state.movement.campZ = 0, 0, 0
+        _state.movement.campZoneName = ''
+        printf('\ay>> Camp broken by %s.', tostring(data.from))
 
     elseif msgType == 'STAY' then
         _state.movement.returnToCamp = true

@@ -495,13 +495,31 @@ local function onStayHere()
     if _comms then _comms.broadcast('STAY', {}) end
 end
 
-local function onCampOff()
-    state.movement.returnToCamp = false
-    state.movement.campX        = 0
-    state.movement.campY        = 0
-    state.movement.campZ        = 0
-    state.movement.campZoneName = ''
-    printf('\ay>> Camp mode off.')
+-- /campoff [group] (Lua only). Alone: this toon stops returning to camp but keeps
+-- the spot, so /campon resumes it. 'group': break camp for the whole group, this
+-- toon and every kissassist-lua box in the group/raid (CAMPOFF), clearing the spot.
+local function onCampOff(scope)
+    local mv = state.movement
+    mv.returnToCamp = false
+    if (scope or ''):lower() == 'group' then
+        mv.campX, mv.campY, mv.campZ, mv.campZoneName = 0, 0, 0, ''
+        printf('\ay>> Camp broken for the group.')
+        if _comms then _comms.broadcast('CAMPOFF', {}) end
+    else
+        printf('\ay>> Camp off for this toon (the camp is kept; /campon resumes it).')
+    end
+end
+
+-- /campon (Lua only): this toon goes back to the camp it had before /campoff.
+local function onCampOn()
+    local mv = state.movement
+    if (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then
+        printf('\ay>> No camp to resume: set one with /makecamphere.')
+        return
+    end
+    mv.returnToCamp           = true
+    state.session.chaseAssist = false
+    printf('\ay>> Camp on: back to camp at %.1f, %.1f', mv.campY, mv.campX)
 end
 
 local function onChaseMe()
@@ -1185,6 +1203,7 @@ function Binds.register(s, b, cast, combat, config, comms)
     bind('/makecamphere',   onMakeCampHere)
     bind('/stayhere',       onStayHere)
     bind('/campoff',        onCampOff)
+    bind('/campon',         onCampOn)
     bind('/chaseme',        onChaseMe)
     bind('/trackmedown',    onTrackMeDown)
     bind('/SetPullArc',     onSetPullArc)

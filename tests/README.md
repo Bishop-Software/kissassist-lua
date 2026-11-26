@@ -36,6 +36,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_healing_rez.lua` | Rez spells extracted from `[Heals]` into the auto-rez list |
 | `unit/test_comms_announce.lua` | `Comms.announce` uses `/dgtell` only with DanNet on and peers present, else `/echo` |
 | `unit/test_merc.lua` | Merc "never assists" regression: `Mercenary.State` handling |
+| `unit/test_camp_toggle.lua` | Status row camp toggles: `/campoff` keeps the camp spot, `/campon` returns to it (nothing with no camp), `/campoff group` clears it and broadcasts `CAMPOFF`; a received `CAMPOFF` from the group breaks camp, one from outside is ignored |
 | `unit/test_bard_aa_ready.lua` | Bard `castWhat` with an AA on cooldown: direct-cast senders (Regenother, Buffs) return `CAST_RECOVER` without stopping the medley or sending `/alt act`; queued senders aren't queued until it's ready |
 | `unit/test_dps_immune.lua` | `Cast.combatCast` stops recasting a DPS spell on a mob that was immune to it, still casts it on other mobs |
 | `unit/test_pull_aggro.lua` | `Utils.pullAggroID()` (the `.mac`'s `PullAggroTargetID`): XTarget-based pull aggro for normal and chain pulls (#224) |
@@ -98,7 +99,7 @@ All tests save and restore any state they modify — it is safe to run in-game w
 |---|---|---|
 | `integration/test_debug_cmds.lua` | 12 | `/debug on/off`, `/debug combat on/off`, `/debug all on/off`, `/kisscheck` and `/zoneinfo` no-crash |
 | `integration/test_toggle_cmds.lua` | 30 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard; `/kapause` on/off/0/1/toggle and `${KissAssist.Paused}` / `.State` / `${KissAssist}` (#353, pauses briefly, so run it out of combat) |
-| `integration/test_camp_cmds.lua` | 11 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears flag; `/stayhere` sets flag and coords |
+| `integration/test_camp_cmds.lua` | 16 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/campoff` clears the flag and keeps the spot; `/campon` goes back to it (and does nothing with no camp); `/stayhere` sets flag and coords. `/campoff group` isn't run (it would break the live group's camp) |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
 | `integration/test_switchtarget.lua` | ~6 | `/kaswitchtarget` updates the aggro/combat target fields |

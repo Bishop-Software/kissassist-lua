@@ -158,9 +158,22 @@ function Status.drawCampButtons()
     local inFight = s.combat.combatStart
     local paused  = s.dps.paused
     local kaPaused = s.session.paused
+    local mv       = s.movement
+    local camping  = mv.returnToCamp
+    local hasCamp  = (mv.campX or 0) ~= 0 or (mv.campY or 0) ~= 0
     local buttons = {
-        { 'Camp Here', '/makecamphere' },
-        { 'Camp Off',  '/campoff' },
+        -- Group camp toggle: /makecamphere, or /campoff group to break camp for everyone.
+        { camping and 'Break Camp##grpcamp' or 'Camp Here##grpcamp',
+          camping and '/campoff group' or '/makecamphere',
+          tip = camping and 'Group: break camp for every kissassist-lua box in the group (/campoff group)'
+              or 'Group: every kissassist-lua box in the group camps at this spot (/makecamphere)' },
+        -- This toon's camp toggle: /campoff keeps the spot, /campon goes back to it.
+        { camping and 'Camp Off##mycamp' or 'Camp On##mycamp',
+          camping and '/campoff' or '/campon',
+          disabled = not camping and not hasCamp,
+          tip = camping and 'This toon only: stop returning to camp; the camp is kept (/campoff)'
+              or string.format('This toon only: go back to the camp at %.0f, %.0f (/campon)',
+                  mv.campY or 0, mv.campX or 0) },
         { 'Chase Me',  '/chaseme' },
         { 'Stay Here', '/stayhere' },
         { 'Burn Now',  '/burn', disabled = not inFight },
