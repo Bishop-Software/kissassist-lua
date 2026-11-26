@@ -83,6 +83,35 @@ function M.run(TH, MockMQ)
     TH.assert_true(has(Pull.holdReasons(), 'assist role does not pull'), 'non-puller role')
     state.session.role = 'pullertank'
 
+    -- PullWith not ready (the main loop's pullAbilityReady gate).
+    local gems, book, ready, recast = {}, {}, false, 0
+    MockMQ.set('TLO.Me.SpellReady', function() return function() return ready end end)
+    MockMQ.set('TLO.Me.AltAbilityReady', function() return function() return false end end)
+    MockMQ.set('TLO.Me.CombatAbilityReady', function() return function() return false end end)
+    MockMQ.set('TLO.Me.ItemReady', function() return function() return false end end)
+    MockMQ.set('TLO.Me.Gem', function(n) return function() return gems[n] end end)
+    MockMQ.set('TLO.Me.Book', function(n) return function() return book[n] end end)
+    MockMQ.set('TLO.Me.GemTimer', function() return { TotalSeconds = function() return recast end } end)
+    p.withAlt = 'Spear Rk. II'
+    gems['Spear Rk. II'], recast = 7, 18
+    r = Pull.holdReasons()
+    TH.assert_eq(#r, 1, 'spell on recast: one reason')
+    TH.assert_true(has(r, '^Spear Rk%. II not ready %(18s%)$'), 'spell on recast shows the seconds left')
+    recast = 0
+    TH.assert_true(has(Pull.holdReasons(), '^Spear Rk%. II not ready$'), 'no recast left (global cooldown): plain not ready')
+    gems['Spear Rk. II'], book['Spear Rk. II'] = nil, 42
+    TH.assert_true(has(Pull.holdReasons(), 'Spear Rk%. II is not memorized'), 'in the book but no gem: not memorized')
+    book['Spear Rk. II'] = nil
+    TH.assert_true(has(Pull.holdReasons(), '^Spear Rk%. II not ready$'), 'AA / disc / item: plain not ready')
+    ready = true
+    TH.assert_eq(#Pull.holdReasons(), 0, 'spell ready: no reason')
+    ready = false
+    p.withAlt = 'Ranged'
+    MockMQ.set('TLO.Me.RangedReady', false)
+    TH.assert_true(has(Pull.holdReasons(), 'ranged attack not ready'), 'Ranged not ready')
+    p.withAlt = 'Melee'
+    TH.assert_eq(#Pull.holdReasons(), 0, 'Melee is always ready')
+
     -- Several at once are all listed.
     p.hold, h.medding = true, true
     TH.assert_eq(#Pull.holdReasons(), 2, 'two holds: two reasons')

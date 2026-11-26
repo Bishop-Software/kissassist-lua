@@ -149,6 +149,22 @@ end
 -- Why pulls are held right now, for the Pull tab's status line. Mirrors the
 -- checks in front of the main loop's pull step (init.lua Phase 9) and
 -- findMobToPull. Returns a list of short reasons; empty = free to pull.
+-- Hold line text for a PullWith method that isn't ready (the main loop only
+-- looks for a pull once it is, init.lua). A memorized spell shows the recast
+-- left; one in the book but not in a gem never gets ready, so say that.
+local function abilityNotReadyText(me)
+    local with = _state.pull.withAlt or 'Melee'
+    if with:lower() == 'ranged' then return 'ranged attack not ready' end
+    local gem = me.Gem(with)()
+    if gem and gem > 0 then
+        local secs = me.GemTimer(gem).TotalSeconds() or 0
+        if secs > 0 then return string.format('%s not ready (%ds)', with, secs) end
+    elseif me.Book(with)() then
+        return string.format('%s is not memorized', with)
+    end
+    return string.format('%s not ready', with)
+end
+
 function Holds.holdReasons()
     local s, out = _state, {}
     local function add(t) out[#out + 1] = t end
@@ -189,6 +205,7 @@ function Holds.holdReasons()
     if Pull.heldByCond(true) then add(string.format('Pull Pause condition %d is true', s.pull.pauseCond or 0)) end
     if s.misc and s.misc.dragCorpse then add('dragging a corpse') end
     if Pull.pullWaiting() then add('waiting for respawns') end
+    if not Holds.pullAbilityReady() then add(abilityNotReadyText(me)) end
     return out
 end
 
