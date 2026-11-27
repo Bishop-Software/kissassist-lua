@@ -452,6 +452,12 @@ local unitTests = {
         useMock      = true,
         clearModules = { 'modules.control', 'modules.binds', 'modules.state' },
     },
+    {
+        name         = 'test_kactl',
+        path         = 'tests.unit.test_kactl',
+        useMock      = true,
+        clearModules = { 'modules.control', 'modules.binds', 'modules.tlo' },
+    },
 }
 
 printf('\n\aw[TEST]\ax Starting KissAssist unit test suite...\n')

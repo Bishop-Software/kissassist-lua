@@ -9,6 +9,7 @@
 local mq = require('mq')
 
 local Config   = require('modules.config')
+local Control  = require('modules.control')
 local StatusUI = require('modules.ui.status')
 local Combat   = require('modules.ui.combat')
 local Healing  = require('modules.ui.healing')
@@ -217,14 +218,23 @@ function UI.init(state)
 
     _state.ui.miniMode = Config.get('UI', 'MiniMode', '0') == '1'
     mq.imgui.init('KissAssist Lua', draw)
-    mq.bind('/kaui', function(arg)
-        if arg == 'mini' then
-            _state.ui.miniMode = not _state.ui.miniMode
-            Config.set('UI', 'MiniMode', _state.ui.miniMode and '1' or '0')
+    -- /kactl ui on|off|toggle, /kactl ui mini on|off|toggle (was /kaui [mini]).
+    Control.verb('ui', 'ui on|off|toggle | mini on|off|toggle', function(words)
+        local mini = tostring(words[1] or ''):lower() == 'mini'
+        local word = mini and words[2] or words[1]
+        if #words ~= (mini and 2 or 1) then return false, 'expects on, off or toggle' end
+        if mini then
+            local on, err = Control.onOff(word, _state.ui.miniMode)
+            if on == nil then return false, err end
+            _state.ui.miniMode = on
+            Config.set('UI', 'MiniMode', on and '1' or '0')
             Config.save()
-        else
-            _open = not _open
+            return true, 'mini window ' .. (on and 'on' or 'off')
         end
+        local on, err = Control.onOff(word, _open)
+        if on == nil then return false, err end
+        _open = on
+        return true, 'window ' .. (on and 'shown' or 'hidden')
     end)
 end
 

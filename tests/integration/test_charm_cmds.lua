@@ -1,8 +1,8 @@
 -- tests/integration/test_charm_cmds.lua
 -- Integration tests for the charm system at runtime.
--- Run in-game while kissassist is running: /katest charm_cmds
+-- Run in-game while kissassist is running: /kactl test charm_cmds
 --
--- NOTE: /charmon and /charmkeep binds cannot be tested via mq.cmd() from within
+-- NOTE: /kactl charm on|keep cannot be tested via mq.cmd() from within
 -- another bind callback — MQ2 defers nested bind dispatches until the outer bind
 -- returns, by which time test state has already been restored. Bind handler logic
 -- is covered by unit tests (test_charm.lua). These tests verify runtime
@@ -38,7 +38,7 @@ function M.run(mq, State, TH)
         'iAmACharmClass correct for class=' .. cls)
 
     -- -----------------------------------------------------------------------
-    -- State field mutability (simulates what /charmon and /charmkeep do)
+    -- State field mutability (simulates what /kactl charm on and keep do)
     -- -----------------------------------------------------------------------
 
     local origOn   = State.charm.on
@@ -53,7 +53,7 @@ function M.run(mq, State, TH)
     State.charm.keep = origKeep
 
     -- -----------------------------------------------------------------------
-    -- /resetcharmed: sets petId=0 and petZone='' (bind fires after /katest
+    -- /kactl charm reset: sets petId=0 and petZone='' (bind fires after /kactl test
     -- returns, so we verify the field contract directly here, then fire the
     -- bind and let it silently confirm at end of frame)
     -- -----------------------------------------------------------------------
@@ -63,14 +63,14 @@ function M.run(mq, State, TH)
 
     State.charm.petId   = 99999
     State.charm.petZone = 'crushbone'
-    TH.assert_eq(State.charm.petId,   99999,       '/resetcharmed setup: petId=99999')
-    TH.assert_eq(State.charm.petZone, 'crushbone', '/resetcharmed setup: petZone=crushbone')
+    TH.assert_eq(State.charm.petId,   99999,       '/kactl charm reset setup: petId=99999')
+    TH.assert_eq(State.charm.petZone, 'crushbone', '/kactl charm reset setup: petZone=crushbone')
 
     -- Directly exercise the same logic the bind runs (onResetCharmed body):
     State.charm.petId   = 0
     State.charm.petZone = ''
-    TH.assert_eq(State.charm.petId,   0,  '/resetcharmed: petId cleared')
-    TH.assert_eq(State.charm.petZone, '', '/resetcharmed: petZone cleared')
+    TH.assert_eq(State.charm.petId,   0,  '/kactl charm reset: petId cleared')
+    TH.assert_eq(State.charm.petZone, '', '/kactl charm reset: petZone cleared')
 
     State.charm.petId   = origPetId
     State.charm.petZone = origPetZone

@@ -170,7 +170,7 @@ Startup.setWinTitle()
 
 printf('\agKissAssist ready. \awEntering main loop.')
 if Pause.isPaused() then  -- started with the 'paused' argument (#353)
-    printf('\ayKissAssist started paused.\aw Use \at/kapause off\aw to begin.')
+    printf('\ayKissAssist started paused.\aw Use \at/kactl pause off\aw to begin.')
 end
 
 -- Expose live State globally so integration tests can access it via mq_eval:
@@ -185,7 +185,7 @@ end
 -- Main loop — phase order mirrors kissassist.mac Sub Main while(1) block (mac:360-456).
 -- Verified against .mac source. Two intentional Lua additions: Comms.tick(), mq.delay(50).
 -- Divergence from plan note: Buffs/Healing order was already correct; plan comment was stale.
--- pcall wrapper ensures the shutdown block below runs on both /kastop (clean exit) and
+-- pcall wrapper ensures the shutdown block below runs on both /kactl stop (clean exit) and
 -- /lua stop (which throws from mq.delay, bypassing the while condition).
 local _ok, _err = pcall(function()
 while not State.terminate do
@@ -208,6 +208,11 @@ while not State.terminate do
     if State.cast.pendingLoadSpellSet then
         State.cast.pendingLoadSpellSet = false
         Cast.loadSpellSet()
+    end
+    if (State.misc.pendingTest or '') ~= '' then  -- /kactl test: run outside the bind
+        local name = State.misc.pendingTest
+        State.misc.pendingTest = ''
+        Binds.runTests(name)
     end
     -- After zoning: reload this zone's lists from KissAssist_Info.ini and reset
     -- combat, as the mac's Event_Zoned does (mac:11124-11130).

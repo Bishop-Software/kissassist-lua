@@ -9,7 +9,7 @@
 --                stopMoving returns at once when standing still; with a pet and
 --                PetHoldOn, the hold command really puts the pet on hold
 --
--- Run in-game while kissassist is running: /katest recent
+-- Run in-game while kissassist is running: /kactl test recent
 local M = {}
 
 local D = 500  -- ms to let a command take effect

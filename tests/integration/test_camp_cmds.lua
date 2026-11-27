@@ -6,7 +6,7 @@
 -- /stayhere, /chaseme and any /kactl mode ... group|others other than the
 -- /makecamphere already run (it sends the group to this toon's spot).
 --
--- Run in-game while kissassist is running: /katest camp_cmds
+-- Run in-game while kissassist is running: /kactl test camp_cmds
 local M = {}
 
 local D = 250  -- ms delay after each mq.cmd() to let the deferred bind execute

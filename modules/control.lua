@@ -339,13 +339,100 @@ function Control.setMode(mode, opts)
 end
 
 -- ─── /kactl ──────────────────────────────────────────────────────────────────
--- /kactl <verb> [args]: the strict, script-safe way in. Phase 2 has one verb:
+-- /kactl <verb> [args]: the strict, script-safe way in (#360). Every value is
+-- explicit (on|off|toggle, never "no value means off"), nothing goes to the
+-- group unless a verb is told 'group' / 'others', nothing is saved unless it is
+-- told 'save', and it prints nothing unless it fails or 'verbose' is given.
+-- ${KissAssist.LastResult} holds the outcome of the last /kactl: 'ok' or
+-- 'error: <why>'.
+--
+-- Verbs live where their code is: this file registers mode, set, pause and stop;
+-- modules/binds.lua registers target, charm, medley, list and test;
+-- modules/ui.lua registers ui. Control.verb(name, usage, run) adds one;
+-- run(words) gets the words after the verb ('verbose' removed) and returns
+-- ok, msg (msg: what happened, or why it failed).
+
+local VERBS = {}
+
+Control.lastResult = ''
+
+function Control.verb(name, usage, run)
+    VERBS[name] = { usage = usage, run = run }
+end
+
+-- on | off | toggle -> boolean (toggle flips current). nil, error otherwise.
+function Control.onOff(word, current)
+    local w = tostring(word or ''):lower()
+    if w == 'on' then return true end
+    if w == 'off' then return false end
+    if w == 'toggle' then return not current end
+    return nil, 'expects on, off or toggle'
+end
+
+-- Take a trailing flag word (save, group, ...) out of words. Returns true if found.
+function Control.takeFlag(words, flag)
+    for i = #words, 1, -1 do
+        if tostring(words[i]):lower() == flag then
+            table.remove(words, i)
+            return true
+        end
+    end
+    return false
+end
+
+-- The INI section and key spelling a setting is saved under, from the default
+-- config (modules/config.lua). nil if unknown or in more than one section.
+function Control.sectionOf(name)
+    if not (_config and _config.defaultCfg) then return nil end
+    local lname = tostring(name or ''):lower()
+    local foundSection, foundKey
+    for section, keys in pairs(_config.defaultCfg()) do
+        if type(keys) == 'table' then
+            for key, value in pairs(keys) do
+                if type(key) == 'string' and type(value) ~= 'table' and key:lower() == lname then
+                    if foundSection then return nil end  -- ambiguous
+                    foundSection, foundKey = section, key
+                end
+            end
+        end
+    end
+    return foundSection, foundKey
+end
+
+-- /kactl entry point. words: the command's arguments. Returns ok, msg.
+function Control.command(words)
+    local verb = tostring(words[1] or ''):lower()
+    local v = VERBS[verb]
+    if not v then
+        local names = {}
+        for name in pairs(VERBS) do names[#names + 1] = name end
+        table.sort(names)
+        Control.lastResult = 'error: unknown verb'
+        printf('\ay/kactl: unknown verb \at%s\ay. Verbs: %s', words[1] or '', table.concat(names, ', '))
+        return false, 'unknown verb'
+    end
+    local rest, verbose = {}, false
+    for i = 2, #words do
+        local w = words[i]
+        if w ~= nil and w ~= '' then
+            if tostring(w):lower() == 'verbose' then verbose = true else rest[#rest + 1] = w end
+        end
+    end
+    local ok, msg = v.run(rest)
+    if ok then
+        Control.lastResult = 'ok'
+        if verbose then printf('\ay/kactl %s: %s', verb, tostring(msg or 'ok')) end
+    else
+        Control.lastResult = 'error: ' .. tostring(msg)
+        printf('\ay/kactl %s: %s. Usage: /kactl %s', verb, tostring(msg), v.usage)
+    end
+    return ok, msg
+end
+
+-- ── mode ─────────────────────────────────────────────────────────────────────
 --   /kactl mode manual [clear] [group|others]
 --   /kactl mode camp [here|resume] [group|others]
 --   /kactl mode chase [<name>|me] [group|others]
--- Quiet unless 'verbose' is given or it fails.
-
-local MODE_USAGE = '/kactl mode manual [clear] | camp [here|resume] | chase [<name>|me]  [group|others] [verbose]'
 
 -- Parse the words after 'mode'. Returns mode, opts, verbose or nil, error.
 function Control.parseMode(words)
@@ -385,27 +472,72 @@ local MODE_ERRORS = {
     nowho  = 'chase with others needs a name (or me)',
 }
 
--- /kactl entry point. words: the command's arguments. Returns ok, msg.
-function Control.command(words)
-    local verb = tostring(words[1] or ''):lower()
-    if verb ~= 'mode' then
-        printf('\ay/kactl: unknown verb \at%s\ay. Usage: %s', words[1] or '', MODE_USAGE)
-        return false, 'badverb'
-    end
-    local rest = {}
-    for i = 2, #words do rest[#rest + 1] = words[i] end
-    local mode, opts, verbose = Control.parseMode(rest)
-    if not mode then
-        printf('\ay/kactl mode: %s. Usage: %s', opts, MODE_USAGE)
-        return false, opts
-    end
+Control.verb('mode', 'mode manual [clear] | camp [here|resume] | chase [<name>|me]  [group|others]', function(words)
+    local mode, opts = Control.parseMode(words)
+    if not mode then return false, opts end
     local ok, msg = Control.setMode(mode, opts)
-    if not ok then
-        printf('\ay/kactl mode: %s', MODE_ERRORS[msg] or msg)
-    elseif verbose then
-        printf('\ay/kactl: mode %s', Control.mode())
+    if not ok then return false, MODE_ERRORS[msg] or msg end
+    return true, 'mode ' .. Control.mode()
+end)
+
+-- ── set ──────────────────────────────────────────────────────────────────────
+--   /kactl set <name> <value>|toggle [save]
+-- Any setting /togglevariable and /changevarint know (mac names, INI keys).
+-- 'save' writes it to the config under the setting's INI section.
+
+local SET_ERRORS = {
+    unknown     = 'unknown setting',
+    unsupported = 'not supported in the Lua port',
+    badvalue    = 'bad value',
+}
+
+Control.verb('set', 'set <name> <value>|toggle [save]', function(words)
+    local save = Control.takeFlag(words, 'save')
+    local name, value = words[1], words[2]
+    if not name or not value then return false, 'needs a name and a value' end
+    if #words > 2 then return false, 'unexpected word: ' .. tostring(words[3]) end
+    local tbl, field = Control.resolve(name)
+    -- on/off as booleans, so 'save' writes 1/0 (or the field's number, e.g. 62)
+    -- rather than the word; /changevarint keeps the mac's write-as-typed.
+    local lvalue = tostring(value):lower()
+    if lvalue == 'on' then value = true elseif lvalue == 'off' then value = false end
+    if lvalue == 'toggle' then
+        if not tbl then return false, SET_ERRORS.unknown end
+        local cur = tbl[field]
+        if type(cur) == 'boolean' then value = not cur
+        elseif type(cur) == 'number' then value = cur == 0
+        else return false, 'toggle only works for on/off settings' end
     end
-    return ok, msg
-end
+    local opts = {}
+    if save then
+        local section, key = Control.sectionOf(name)
+        if not section then return false, 'no INI section known for ' .. tostring(name) .. ' (use /changevarint)' end
+        opts.save, opts.section, name = true, section, key
+    end
+    local ok, msg, info = Control.set(name, value, opts)
+    if not ok then return false, SET_ERRORS[msg] or msg end
+    if info.shown then return true, string.format('%s = %s', name, info.shown) end
+    return true, string.format('%s = %s', name, tostring(info.now))
+end)
+
+-- ── pause, stop ──────────────────────────────────────────────────────────────
+--   /kactl pause on|off|toggle   soft pause (modules/pause.lua, #353)
+--   /kactl stop                  end the script
+
+Control.verb('pause', 'pause on|off|toggle', function(words)
+    if #words ~= 1 then return false, 'expects on, off or toggle' end
+    local Pause = require('modules.pause')
+    local on, err = Control.onOff(words[1], Pause.isPaused())
+    if on == nil then return false, err end
+    Pause.set(on)
+    return true, on and 'paused' or 'running'
+end)
+
+Control.verb('stop', 'stop', function(words)
+    if #words > 0 then return false, 'takes no arguments' end
+    printf('\arKissAssist stopping...\ax')
+    _state.terminate = true
+    return true, 'stopping'
+end)
 
 return Control

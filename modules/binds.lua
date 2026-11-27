@@ -12,7 +12,7 @@ local function bind(cmd, fn)
     BOUND[cmd] = true
 end
 
--- True if the port binds this command (any case). Used by /katest recent.
+-- True if the port binds this command (any case). Used by /kactl test recent.
 function Binds.isBound(name)
     name = (name or ''):lower()
     for cmd in pairs(BOUND) do
@@ -214,25 +214,22 @@ local function onSwitchMA(newMA, newRole, doWhat)
     require('modules.roles').switchMA(newMA, newRole, broadcast)
 end
 
-local function onSwitchTarget(idArg)
-    local newID = tonumber(idArg) or mq.TLO.Target.ID() or 0
-    state.combat.myTargetID = 0
-    if newID ~= 0 then
-        state.combat.aggroTargetID = tostring(newID)
-        local name = (mq.TLO.Spawn('id ' .. newID).CleanName() or '?')
-        printf('\awSwitching combat target to \at%s\aw (ID: %d)', name, newID)
-    else
+-- /kactl target <id>|clear: switch the combat target to that spawn now, or clear
+-- it so the next hater is picked up (was /kaswitchtarget). A one-off switch;
+-- holding a target until it dies is phase 4 (#364).
+local function kactlTarget(words)
+    if #words ~= 1 then return false, 'expects a spawn ID or clear' end
+    if tostring(words[1]):lower() == 'clear' then
+        state.combat.myTargetID    = 0
         state.combat.aggroTargetID = ''
-        printf('\awCleared combat target — will pick up next hater on tick')
+        return true, 'target cleared'
     end
-end
-
-local function onTargetMode()
-    state.combat.manualTargetMode = not state.combat.manualTargetMode
-    _config.set('Melee', 'ManualTargetMode', state.combat.manualTargetMode and '1' or '0')
-    _config.save()
-    printf('\aw/katargetmode: Manual Target Mode is \at%s',
-           state.combat.manualTargetMode and 'ON' or 'OFF')
+    local id = math.floor(tonumber(words[1]) or 0)
+    local sp = mq.TLO.Spawn('id ' .. id)
+    if id <= 0 or (sp.ID() or 0) == 0 then return false, 'no spawn with ID ' .. tostring(words[1]) end
+    state.combat.myTargetID    = 0
+    state.combat.aggroTargetID = tostring(id)
+    return true, string.format('target %s (ID %d)', sp.CleanName() or '?', id)
 end
 
 local function onKissCast(castWhat, whatID, _forceInterrupt)
@@ -243,19 +240,6 @@ local function onKissCast(castWhat, whatID, _forceInterrupt)
     _cast.castWhat(castWhat, tonumber(whatID) or 0, 'KissCast')
 end
 
-local function onMountOn()
-    state.misc.mountOn = true
-    _config.set('General', 'MountOn', '1')
-    _config.save()
-    printf('\ayMount system \agON')
-end
-
-local function onMountOff()
-    state.misc.mountOn = false
-    _config.set('General', 'MountOn', '0')
-    _config.save()
-    printf('\ayMount system \arOFF')
-end
 
 -- ─── /togglevariable and /changevarint ───────────────────────────────────────
 -- Both take the mac's variable names (ChaseAssist, MeleeOn, ...), so aliases left
@@ -614,60 +598,47 @@ local function onAddMezImmune(_mti)
     printf('\ay>> Mez Immune -> %s <- ID:%d Added to immune list.', name, tID)
 end
 
--- Charm binds — mirrors /charmon, /charmkeep, /setcharmed, /resetcharmed, /addcimmune
--- (kisscharm.mac alias block).
-
-local function onCharmOn()
-    if not state.session.iAmACharmClass then
-        printf('--CharmOn: not a charm class (DRU/ENC/NEC/BRD).')
-        return
+-- /kactl charm on|off|toggle [save], charm keep on|off|toggle [save], charm set,
+-- charm reset (were /charmon, /charmkeep, /setcharmed, /resetcharmed from the
+-- kisscharm.mac fork). Charm classes only (DRU/ENC/NEC/BRD).
+local function kactlCharm(words)
+    local save = Control.takeFlag(words, 'save')
+    local what = tostring(words[1] or ''):lower()
+    if what == 'set' or what == 'reset' then
+        if #words > 1 or save then return false, 'charm ' .. what .. ' takes no arguments' end
+        if what == 'reset' then
+            state.charm.petId, state.charm.petZone = 0, ''
+            return true, 'charm pet reset'
+        end
+        local petID = mq.TLO.Me.Pet.ID() or 0
+        if petID == 0 then return false, 'no pet to record' end
+        state.charm.petId   = petID
+        state.charm.petZone = mq.TLO.Zone.ShortName() or ''
+        return true, string.format('charm pet ID %d in %s', petID, state.charm.petZone)
     end
-    state.charm.on = not state.charm.on
-    printf('\ay>> CharmOn = %s', tostring(state.charm.on))
+    if not state.session.iAmACharmClass then return false, 'not a charm class (DRU/ENC/NEC/BRD)' end
+    local key, field, word = 'CharmOn', 'on', words[1]
+    if what == 'keep' then key, field, word = 'CharmKeep', 'keep', words[2] end
+    if #words > (what == 'keep' and 2 or 1) then return false, 'unexpected word' end
+    local on, err = Control.onOff(word, state.charm[field])
+    if on == nil then return false, err end
+    Control.set(key, on, save and { save = true, section = 'Charm' } or nil)
+    return true, string.format('%s %s', key, on and 'on' or 'off')
 end
 
-local function onCharmKeep()
-    if not state.session.iAmACharmClass then
-        printf('--CharmKeep: not a charm class (DRU/ENC/NEC/BRD).')
-        return
-    end
-    state.charm.keep = not state.charm.keep
-    printf('\ay>> CharmKeep = %s', tostring(state.charm.keep))
-end
-
-local function onSetCharmed()
-    local petID = mq.TLO.Me.Pet.ID() or 0
-    if petID == 0 then
-        printf('--SetCharmed: no active pet to record.')
-        return
-    end
-    state.charm.petId   = petID
-    state.charm.petZone = mq.TLO.Zone.ShortName() or ''
-    printf('\ay>> CharmPet set: ID:%d zone:%s', petID, state.charm.petZone)
-end
-
-local function onResetCharmed()
-    state.charm.petId   = 0
-    state.charm.petZone = ''
-    printf('\ay>> CharmPet reset.')
-end
-
--- Mirrors /addcimmune — adds current target to the runtime charm-immune ID list
--- and optionally persists the name to KissAssist_Info.ini (when AACharmImmune=1).
-local function onAddCharmImmune()
+-- /kactl list charmimmune add: the target goes on the runtime charm-immune ID
+-- list, and its name on this zone's CharmImmune list when AACharmImmune=1
+-- (was /addcimmune).
+local function addCharmImmune()
     local tID   = mq.TLO.Target.ID() or 0
     local tType = (mq.TLO.Target.Type() or ''):lower()
-    if tID == 0 or tType ~= 'npc' then
-        printf('--AddCharmImmune: Target an NPC to add to the charm immune list.')
-        return
-    end
+    if tID == 0 or tType ~= 'npc' then return false, 'target an NPC first' end
     local name = mq.TLO.Target.CleanName() or ''
     if name:sub(1, 1) == '#' then name = name:sub(2) end
     name = name:match("^(.+)'s corpse$") or name:match("^(.+) corpse$") or name
     local tag = '|' .. tostring(tID)
     if state.charm.immuneIds:find(tag, 1, true) then
-        printf('>> %s (ID:%d) is already on the charm immune list.', name, tID)
-        return
+        return true, string.format('%s (ID %d) is already charm immune', name, tID)
     end
     state.charm.immuneIds = state.charm.immuneIds .. tag
     if state.charm.aaImmune and name ~= '' then
@@ -683,38 +654,65 @@ local function onAddCharmImmune()
             end
         end
     end
-    printf('\ay>> Charm Immune -> %s <- ID:%d added.', name, tID)
+    return true, string.format('%s (ID %d) is charm immune', name, tID)
 end
 
--- Add current target (or named arg) to zone-scoped MobsToBurn list in KissAssist_Info.ini.
--- Updates state.combat.namedWatchList at runtime so the change takes effect immediately.
-local function onAddBurn(name)
+-- /kactl list burn add [name]: the mob (or the target) goes on this zone's
+-- MobsToBurn list in KissAssist_Info.ini and the live named-watch list (was /addburn).
+local function addBurn(name)
     if not name or name == '' then
         name = mq.TLO.Target.CleanName() or ''
-        if name == '' then
-            printf('\ay/addburn [mobname] — no argument and no target')
-            return
-        end
+        if name == '' then return false, 'no name and no target' end
     end
     local iniFile = state.session.infoFileName
     local zone    = state.session.zoneName
-    if not iniFile or iniFile == '' or not zone or zone == '' then
-        printf('\ay/addburn: zone not available yet')
-        return
-    end
+    if not iniFile or iniFile == '' or not zone or zone == '' then return false, 'zone not available yet' end
     local existing = Utils.zoneIniGet(iniFile, zone, 'MobsToBurn') or ''
     local lname = name:lower()
     for entry in (existing .. ','):gmatch('([^,]+),') do
         if entry:match('^%s*(.-)%s*$'):lower() == lname then
-            printf('\ay%s is already on the burn list.', name)
-            return
+            return true, name .. ' is already on the burn list'
         end
     end
     local updated = (existing == '' or existing == 'null')
         and name or (existing .. ',' .. name)
     state.combat.namedWatchList[#state.combat.namedWatchList + 1] = lname
     mq.cmdf('/ini "%s" "%s" "MobsToBurn" "%s"', iniFile, zone, updated)
-    printf('\ayAdded \at%s\ay to burn list.', name)
+    return true, 'added ' .. name .. ' to the burn list'
+end
+
+-- /kactl list <list> add [name]. Phase 3a has the two lists whose commands were
+-- Lua only; the mac's /addpull, /addignore, /addimmune, /addfriend and
+-- /tbmanager lists join in the next step.
+local LISTS = {
+    burn        = function(name) return addBurn(name) end,
+    charmimmune = function(name)
+        if name and name ~= '' then return false, 'charmimmune adds the target; no name' end
+        return addCharmImmune()
+    end,
+}
+
+local function kactlList(words)
+    local list, action = tostring(words[1] or ''):lower(), tostring(words[2] or ''):lower()
+    local add = LISTS[list]
+    if not add then return false, 'lists: burn, charmimmune' end
+    if action ~= 'add' then return false, 'expects add' end
+    local name = #words > 2 and table.concat(words, ' ', 3) or nil
+    return add(name)
+end
+
+-- /kactl medley quiet on|off|toggle: bard only; MQ2Medley's quiet mode (was
+-- /kamedleyquiet). /medley quiet flips it, so it's only sent when it changes.
+local function kactlMedley(words)
+    if tostring(words[1] or ''):lower() ~= 'quiet' or #words ~= 2 then return false, 'expects quiet on|off|toggle' end
+    if not state.session.iAmABard then return false, 'bard only' end
+    local on, err = Control.onOff(words[2], state.bard.medleyQuiet)
+    if on == nil then return false, err end
+    if on ~= (state.bard.medleyQuiet == true) then
+        mq.cmd('/medley quiet')
+        state.bard.medleyQuiet = on
+    end
+    return true, 'medley quiet ' .. (on and 'on' or 'off')
 end
 
 -- ─── Info display ─────────────────────────────────────────────────────────────
@@ -795,10 +793,10 @@ local function onKissCheck(...)
 end
 
 -- The mac's /kasettings was a chat-menu settings editor; the KissAssist window
--- replaces it, so this just opens the window (/kaui toggles it).
+-- replaces it, so this just opens the window (/kactl ui toggles it).
 local function onKaSettings(_cmd1, _cmd2, _skipIni)
     require('modules.ui').show()
-    printf('\ay>> Settings are in the KissAssist window (/kaui to toggle it).')
+    printf('\ay>> Settings are in the KissAssist window (/kactl ui toggle to show or hide it).')
 end
 
 local function onWriteSpells(quiet)
@@ -953,11 +951,9 @@ end
 
 local INTEGRATION_TESTS = { 'debug_cmds', 'toggle_cmds', 'camp_cmds', 'switchma', 'charm_cmds', 'switchtarget', 'recent' }
 
-local function onKaTest(testName)
-    if not testName or testName == '' then
-        printf('\ay/katest <debug_cmds|toggle_cmds|camp_cmds|switchma|charm_cmds|switchtarget|recent|all>')
-        return
-    end
+-- Runs from the main loop (state.misc.pendingTest), not inside the /kactl bind,
+-- since the suites send /kactl commands of their own.
+function Binds.runTests(testName)
     local names = testName:lower() == 'all' and INTEGRATION_TESTS or { testName }
     -- Single shared TH across all suites so the final summary covers everything.
     package.loaded['tests.test_helpers'] = nil
@@ -969,10 +965,22 @@ local function onKaTest(testName)
             require(path).run(mq, state, TH)
         end)
         if not ok then
-            printf('\ar[ERROR]\ax /katest %s: %s', name, tostring(err))
+            printf('\ar[ERROR]\ax /kactl test %s: %s', name, tostring(err))
         end
     end
     TH.printSummary()
+end
+
+-- /kactl test <suite>|all (was /katest): queue the run for the main loop.
+local function kactlTest(words)
+    local name = tostring(words[1] or ''):lower()
+    local known = name == 'all'
+    for _, n in ipairs(INTEGRATION_TESTS) do if n == name then known = true end end
+    if #words ~= 1 or not known then
+        return false, 'suites: ' .. table.concat(INTEGRATION_TESTS, ', ') .. ', all'
+    end
+    state.misc.pendingTest = name
+    return true, 'running ' .. name
 end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
@@ -998,7 +1006,6 @@ function Binds.register(s, b, cast, combat, config, _comms)
 
     bind('/kisscheck',      onKissCheck)
     bind('/kasettings',     onKaSettings)
-    bind('/katest',         onKaTest)
     bind('/togglevariable', onToggleVariable)
     bind('/changevarint',   onChangeVarInt)
 
@@ -1006,20 +1013,9 @@ function Binds.register(s, b, cast, combat, config, _comms)
     bind('/burn',              onBurn)
     bind('/backoff',           onBackOff)
     bind('/switchnow',         onSwitch)
-    bind('/kaswitchtarget',    onSwitchTarget)
-    bind('/katargetmode',      onTargetMode)
     bind('/switchma',          onSwitchMA)
     bind('/kisscast',       onKissCast)
     -- /peton and /autofireon are mac aliases (modules/aliases.lua), not commands.
-    bind('/mounton',        onMountOn)
-    bind('/mountoff',       onMountOff)
-    bind('/kainterrupton',  function()
-        local v = (state.cast.castingInterruptOn or 0) == 0 and 62 or 0
-        state.cast.castingInterruptOn = v
-        _config.set('Spells', 'CastingInterruptOn', tostring(v))
-        _config.save()
-        printf('\awCastingInterruptOn: %s', v ~= 0 and '\agON (62)' or '\arOFF')
-    end)
 
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)
@@ -1039,36 +1035,17 @@ function Binds.register(s, b, cast, combat, config, _comms)
     bind('/addpull',        onAddPull)
     bind('/addignore',      onAddIgnore)
     bind('/addimmune',      onAddMezImmune)
-    bind('/addburn',        onAddBurn)
 
-    -- Charm
-    bind('/charmon',        onCharmOn)
-    bind('/charmkeep',      onCharmKeep)
-    bind('/setcharmed',     onSetCharmed)
-    bind('/resetcharmed',   onResetCharmed)
-    bind('/addcimmune',     onAddCharmImmune)
-
-    bind('/kamedleyquiet',  function()
-        if not state.session.iAmABard then
-            printf('--MedleyQuiet: bard only.')
-            return
-        end
-        mq.cmd('/medley quiet')
-        state.bard.medleyQuiet = not state.bard.medleyQuiet
-    end)
-
-    -- Script control
-    -- /kapause [on|off|1|0]: soft pause (#353); no argument toggles.
-    -- /kactl <verb> [args]: script control (modules/control.lua, #360)
+    -- Script control: /kactl <verb> [args] (modules/control.lua, #360). The
+    -- verbs whose code lives here; mode, set, pause and stop are in control.lua,
+    -- ui in ui.lua. Lua-only commands (/kapause, /kastop, /katest, /charmon, ...)
+    -- became these verbs in #363.
+    Control.verb('target', 'target <id>|clear', kactlTarget)
+    Control.verb('charm',  'charm on|off|toggle | keep on|off|toggle  [save] | set | reset', kactlCharm)
+    Control.verb('medley', 'medley quiet on|off|toggle', kactlMedley)
+    Control.verb('list',   'list burn|charmimmune add [name]', kactlList)
+    Control.verb('test',   'test <suite>|all', kactlTest)
     bind('/kactl', function(...) Control.command({ ... }) end)
-    bind('/kapause', function(arg)
-        local Pause = require('modules.pause')
-        Pause.set(Pause.parseArg(arg))
-    end)
-    bind('/kastop', function()
-        printf('\arKissAssist stopping...\ax')
-        state.terminate = true
-    end)
 
     -- The mac's /alias shortcuts (mac LoadAliases). Runs after every bind so names
     -- the port binds are skipped: MQ won't add an alias while a command exists.

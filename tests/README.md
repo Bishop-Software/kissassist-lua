@@ -55,9 +55,10 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_pull_chain.lua` | `Pull.chainPullNextMob()` (the `.mac`'s `ChainPullNextMob`): mid-fight hand-off to the next pull below ChainPullHP, and every case that keeps fighting instead; chain pull is puller-only (#257) |
 | `unit/test_pull_retry.lua` | A failed pull retries in place (`dispatchDone`); `pullWithCast` shrinks the pull distance out of sight, retries fizzles, and stops without casting while soft-paused (#351, #353) |
 | `unit/test_afk_camp_on_death.lua` | CampOnDeath camp-out (#243); while soft-paused the stranger and GM holds are skipped but GM end/unload/quit still run (#353) |
-| `unit/test_pause.lua` | Soft pause (#353): `Pause.set` is idempotent, stops attack/melee/stick/nav/moveto/advpath/pet/medley and resets combat when pausing, turns MQ2Melee back on when resuming (not while backed off); `parseArg` on/off/1/0/toggle; `loadSettings` (`*WhilePaused`); `warnAggro` throttle |
+| `unit/test_pause.lua` | Soft pause (#353): `Pause.set` is idempotent, stops attack/melee/stick/nav/moveto/advpath/pet/medley and resets combat when pausing, turns MQ2Melee back on when resuming (not while backed off); `loadSettings` (`*WhilePaused`); `warnAggro` throttle |
 | `unit/test_tlo.lua` | `${KissAssist}` TLO (#353): member values, registration through a faked `mq.DataType` / `mq.AddTopLevelObject`, name already in use, unregister |
 | `unit/test_control.lua` | `Control.set` (`modules/control.lua`, the one setter): every INI key the GUI sets resolves to its state field; value conversion (booleans, numbers, `on`/off, CastingInterruptOn 62); saving under a section; side effects (TargetSwitchingOn MA-only, MaxRadius leash, BuffsOn 2 group pets, DPSOn 2, ChaseAssist, ReturnToCamp new camp, waithere, GroupWatch routing); `/togglevariable` and `/changevarint` adapters |
+| `unit/test_kactl.lua` | `/kactl` verbs (#363): the router and `${KissAssist.LastResult}`; `set` (values, `toggle`, `save` under the INI section found in the default config, no value rejected); `pause on|off|toggle`; `stop`; `target <id>|clear` (bad ID changes nothing); `charm on|off|toggle`, `keep`, `set`, `reset`; `medley quiet` (sent only on a change); `list burn|charmimmune add`; `test` (queued for the main loop); the Lua-only commands they replace (`/kapause`, `/kastop`, `/katest`, `/charmon`, ...) are no longer bound |
 
 Counts change as tests are added; the runner prints the current total.
 
@@ -79,17 +80,17 @@ Integration tests run from **within a live kissassist session**. They issue slas
 
 ### How to run
 
-Start kissassist normally, then use the `/katest` bind:
+Start kissassist normally, then use `/kactl test` (the run is queued and starts on the next main-loop pass):
 
 ```
-/katest all                  ← runs all seven suites in sequence
-/katest debug_cmds           ← run one suite
-/katest toggle_cmds
-/katest camp_cmds
-/katest switchma
-/katest charm_cmds
-/katest switchtarget
-/katest recent
+/kactl test all              ← runs all seven suites in sequence
+/kactl test debug_cmds       ← run one suite
+/kactl test toggle_cmds
+/kactl test camp_cmds
+/kactl test switchma
+/kactl test charm_cmds
+/kactl test switchtarget
+/kactl test recent
 ```
 
 All tests save and restore any state they modify — it is safe to run in-game while the character is active.
@@ -99,11 +100,11 @@ All tests save and restore any state they modify — it is safe to run in-game w
 | File | Assertions | What is tested |
 |---|---|---|
 | `integration/test_debug_cmds.lua` | 12 | `/debug on/off`, `/debug combat on/off`, `/debug all on/off`, `/kisscheck` and `/zoneinfo` no-crash |
-| `integration/test_toggle_cmds.lua` | 30 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard; `/kapause` on/off/0/1/toggle and `${KissAssist.Paused}` / `.State` / `${KissAssist}` (#353, pauses briefly, so run it out of combat) |
+| `integration/test_toggle_cmds.lua` | 39 | `/togglevariable` on bool (`dpsOn`, `meleeOn`) and number (`healsOn`); DPSOn 0/1/2 (`dpsOnOoc`); `/changevarint` for `assistAt` and `campRadius`; unknown-var no-crash guard; `/kactl pause` on/off/toggle (no argument rejected), `/kactl set MeleeOn` off/toggle/no value and `${KissAssist.Paused}` / `.State` / `${KissAssist}` (#353, pauses briefly, so run it out of combat) |
 | `integration/test_camp_cmds.lua` | 21 | `/makecamphere` sets `returnToCamp`, clears `chaseAssist`, captures current coords; `/kactl mode manual` keeps the spot; `/kactl mode camp resume` goes back to it (nothing with no camp); `/kactl mode camp here`; `/kactl mode chase <name>`; bad arguments change nothing; `${KissAssist.Mode}`. `/stayhere`, `/chaseme` and other group/others forms aren't run (they would move the live group's boxes) |
 | `integration/test_switchma.lua` | ~5–6 | `/switchma <name>` updates `mainAssist` and resets `calledTargetID`; self-name sets `iAmMA=true`; no-arg guard leaves state unchanged; broadcast-skip form still updates state |
 | `integration/test_charm_cmds.lua` | 16 | `State.charm` sub-table and field types exist at runtime; `charmArray` has 50 slots; `iAmACharmClass` matches character's class; `charm.on`/`charm.keep` are mutable; `petId`/`petZone` clear correctly |
-| `integration/test_switchtarget.lua` | ~6 | `/kaswitchtarget` updates the aggro/combat target fields |
+| `integration/test_switchtarget.lua` | 8 | `/kactl target clear` and `<id>` update the aggro/combat target fields; a bad ID or no argument changes nothing; `${KissAssist.LastResult}` ok / error |
 | `integration/test_recent.lua` | 15–16 | Recent PRs without a fight (#246): mac aliases in `MacroQuest.ini` (delete list and KissTell gone, `/ktdismount` kept); window title = parsed `WinTitleText`; CheckStuckGems leaves a normal client alone, Origin/CastingWindow lookups resolve; `petHoldCommand` follows the live Companion's Discipline rank; `stopMoving` returns at once when still; with a pet and PetHoldOn, the pet is really on hold/ghold. Re-sets the window title; puts the pet on hold if PetHoldOn |
 
 **Total: ~81 integration assertions**
@@ -132,4 +133,4 @@ The following require live combat, group members, or specific game states and re
 - Cross-character `.mac` interop (Milestone 12)
 - Feign death, group escape, corpse recovery
 - Stranger/GM hold sequences (AFK Tools)
-- Soft pause (`/kapause`, #353) in action: the main loop doing nothing while paused; a pause sent mid-fight, mid-pull, mid-return-to-camp, mid-chase or mid-buff-cycle stopping it at once; `HealWhilePaused` / `MoveWhilePaused` / `WarnAggroWhilePaused`; the Pause button and PAUSED status; MQ2Boxr reading `${KissAssist.Paused}`
+- Soft pause (`/kactl pause`, #353) in action: the main loop doing nothing while paused; a pause sent mid-fight, mid-pull, mid-return-to-camp, mid-chase or mid-buff-cycle stopping it at once; `HealWhilePaused` / `MoveWhilePaused` / `WarnAggroWhilePaused`; the Pause button and PAUSED status; MQ2Boxr reading `${KissAssist.Paused}`

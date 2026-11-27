@@ -43,7 +43,7 @@ local State = {
         chaseAssist     = false,
         pullPath        = 'null',
         heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
-        paused          = false,  -- /kapause soft pause (#353); see modules/pause.lua
+        paused          = false,  -- soft pause, /kactl pause (#353); see modules/pause.lua
         healWhilePaused = false,  -- [General] HealWhilePaused: cures/heals keep running while paused
         moveWhilePaused = false,  -- [General] MoveWhilePaused: camp return / chase keep running while paused
         warnAggroWhilePaused = false, -- [General] WarnAggroWhilePaused: warn + beep on aggro while paused
@@ -569,6 +569,7 @@ local State = {
         campfireOn           = 0,      -- [General] CampfireOn: 0 off, N = campsite kit to place (mac:12855)
         campfireKit          = 1,      -- the INI's kit (CampfireOn), kept when the UI toggle is turned off and on
         pendingCampfire      = false,  -- UI "Place Campfire Now": placed by the main loop (it waits)
+        pendingTest          = '',     -- /kactl test <suite>: run by the main loop, outside the bind
         myCmd                = '',  -- custom command string from INI [General] MyCmd
         acceptInvitesOn      = 1,      -- [General] AcceptInvitesOn: accept group invites (mac:8488)
         rezAcceptOn          = '1|90', -- [General] RezAcceptOn: MQ2Rez accept on|pct at startup (mac:16405)

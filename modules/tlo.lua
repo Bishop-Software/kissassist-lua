@@ -1,10 +1,11 @@
 -- ${KissAssist} TLO (#353), for macros and plugins such as MQ2Boxr:
 --   ${KissAssist}             "Paused" or "Running" (exists only while kissassist-lua runs)
---   ${KissAssist.Paused}      TRUE while soft-paused (/kapause)
+--   ${KissAssist.Paused}      TRUE while soft-paused (/kactl pause)
 --   ${KissAssist.State}       "Paused" or "Running"
 --   ${KissAssist.Role}        current role
 --   ${KissAssist.MainAssist}  current main assist
 --   ${KissAssist.Mode}        movement mode: manual, camp or chase (#362)
+--   ${KissAssist.LastResult}  outcome of the last /kactl: 'ok' or 'error: <why>' (#363)
 -- The macro registers no TLO, so the name can't clash with kissassist.mac.
 local mq      = require('mq')
 local Control = require('modules.control')
@@ -23,6 +24,7 @@ Tlo.members = {
     Role       = function() return 'string', _state.session.role or '' end,
     MainAssist = function() return 'string', _state.session.mainAssist or '' end,
     Mode       = function() return 'string', Control.modeOf(_state) end,
+    LastResult = function() return 'string', Control.lastResult or '' end,
 }
 
 function Tlo.init(state)

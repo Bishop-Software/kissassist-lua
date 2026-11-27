@@ -2,7 +2,7 @@
 -- Integration tests for the /switchma bind (Roles.switchMA, mac Bind_SwitchMA).
 -- Covers test plan section S22.5.x.
 --
--- Run in-game while kissassist is running: /katest switchma
+-- Run in-game while kissassist is running: /kactl test switchma
 -- Every command passes the 3rd arg 1 so nothing is broadcast to the group:
 -- a broadcast /switchma would change the MA and role on the other boxes too.
 local M = {}
