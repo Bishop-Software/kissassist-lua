@@ -104,6 +104,7 @@ local State = {
         namedWatchList     = {},
         petTargetSwitch    = false,    -- set from INI [General] PetTargetSwitch
         targetSwitchingOn  = false,
+        losBeforeCombat    = false,    -- [General] LOSBeforeCombat: move for line of sight first
         manualTargetMode   = false,
         useMQ2Melee        = false,
         mq2MeleeMode       = 1,      -- UseMQ2Melee 1 (MQ2Melee sticks itself) or 2 (its INI stickcmd)

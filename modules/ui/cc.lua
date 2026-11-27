@@ -3,6 +3,7 @@
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 local intInput = Helpers.intInput
 
 local MEZ_MODE_LABELS = { 'Off', 'Single + AE', 'Single only', 'AE only' }
@@ -26,10 +27,10 @@ function CC.drawCC()
             ImGui.PopItemWidth()
 
             ImGui.Spacing()
-            intInput('Mez Radius##mez', s.mez.radius,   1, 500, 'Mez', 'MezRadius',   function(v) s.mez.radius   = v end)
-            intInput('Stop HP%##mez',   s.mez.stopHPs,  1, 100, 'Mez', 'MezStopHPs',  function(v) s.mez.stopHPs  = v end)
-            intInput('Min Level##mez',  s.mez.minLevel, 1, 999, 'Mez', 'MezMinLevel', function(v) s.mez.minLevel = v end)
-            intInput('Max Level##mez',  s.mez.maxLevel, 1, 999, 'Mez', 'MezMaxLevel', function(v) s.mez.maxLevel = v end)
+            intInput('Mez Radius##mez', s.mez.radius,   1, 500, 'Mez', 'MezRadius')
+            intInput('Stop HP%##mez',   s.mez.stopHPs,  1, 100, 'Mez', 'MezStopHPs')
+            intInput('Min Level##mez',  s.mez.minLevel, 1, 999, 'Mez', 'MezMinLevel')
+            intInput('Max Level##mez',  s.mez.maxLevel, 1, 999, 'Mez', 'MezMaxLevel')
 
             ImGui.Spacing()
             ImGui.Separator()
@@ -117,25 +118,17 @@ function CC.drawCC()
         if s.session.iAmACharmClass then
             if ImGui.BeginTabItem('Charm') then
                 ImGui.Spacing()
-                checkbox('Charm On', s.charm.on, function(v)
-                    s.charm.on = v
-                    Config.set('Charm', 'CharmOn', v and '1' or '0')
-                    Config.save()
-                end)
+                checkbox('Charm On', s.charm.on, function(v) set('Charm', 'CharmOn', v) end)
                 if ImGui.IsItemHovered() then
                     ImGui.SetTooltip('Charm a pet from nearby mobs and keep it charmed (also /charmon)')
                 end
                 ImGui.SameLine()
-                checkbox('Charm Keep', s.charm.keep, function(v)
-                    s.charm.keep = v
-                    Config.set('Charm', 'CharmKeep', v and '1' or '0')
-                    Config.save()
-                end)
+                checkbox('Charm Keep', s.charm.keep, function(v) set('Charm', 'CharmKeep', v) end)
 
                 ImGui.Spacing()
-                intInput('Charm Radius##charm', s.charm.radius,   1, 500, 'Charm', 'CharmRadius',   function(v) s.charm.radius   = v end)
-                intInput('Min Level##charm',    s.charm.minLevel, 1, 999, 'Charm', 'CharmMinLevel', function(v) s.charm.minLevel = v end)
-                intInput('Max Level##charm',    s.charm.maxLevel, 0, 999, 'Charm', 'CharmMaxLevel', function(v) s.charm.maxLevel = v end)
+                intInput('Charm Radius##charm', s.charm.radius,   1, 500, 'Charm', 'CharmRadius')
+                intInput('Min Level##charm',    s.charm.minLevel, 1, 999, 'Charm', 'CharmMinLevel')
+                intInput('Max Level##charm',    s.charm.maxLevel, 0, 999, 'Charm', 'CharmMaxLevel')
 
                 ImGui.Spacing()
                 ImGui.Separator()

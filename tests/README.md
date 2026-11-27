@@ -57,6 +57,7 @@ Suites run in the order listed in `tests/run_tests.lua`. **A new `unit/test_*.lu
 | `unit/test_afk_camp_on_death.lua` | CampOnDeath camp-out (#243); while soft-paused the stranger and GM holds are skipped but GM end/unload/quit still run (#353) |
 | `unit/test_pause.lua` | Soft pause (#353): `Pause.set` is idempotent, stops attack/melee/stick/nav/moveto/advpath/pet/medley and resets combat when pausing, turns MQ2Melee back on when resuming (not while backed off); `parseArg` on/off/1/0/toggle; `loadSettings` (`*WhilePaused`); `warnAggro` throttle |
 | `unit/test_tlo.lua` | `${KissAssist}` TLO (#353): member values, registration through a faked `mq.DataType` / `mq.AddTopLevelObject`, name already in use, unregister |
+| `unit/test_control.lua` | `Control.set` (`modules/control.lua`, the one setter): every INI key the GUI sets resolves to its state field; value conversion (booleans, numbers, `on`/off, CastingInterruptOn 62); saving under a section; side effects (TargetSwitchingOn MA-only, MaxRadius leash, BuffsOn 2 group pets, DPSOn 2, ChaseAssist, ReturnToCamp new camp, waithere, GroupWatch routing); `/togglevariable` and `/changevarint` adapters |
 
 Counts change as tests are added; the runner prints the current total.
 
