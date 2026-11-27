@@ -284,9 +284,10 @@ function Roles.maSnapshot()
     }
 end
 
--- Pure. The /switchma line the UI sends (bind args: name role [1 = don't broadcast]).
+-- Pure. The /kactl ma line the UI sends (#363; 'group' tells the group too).
+-- Sent as a command rather than called, so the switch runs outside the ImGui frame.
 function Roles.switchMACommand(name, role, broadcast)
-    return string.format('/switchma %s %s%s', name, role or 'tank', broadcast and '' or ' 1')
+    return string.format('/kactl ma %s %s%s', name, role or 'tank', broadcast and ' group' or '')
 end
 
 return Roles
