@@ -147,6 +147,38 @@ function M.run(mq, State, TH)
     State.pull.mobsToIgnoreByID = origIgnore
 
     TH.assert_eq(type(State.session.legacyCmdNotice), 'boolean', 'LegacyCmdNotice loaded')
+
+    -- /kactl hold (#364): on/off/toggle, strict, ${KissAssist.Hold} -----------------
+    local origHold = State.session.hold
+    mq.cmd('/kactl hold on') ; mq.delay(D)
+    TH.assert_true(State.session.hold, '/kactl hold on')
+    TH.assert_eq(mq.parse('${KissAssist.Hold}'), 'TRUE', '${KissAssist.Hold} TRUE while holding')
+    mq.cmd('/kactl hold toggle') ; mq.delay(D)
+    TH.assert_false(State.session.hold, '/kactl hold toggle → off')
+    mq.cmd('/kactl hold') ; mq.delay(D)
+    TH.assert_false(State.session.hold, '/kactl hold (no argument) → rejected, unchanged')
+    TH.assert_true((mq.TLO.KissAssist.LastResult() or ''):find('^error:') ~= nil,
+        '${KissAssist.LastResult} error: after /kactl hold with no argument')
+    TH.assert_eq(mq.parse('${KissAssist.Hold}'), 'FALSE', '${KissAssist.Hold} FALSE')
+    mq.cmd(origHold and '/kactl hold on' or '/kactl hold off') ; mq.delay(D)
+
+    -- /kactl target (#364): set on the nearest NPC (if any), ${KissAssist.Target},
+    -- clear. The main loop doesn't run during the test, so it never engages it.
+    local origForced = State.combat.forcedTargetID
+    local npcID = mq.TLO.NearestSpawn('npc').ID() or 0
+    if npcID > 0 then
+        mq.cmd('/kactl target ' .. npcID) ; mq.delay(D)
+        TH.assert_eq(State.combat.forcedTargetID, npcID, '/kactl target <nearest NPC>: forced target set')
+        TH.assert_eq(mq.parse('${KissAssist.Target}'), tostring(npcID), '${KissAssist.Target} is its ID')
+    end
+    local myID = mq.TLO.Me.ID() or 0
+    mq.cmd('/kactl target ' .. myID) ; mq.delay(D)
+    TH.assert_true((mq.TLO.KissAssist.LastResult() or ''):find('not an NPC', 1, true) ~= nil,
+        '/kactl target <myself>: refused, not an NPC')
+    mq.cmd('/kactl target clear') ; mq.delay(D)
+    TH.assert_eq(State.combat.forcedTargetID, 0, '/kactl target clear')
+    TH.assert_eq(mq.parse('${KissAssist.Target}'), '0', '${KissAssist.Target} 0 after clear')
+    State.combat.forcedTargetID = origForced
     mq.cmd(origPaused and '/kactl pause on' or '/kactl pause off') ; mq.delay(D)
 end
 

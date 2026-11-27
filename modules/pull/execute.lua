@@ -31,6 +31,12 @@ function Execute.init(state, utils, cast, combat, movement, pull)
     Pull      = pull
 end
 
+-- Paused (#353) or holding (#364): drop the pull where it is. Not a failed
+-- pull, so no ignore list and no walk back.
+local function halted()
+    return _state.session.paused == true or _state.session.hold == true
+end
+
 -- After a successful pull, wait in camp for the mob to arrive. Mirrors
 -- Sub WaitForMob (mac:10469). Up to 45 s; gives up (and ignores the target)
 -- if aggro is lost. Per role:
@@ -46,7 +52,7 @@ end
 local function waitForMobLoop()
     local s    = _state
     local role = s.session.role
-    if role == 'hunter' or role == 'hunterpettank' or s.dps.paused or s.session.paused then return end
+    if role == 'hunter' or role == 'hunterpettank' or s.dps.paused or halted() then return end
     if not s.pull.pulled then return end
 
     local me       = mq.TLO.Me
@@ -69,7 +75,7 @@ local function waitForMobLoop()
             mq.cmd(fm == 1 and '/face fast nolook' or '/face nolook')
         end
         mq.doevents()
-        if s.session.paused then return end  -- soft pause (#353)
+        if halted() then return end  -- paused or holding
         require('modules.gothit').respond()  -- Event_GotHit (mac:11069)
         if s.combat.myTargetID == 0 then
             _combat.combatTargetCheck(0)
@@ -194,7 +200,7 @@ local function pullWithMelee(mobID)
     mq.delay(1000)
     while true do
         mq.doevents()
-        if s.session.paused then break end  -- soft pause (#353)
+        if halted() then break end  -- paused or holding
         if landed() then break end
         local sp = mq.TLO.Spawn('id ' .. mobID)
         if not sp() or (sp.Type() or ''):lower() == 'corpse' then break end
@@ -284,7 +290,7 @@ local function pullWithRanged(mobID)
     local tries = 0
     while tries < 3 do
         mq.doevents()
-        if s.session.paused then return end  -- soft pause (#353)
+        if halted() then return end  -- paused or holding
         if hasAggro() then s.pull.pulled = true; return end
         -- "You cannot see your target.": face it, wait a second and try again (mac:10113-10118)
         if s.movement.cantSee then
@@ -318,10 +324,10 @@ local function pullWithPet(mobID)
     local petMoving    = false
     local triedSending = 0
     while not hasAggro() do
-        if s.session.paused then break end  -- soft pause (#353)
+        if halted() then break end  -- paused or holding
         if not petMoving then mq.cmd('/pet attack') end
-        mq.delay(2000, function() mq.doevents(); return hasAggro() or s.session.paused end)
-        if hasAggro() or s.session.paused then break end
+        mq.delay(2000, function() mq.doevents(); return hasAggro() or halted() end)
+        if hasAggro() or halted() then break end
         if mq.TLO.Me.Pet.Moving() then
             petMoving    = true
             triedSending = 0
@@ -351,7 +357,7 @@ local function pullWithCast(mobID, pullDist)
     local tries = 0
     while tries < 5 do
         mq.doevents()
-        if s.session.paused then return end  -- soft pause (#353)
+        if halted() then return end  -- paused or holding
         if hasAggro() then s.pull.pulled = true; return end
         local sp = mq.TLO.Spawn('id ' .. mobID)
         if not (sp() and sp.LineOfSight()) then
@@ -395,8 +401,8 @@ local function preMoveChecks(r)
     local s = _state
     mq.doevents()
 
-    -- Soft pause (#353): drop the pull where it is
-    if s.session.paused then
+    -- Paused or holding: drop the pull where it is
+    if halted() then
         pullReset()
         return DONE
     end
@@ -645,8 +651,8 @@ local function finishPull(r)
     end
     if r.withAlt == 'Ranged' then Execute.swapRangedBack() end  -- mac:9931
     s.pull.pulling = false
-    -- Paused mid-pull (#353): not a failed pull, so no ignore list, no walk back
-    if s.session.paused then return end
+    -- Paused or holding mid-pull: not a failed pull, so no ignore list, no walk back
+    if halted() then return end
 
     if r.returnStat == 'btcr' then
         -- Don't keep retrying a mob we couldn't pull (mac:9936-9942).

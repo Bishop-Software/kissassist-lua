@@ -8,7 +8,8 @@ function M.run(TH, MockMQ)
     MockMQ.reset()
 
     local Tlo = require('modules.tlo')
-    local state = { session = { paused = false, role = 'tank', mainAssist = 'Tankname' } }
+    local state = { session = { paused = false, role = 'tank', mainAssist = 'Tankname' },
+                    combat  = { forcedTargetID = 0 } }
     Tlo.init(state)
 
     local function val(name) return select(2, Tlo.members[name]()) end
@@ -24,6 +25,16 @@ function M.run(TH, MockMQ)
     TH.assert_true(val('Paused'), 'Paused TRUE while paused')
     TH.assert_eq(val('State'), 'Paused', 'State Paused')
     state.session.paused = false
+    TH.assert_eq(typ('Target'), 'int', 'Target is an int')
+    TH.assert_eq(val('Target'), 0, 'Target 0 with no forced target')
+    state.combat.forcedTargetID = 1234
+    TH.assert_eq(val('Target'), 1234, 'Target is the forced target ID')
+    state.combat.forcedTargetID = 0
+    TH.assert_eq(typ('Hold'), 'bool', 'Hold is a bool')
+    TH.assert_false(val('Hold'), 'Hold FALSE by default')
+    state.session.hold = true
+    TH.assert_true(val('Hold'), 'Hold TRUE while holding')
+    state.session.hold = false
 
     -- ── no TLO support (plain mock): register skips quietly ─────────────────
     TH.assert_false(Tlo.register(), 'no mq.DataType: not registered')

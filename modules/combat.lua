@@ -237,6 +237,12 @@ function Combat.checkForAdds(calledFrom)
     -- Re-acquire a valid living target within camp radius before declaring adds (mac:2346).
     -- Manual target mode owns selection — don't force a re-lock onto the tracked mob.
     local myID = _state.combat.myTargetID
+    -- A forced target (/kactl target, #364) is re-targeted wherever it is.
+    local forced = Util.forcedTarget()
+    if forced ~= 0 then
+        if (mq.TLO.Target.ID() or 0) ~= forced then mq.cmd('/squelch /target id ' .. forced) end
+        return
+    end
     if (mq.TLO.Target.ID() or 0) == 0 and myID ~= 0 and not _state.combat.manualTargetMode then
         local sp = mq.TLO.Spawn('id ' .. myID)
         if sp and (sp.ID() or 0) ~= 0 then
@@ -312,7 +318,7 @@ end
 -- we stay put rather than running out to it.
 local _combatPosSpam = 0
 local function getCombatPosition(mobID)
-    if _state.dps.paused then return end
+    if _state.dps.paused or _state.session.hold then return end  -- no repositioning while holding (#364)
     local function mob() return mq.TLO.Spawn('id ' .. mobID) end
     local function dist() return math.floor(mob().Distance3D() or 999) end
     if (mob().ID() or 0) == 0 then return end
@@ -421,7 +427,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
         if _state.misc.dmz and not mq.TLO.Me.InInstance() then return end
         if mq.TLO.Me.Hovering() then return end
         if _state.session.iAmDead and aggroID == 0 then return end
-        if mobCount == 0 and aggroID == 0 then
+        -- A forced target (/kactl target, #364) is fought wherever it is.
+        if mobCount == 0 and aggroID == 0 and Util.forcedTarget() == 0 then
             -- Tank: after a kill, mezzed adds that were mem-blurred off XTarget are still
             -- in camp. Let getCombatTarget's MezMobFlag scan find them (mac:493, mac:899).
             if not (_state.session.iAmMA and _state.mez.mobFlag
@@ -483,7 +490,8 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
 
             if not isPuller then
                 local aID = tonumber(_state.combat.aggroTargetID) or 0
-                if aID ~= 0 then
+                -- No wait for a hater in camp with a forced target (#364).
+                if aID ~= 0 and (_state.combat.forcedTargetID or 0) == 0 then
                     while true do
                         if isDeadOrGone(aID) then break end
 

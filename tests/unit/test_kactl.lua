@@ -4,7 +4,8 @@
 -- pause, stop, target, charm, medley, list, test (3a); the replacements for the
 -- mac's commands (backoff, burn, ignore, switch, ma, cast, debug, buff, ini,
 -- set PullRanking, list toobuff, info, parse) and the once-per-session
--- deprecation notice on the mac's commands (3b); Control.run; and that the
+-- deprecation notice on the mac's commands (3b); the forced target and hold, with
+-- ${KissAssist.Target} / ${KissAssist.Hold} (phase 4, #364); Control.run; and that the
 -- Lua-only commands are no longer bound. (mode is in test_camp_toggle; ui needs
 -- the ImGui window and is covered in game.)
 local M = {}
@@ -134,10 +135,13 @@ function M.run(TH, MockMQ)
     -- ── target ──────────────────────────────────────────────────────────────
     -- A fake Spawn: ID 42 is an NPC called 'a mob'. Set again after each MockMQ.reset().
     local function fakeSpawn()
+        -- 43 is a PC, 44 an NPC's pet, 45 a PC's pet.
+        local types = { [42] = 'NPC', [43] = 'PC', [44] = 'Pet', [45] = 'Pet' }
         MockMQ.set('TLO.Spawn', function(q)
             local id = tonumber(tostring(q):match('id (%d+)'))
-            return { ID = function() return id == 42 and 42 or 0 end, CleanName = function() return 'a mob' end,
-                     Type = function() return id == 42 and 'NPC' or nil end }
+            return { ID = function() return types[id] and id or 0 end, CleanName = function() return 'a mob' end,
+                     Type = function() return types[id] end,
+                     Master = { Type = function() return id == 44 and 'NPC' or 'PC' end } }
         end)
     end
     fakeSpawn()
@@ -148,9 +152,48 @@ function M.run(TH, MockMQ)
     TH.assert_false(kactl('target', '99'), 'target with no such spawn fails')
     TH.assert_true(state.combat.myTargetID == 9 and state.combat.aggroTargetID == '42',
         'target with no such spawn: nothing changed')
+    TH.assert_eq(state.combat.forcedTargetID, 42, 'target: forced target set (#364)')
+    TH.assert_false(kactl('target', '43'), 'target: a PC is refused')
+    TH.assert_eq(Control.lastResult, 'error: not an NPC: a mob', 'target: PC refused with the reason')
+    TH.assert_false(kactl('target', '45'), "target: a PC's pet is refused")
+    TH.assert_eq(state.combat.forcedTargetID, 42, 'target refused: forced target unchanged')
+    TH.assert_true(kactl('target', '44'), "target: an NPC's pet is accepted")
+    TH.assert_eq(state.combat.forcedTargetID, 44, "target: forced target is the NPC's pet")
     TH.assert_true(kactl('target', 'clear'), 'target clear')
     TH.assert_eq(state.combat.aggroTargetID, '', 'target clear: cleared')
+    TH.assert_eq(state.combat.forcedTargetID, 0, 'target clear: no forced target')
     TH.assert_false(kactl('target'), 'target needs an ID or clear')
+    package.loaded['modules.tlo'] = nil
+    local Tlo2 = require('modules.tlo')
+    Tlo2.init(state)
+    TH.assert_eq(select(2, Tlo2.members.Target()), 0, '${KissAssist.Target} 0 with none')
+    kactl('target', '42')
+    TH.assert_eq(select(2, Tlo2.members.Target()), 42, '${KissAssist.Target} is the forced ID')
+    kactl('target', 'clear')
+
+    -- ── hold (#364) ─────────────────────────────────────────────────────────
+    cfg.sets = {}
+    local stickOn = true
+    MockMQ.set('TLO.Stick.Active', function() return stickOn end)
+    local cmds = {}
+    local savedCmd = MockMQ.cmd
+    MockMQ.cmd = function(c) cmds[#cmds + 1] = c; if c:find('/stick off', 1, true) then stickOn = false end end
+    TH.assert_false(select(2, Tlo2.members.Hold()), '${KissAssist.Hold} FALSE at start')
+    TH.assert_true(kactl('hold', 'on'), 'hold on')
+    TH.assert_true(state.session.hold, 'hold on: holding')
+    TH.assert_true(select(2, Tlo2.members.Hold()), '${KissAssist.Hold} TRUE while holding')
+    TH.assert_false(stickOn, 'hold on: our stick turned off')
+    local navStopped = false
+    for _, c in ipairs(cmds) do if c:find('/nav stop', 1, true) or c:find('/moveto off', 1, true) then navStopped = true end end
+    TH.assert_false(navStopped, "hold on: nav and moveto left alone (they may be the script's)")
+    TH.assert_false(Control.setHold(true), 'hold on twice: nothing changes')
+    TH.assert_true(kactl('hold', 'toggle'), 'hold toggle')
+    TH.assert_false(state.session.hold, 'hold toggle: off')
+    TH.assert_false(kactl('hold'), 'hold needs on, off or toggle')
+    TH.assert_false(kactl('hold', '1'), 'hold 1 rejected (strict)')
+    TH.assert_eq(#cfg.sets, 0, 'hold is never saved')
+    MockMQ.cmd = savedCmd
+    package.loaded['modules.tlo'] = nil
 
     -- ── charm ───────────────────────────────────────────────────────────────
     cfg.sets = {}

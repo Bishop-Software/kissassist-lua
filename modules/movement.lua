@@ -40,9 +40,20 @@ local function dist2D(y1, x1, y2, x2)
 end
 
 -- Soft pause (#353): camp returns and chasing stop while paused, unless
--- MoveWhilePaused is on.
+-- MoveWhilePaused is on. Hold (/kactl hold, #364) stops them too, including a
+-- walk back to camp already under way (the mac's never re-checks: mac:3521-3546).
 local function moveBlocked()
-    return _state.session.paused == true and not _state.session.moveWhilePaused
+    local s = _state.session
+    return (s.paused == true and not s.moveWhilePaused) or s.hold == true
+end
+
+-- A live forced target (/kactl target, #364): no walk back to camp until it's
+-- dead or cleared, or the box would leave the fight it was sent to.
+local function forcedTargetAlive()
+    local id = (_state.combat and _state.combat.forcedTargetID) or 0
+    if id == 0 then return false end
+    local sp = mq.TLO.Spawn('id ' .. id)
+    return (sp.ID() or 0) ~= 0 and (sp.Type() or ''):lower() ~= 'corpse'
 end
 
 -- Dead, hovering or paused: leave a movement loop.
@@ -116,6 +127,7 @@ function Movement.doWeMove(forceFlag, _sentFrom)  -- sentFrom: caller tag, unuse
     if not mv.returnToCamp and (forceFlag or 0) == 0 then return end
     if mv.campX == 0 and mv.campY == 0 then return end
     if moveBlocked() then return end
+    if forcedTargetAlive() then return end
 
     mq.doevents()
 
@@ -511,6 +523,7 @@ end
 -- Returns true if Z-axis gap to camp exceeds campRadius+10 (guard for doWeMove).
 function Movement.zAxisCheck()
     local mv = _state.movement
+    if _state.session.hold then return false end  -- no movement while holding (#364)
     local dz = mq.TLO.Me.Z() - mv.campZ  -- positive = above camp
     if not mq.TLO.Me.FeetWet() and dz >= 3.1 then
         mq.cmd('/keypress CMD_MOVE_DOWN hold')
@@ -528,6 +541,9 @@ function Movement.checkStick(flag, useAttack)
     local mv   = _state.movement
     local comb = _state.combat
     local sess = _state.session
+
+    -- Hold (/kactl hold, #364): attack, but no gap-close and no stick.
+    local hold = sess.hold == true
 
     -- When chasing or not anchored, use MA position as the camp reference
     local refY, refX = mv.campY, mv.campX
@@ -549,7 +565,7 @@ function Movement.checkStick(flag, useAttack)
     -- MeleeDistance > CampRadius, so with e.g. MeleeDistance=20 / CampRadius=40 a
     -- melee character never moved to a mob inside camp. We always close the gap;
     -- the "mob too far from camp" guard below is what keeps us leashed to camp.
-    do
+    if not hold then
         local mobY = mob.Y() or 0
         local mobX = mob.X() or 0
 
@@ -586,7 +602,8 @@ function Movement.checkStick(flag, useAttack)
 
     -- Attack: enable auto-attack if not already in combat
     if (useAttack or 0) ~= 0 then
-        if comb.useMQ2Melee then
+        -- Holding: plain /attack on, since /killthis would have MQ2Melee stick.
+        if comb.useMQ2Melee and not hold then
             mq.cmd('/squelch /killthis')  -- mac:1925-1927
             return
         end
@@ -598,6 +615,8 @@ function Movement.checkStick(flag, useAttack)
             end
         end
     end
+
+    if hold then return end
 
     -- Stick to target (the mac's MeleeDistance > CampRadius gate is dropped; see above)
     local stickHow = mv.stickHow or mv.dStickHow  -- resolved by Movement.resolveStickHow

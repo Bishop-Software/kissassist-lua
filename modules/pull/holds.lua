@@ -179,6 +179,7 @@ function Holds.holdReasons()
     end
     if s.pull.hold then add('Pull is switched off') end
     if s.dps and s.dps.paused then add('paused (/backoff)') end
+    if s.session.hold then add('holding position (/kactl hold)') end
     if h.gwWaitMA then add('main assist not found') end
     if (h.gwWatchID or 0) ~= 0 then
         local sp  = mq.TLO.Spawn('id ' .. h.gwWatchID)

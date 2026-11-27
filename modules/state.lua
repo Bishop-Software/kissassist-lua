@@ -48,6 +48,7 @@ local State = {
         healWhilePaused = false,  -- [General] HealWhilePaused: cures/heals keep running while paused
         moveWhilePaused = false,  -- [General] MoveWhilePaused: camp return / chase keep running while paused
         warnAggroWhilePaused = false, -- [General] WarnAggroWhilePaused: warn + beep on aggro while paused
+        hold            = false,  -- /kactl hold (#364): none of our own movement, keep fighting; never saved
     },
 
     debug = {
@@ -84,6 +85,7 @@ local State = {
         combatStart        = false,
         eventByPass        = false,
         eventFlag          = false,
+        forcedTargetID     = 0,      -- /kactl target <id> (#364): fight this until it dies or is cleared
         gotHitToggle       = false,  -- a GotHit event is waiting for GotHit.respond()
         gotHitBy           = '',     -- name from that GotHit event (mac AttackingMob)
         lastCalledTargetID = 0,

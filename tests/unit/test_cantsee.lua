@@ -125,6 +125,16 @@ function M.run(TH, MockMQ)
     MockMQ.reset()
     CantSee.respond()
     TH.assert_eq(#MockMQ.calls(), 0, 'respond: nothing pending -> no commands')
+
+    -- Holding (/kactl hold, #364): no moving back into sight; the pending flag clears.
+    state.movement.cantSeePending = true
+    state.session.hold = true
+    MockMQ.reset()
+    MockMQ.set('TLO.Target.ID', 42)
+    CantSee.respond()
+    TH.assert_eq(#MockMQ.calls(), 0, 'respond while holding: no commands')
+    TH.assert_false(state.movement.cantSeePending, 'respond while holding: pending cleared')
+    state.session.hold = false
 end
 
 return M

@@ -214,21 +214,32 @@ local function onSwitchMA(newMA, newRole, doWhat)
     require('modules.roles').switchMA(newMA, newRole, broadcast)
 end
 
--- /kactl target <id>|clear: switch the combat target to that spawn now, or clear
--- it so the next hater is picked up (was /kaswitchtarget). A one-off switch;
--- holding a target until it dies is phase 4 (#364).
+-- An NPC, or an NPC's pet: what /kactl target accepts (not a PC, corpse or merc).
+local function isNpcOrNpcPet(sp)
+    local t = (sp.Type() or ''):lower()
+    if t == 'npc' then return true end
+    return t == 'pet' and (sp.Master.Type() or ''):lower() == 'npc'
+end
+
+-- /kactl target <id>|clear: the forced target (#364). Switch to that spawn now and
+-- keep fighting it until it dies, despawns, is cleared, I zone or I die; or clear
+-- it so normal target picking resumes. Was /kaswitchtarget (a one-off switch).
 local function kactlTarget(words)
     if #words ~= 1 then return false, 'expects a spawn ID or clear' end
+    local c = state.combat
     if tostring(words[1]):lower() == 'clear' then
-        state.combat.myTargetID    = 0
-        state.combat.aggroTargetID = ''
+        c.forcedTargetID = 0
+        c.myTargetID     = 0
+        c.aggroTargetID  = ''
         return true, 'target cleared'
     end
     local id = math.floor(tonumber(words[1]) or 0)
     local sp = mq.TLO.Spawn('id ' .. id)
     if id <= 0 or (sp.ID() or 0) == 0 then return false, 'no spawn with ID ' .. tostring(words[1]) end
-    state.combat.myTargetID    = 0
-    state.combat.aggroTargetID = tostring(id)
+    if not isNpcOrNpcPet(sp) then return false, 'not an NPC: ' .. tostring(sp.CleanName() or id) end
+    c.forcedTargetID = id
+    c.myTargetID     = 0
+    c.aggroTargetID  = tostring(id)
     return true, string.format('target %s (ID %d)', sp.CleanName() or '?', id)
 end
 

@@ -29,6 +29,18 @@ local function targetAndWait(id, ms)
     mq.delay(ms or 1000, function() return (mq.TLO.Target.ID() or 0) == id end)
 end
 
+-- The forced target (/kactl target, #364) while it's alive. Once it's dead or
+-- gone this clears it and returns 0, so normal target picking resumes.
+local function forcedTarget()
+    local id = _state.combat.forcedTargetID or 0
+    if id == 0 then return 0 end
+    if isDeadOrGone(id) then
+        _state.combat.forcedTargetID = 0
+        return 0
+    end
+    return id
+end
+
 -- 2D distance from the camp anchor to (y, x).
 local function distFromCamp(y, x)
     local mv = _state.movement
@@ -44,6 +56,7 @@ Util.dist2D        = dist2D
 Util.spawnGone     = spawnGone
 Util.isDeadOrGone  = isDeadOrGone
 Util.targetAndWait = targetAndWait
+Util.forcedTarget  = forcedTarget
 Util.distFromCamp  = distFromCamp
 Util.getMASpawn    = getMASpawn
 

@@ -67,6 +67,10 @@ function M.run(TH, MockMQ)
     TH.assert_true(has(Pull.holdReasons(), 'Pull Pause rest'), 'PullPause rest')
     p.pauseHold = false
 
+    state.session.hold = true
+    TH.assert_true(has(Pull.holdReasons(), 'holding position'), '/kactl hold (#364)')
+    state.session.hold = false
+
     state.misc.dragCorpse = true
     TH.assert_true(has(Pull.holdReasons(), 'dragging a corpse'), 'dragging a corpse')
     state.misc.dragCorpse = false

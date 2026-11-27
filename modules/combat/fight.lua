@@ -84,7 +84,55 @@ local function getCombatRadius(myID)
     return combatRadius
 end
 
+-- Forced target (/kactl target, #364): move to it before engaging, since it may
+-- be anywhere. Melee closes to melee range with line of sight; a caster (or
+-- AutoFire) only moves until it has line of sight. Not while holding. Stops after
+-- CLOSE_IN_SECS, or on pause, backoff, hold, death, or when the target dies or
+-- stops being the forced one.
+local CLOSE_IN_SECS = 30
+local function closeInOnForced(myID)
+    if _state.session.hold then return end
+    local c = _state.combat
+    local function mob() return mq.TLO.Spawn('id ' .. myID) end
+    local melee = c.meleeOn and c.autoFireOn ~= 1
+    local reach = math.floor(mob().MaxRangeTo() or c.meleeDistance or 15)
+    local function inPosition()
+        if not mob().LineOfSight() then return false end
+        return not melee or (mob().Distance3D() or 999) <= reach
+    end
+    if inPosition() then return end
+    local function mustStop()
+        local s = _state.session
+        return s.paused or s.hold or s.iAmDead or _state.dps.paused
+            or (c.forcedTargetID or 0) ~= myID or isDeadOrGone(myID)
+    end
+    if mustStop() then return end
+
+    printf('wMoving to forced target t%sw (%d away).', mob().CleanName() or '?',
+        math.floor(mob().Distance3D() or 0))
+    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+    local distFrom = math.max(reach - 2, 1)
+    local useNav   = mq.TLO.Navigation.MeshLoaded() == true
+    local deadline = os.clock() + CLOSE_IN_SECS
+    while os.clock() < deadline and not mustStop() and not inPosition() do
+        if useNav then
+            if not mq.TLO.Navigation.Active() then
+                mq.cmdf('/squelch /nav id %d dist=%d los=on', myID, distFrom)
+            end
+        elseif not mq.TLO.MoveTo.Moving() then
+            mq.cmdf('/squelch /moveto id %d dist %d', myID, distFrom)
+        end
+        mq.delay(250)
+    end
+    if useNav then
+        if mq.TLO.Navigation.Active() then mq.cmd('/squelch /nav stop') end
+    elseif mq.TLO.MoveTo.Moving() then
+        mq.cmd('/squelch /moveto off')
+    end
+end
+
 -- Range condition: mob in melee range, or MA and target both in camp (mac:1080).
+-- A forced target (/kactl target, #364) always counts as in range.
 -- Returns inRange, the mob's HP% and its spawn type.
 local function rangeCheck(myID, combatRadius)
     local sp = mq.TLO.Spawn('id ' .. myID)
@@ -101,6 +149,7 @@ local function rangeCheck(myID, combatRadius)
     local cr       = _state.movement.campRadius
     local inRange  = mobDist < combatRadius
                   or (campToMA <= cr and maToTgt <= cr)
+                  or myID == (_state.combat.forcedTargetID or 0)
     return inRange, mobPct, spType
 end
 
@@ -239,6 +288,14 @@ local function tickPreamble(myID, fromWhere)
             _state.combat.myTargetID = liveID
             return BREAK
         end
+    end
+
+    -- Forced target set or changed mid-fight (/kactl target, #364): break out so
+    -- checkForCombat starts on it.
+    local forced = _state.combat.forcedTargetID or 0
+    if forced ~= 0 and forced ~= myID and not isDeadOrGone(forced) then
+        _state.combat.myTargetID = forced
+        return BREAK
     end
 
     -- Mez/AE-mez runs before the casting gate so bards (always "casting"
@@ -409,6 +466,7 @@ end
 -- Target dead or gone (mac:1278-1309). Every path ends the loop or restarts it on the
 -- next target, so this always returns BREAK or CONTINUE (plus the possibly-new myID).
 local function onTargetGone(myID, fromWhere)
+    Util.forcedTarget()  -- clears a forced target that has died (#364)
     if _state.dps.paused or not _state.combat.targetSwitchingOn then
         Combat.combatReset(0, fromWhere .. '_targetGone')
         return BREAK, myID
@@ -479,6 +537,9 @@ local function fight(fromWhere)
 
     local myID = _state.combat.myTargetID
     local role = _state.session.role
+    if myID ~= 0 and myID == (_state.combat.forcedTargetID or 0) and not _state.dps.paused then
+        closeInOnForced(myID)
+    end
     if not preEngageOk(myID, role) then return end
 
     local combatRadius = getCombatRadius(myID)
@@ -578,6 +639,8 @@ local function fight(fromWhere)
     _utils.debug('combat', 'fight: done from=%s', tostring(fromWhere))
 end
 
-Fight.fight = fight
+Fight.fight           = fight
+Fight.closeInOnForced = closeInOnForced
+Fight.rangeCheck      = rangeCheck
 
 return Fight
