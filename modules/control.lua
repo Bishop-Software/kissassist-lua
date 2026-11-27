@@ -61,6 +61,13 @@ local NAMES = {
     pullmeleestick    = { 'pull', 'meleeStick' },
     pullroletoggle    = { 'pull', 'roleToggle' },
     pullradiustouse   = { 'pull', 'radiusToUse' },
+    afkgmaction       = { 'afk', 'gmAction' },
+    afkpcradius       = { 'afk', 'pcRadius' },
+    charmspell        = { 'charm', 'spell' },
+    petspell          = { 'pet', 'spell' },
+    petshrinkspell    = { 'pet', 'shrinkSpell' },
+    -- the INI value as written; movement.stickHow is it resolved by role
+    stickhow          = { 'movement', 'dStickHow' },
 }
 
 -- Mac variables that have no counterpart in the port.
@@ -87,8 +94,13 @@ end
 
 -- Convert a value to the field's type. A boolean is on/off as is; on/1 = on,
 -- off/0/empty = off, another number is used as is (mac:8378-8406).
--- Returns the new value and on/off.
-local function convertValue(cur, field, arg)
+-- Returns the new value and on/off. asText: a text setting (a spell name, a
+-- list) takes the text exactly as given, empty included.
+local function convertValue(cur, field, arg, asText)
+    if asText then
+        local t = arg == nil and '' or tostring(arg)
+        return t, t ~= ''
+    end
     local a, la, num, on
     if type(arg) == 'boolean' then
         a, la, on = '', '', arg
@@ -128,9 +140,21 @@ end
 -- Side effects of turning a variable on/off (mac Bind_ToggleVariable 8406-8470,
 -- Bind_ChangeVarInt 11256-11335). save: the change is also written to the INI.
 -- raw: the value as given (DPSOn 2 and BuffsOn 2 need more than on/off).
-local function sideEffects(field, on, who, save, raw)
+local function sideEffects(tbl, field, on, who, save, raw)
     local mv = _state.movement
-    if field == 'dpsOn' then
+    if tbl == _state.afk and (field == 'on' or field == 'pcRadius') then
+        -- AFK stranger check: MQ2Posse watches the PC radius (modes 1 and 2)
+        local afk = _state.afk
+        if (field == 'pcRadius' or afk.on == 1 or afk.on == 2) and mq.TLO.Plugin('MQ2Posse').IsLoaded() then
+            mq.cmdf('/posse radius %d', afk.pcRadius or 0)
+        end
+    elseif field == 'autoHide' and save then
+        _config.set('General', 'AutoHide', nil)  -- older UI builds saved it here
+    elseif field == 'dStickHow' then
+        require('modules.movement').resolveStickHow()
+    elseif field == 'xTarHealList' then
+        require('modules.healing').setXTargetHealList(_state.heal.xTarHealList)
+    elseif field == 'dpsOn' then
         -- DPSOn 2 = any HP + wait out the spell cooldown (combat.dpsOnOoc)
         _state.combat.dpsOnOoc = on and tonumber(raw) == 2
     elseif field == 'buffsOn' then
@@ -182,16 +206,59 @@ local function sideEffects(field, on, who, save, raw)
     end
 end
 
+-- Settings whose INI value isn't one state field. Each takes the value and
+-- returns the text to save, or nil, error.
+local function spellAndCount(spellField, countField, minCount)
+    return function(value)
+        local m = _state.mez
+        local v = tostring(value or '')
+        local spell, count = v:match('^(.-)|(%-?%d+)%s*$')
+        if not spell then spell, count = v, m[countField] end
+        m[spellField] = spell
+        m[countField] = math.max(minCount, tonumber(count) or minCount)
+        return spell .. '|' .. m[countField]
+    end
+end
+
+local SPECIAL = {
+    -- [Mez] MezSpell / MezAESpell: 'spell|min mobs' (mac:14800)
+    mezspell   = spellAndCount('spell', 'singleCount', 2),
+    mezaespell = spellAndCount('aeSpell', 'aeCount', 0),
+    -- [Pull] PullLevel / PullPause: parsed by the pull module, saved as written
+    pulllevel = function(value)
+        require('modules.pull').setPullLevel(value)
+        return _state.pull.levelSetting
+    end,
+    pullpause = function(value)
+        require('modules.pull').setPullPause(value)
+        return _state.pull.pauseSetting
+    end,
+    -- [Melee] UseMQ2Melee 0 / 1 / 2 (2: MQ2Melee sticks with its INI stickcmd).
+    -- A boolean keeps the current 1 / 2 choice.
+    usemq2melee = function(value)
+        local c = _state.combat
+        local n
+        if type(value) == 'boolean' then n = value and (c.mq2MeleeMode or 1) or 0
+        else n = tonumber(value) end
+        if n ~= 0 and n ~= 1 and n ~= 2 then return nil, 'badvalue' end
+        if n > 0 then c.mq2MeleeMode = n end
+        if not require('modules.combat.settings').setMQ2Melee(_state, n > 0) then return nil, 'noplugin' end
+        require('modules.movement').resolveStickHow()  -- MQ2Melee does its own sticking
+        return tostring(n)
+    end,
+}
+
 -- Set a variable: Control.set(name, value, opts) -> ok, msg, info.
 --   name   mac variable name, INI key or state field (ReturnToCamp, MezRadius, ...)
 --   value  on/off/1/0/number/text as typed, a boolean, or a number
 --   opts   save:    also write it to the INI under opts.section (and save)
 --          section: INI section to write
 --          who:     chase target for ChaseAssist
+--          text:    a text setting: value is kept exactly as given
 -- On success info = { field, old, value, now, on }: value is what was set, now
 -- the field after the side effects (TargetSwitchingOn stays off for a non-MA).
--- GroupWatch settings return { shown }.
--- On failure msg is 'unknown', 'unsupported' or 'badvalue'.
+-- GroupWatch settings return { shown }; SPECIAL ones { value, now } (the text saved).
+-- On failure msg is 'unknown', 'unsupported', 'badvalue' or 'noplugin' (UseMQ2Melee).
 -- 'waithere' stops chasing and returning to camp (mac:8473-8477).
 function Control.set(name, value, opts)
     opts = opts or {}
@@ -212,16 +279,77 @@ function Control.set(name, value, opts)
         return true, 'set', { shown = shown }
     end
 
+    local save = opts.save and opts.section ~= nil
+    local special = SPECIAL[lname]
+    if special then
+        local text, err = special(value)
+        if text == nil then return false, err or 'badvalue' end
+        if save then
+            _config.set(opts.section, name, text)
+            _config.save()
+        end
+        return true, 'set', { value = text, now = text }
+    end
+
     local tbl, field = Control.resolve(name)
     if not tbl then return false, 'unknown' end
     local old = tbl[field]
-    local newValue, on = convertValue(old, field, value)
+    local newValue, on = convertValue(old, field, value, opts.text)
     tbl[field] = newValue
-    local save = opts.save and opts.section ~= nil
     if save then _config.set(opts.section, name, iniText(value, newValue, on)) end
-    sideEffects(field, on, opts.who, save, value)
+    sideEffects(tbl, field, on, opts.who, save, value)
     if save then _config.save() end
     return true, 'set', { field = field, old = old, value = newValue, now = tbl[field], on = on }
+end
+
+-- ─── Entry lists (phase 3c, #363) ────────────────────────────────────────────
+-- The GUI's list editors (DPS, Heals, Buffs, conditions, ...) save a whole list
+-- here. Each list is an array of INI entries ('null' for an empty slot) plus a
+-- size key. After saving, the owning module reloads it into State with its
+-- startup loader, so an edit loads exactly what a restart would.
+--   name -> { section, key, sizeKey, reload }  (reload nil: read when used)
+local function combatList(section)
+    return function() require('modules.combat.settings').loadList(_state, section) end
+end
+local function healList(section)
+    return function() require('modules.healing').loadList(section) end
+end
+local function buffList(name)
+    return function() require('modules.buffs').loadList(name) end
+end
+
+local ENTRY_LISTS = {
+    dps      = { 'DPS',         'DPS',      'DPSSize',      combatList('DPS') },
+    burn     = { 'Burn',        'Burn',     'BurnSize',     combatList('Burn') },
+    aggro    = { 'Aggro',       'Aggro',    'AggroSize',    combatList('Aggro') },
+    ae       = { 'AE',          'AE',       'AESize',       combatList('AE') },
+    debuff   = { 'Debuff',      'Debuff',   'DebuffSize',   function() require('modules.debuff').loadList() end },
+    heals    = { 'Heals',       'Heals',    'HealsSize',    healList('Heals') },
+    cures    = { 'Cures',       'Cures',    'CuresSize',    healList('Cures') },
+    buffs    = { 'Buffs',       'Buffs',    'BuffsSize',    buffList('Buffs') },
+    petbuffs = { 'Pet',         'PetBuffs', 'PetBuffsSize', buffList('PetBuffs') },
+    pettoys  = { 'Pet',         'PetToys',  'PetToysSize',  buffList('PetToys') },
+    cond     = { 'KConditions', 'Cond',     'CondSize',     function() require('modules.cond').load() end },
+    gom      = { 'GoM',         'GoMSpell', 'GoMSize' },  -- read when used (combat/abilities.lua)
+    gems     = { 'Spells',      'Gems' },                 -- read when used (cast.lua)
+}
+
+-- Save a whole entry list: Control.setEntries(name, entries, size) -> ok, msg.
+--   name     dps, burn, aggro, ae, debuff, heals, cures, buffs, petbuffs,
+--            pettoys, cond, gom or gems (any case)
+--   entries  the INI array, 'null' for an empty slot
+--   size     the list's size key (DPSSize, ...); left as it is when nil
+-- On failure msg is 'unknown list' or 'bad entries'.
+function Control.setEntries(name, entries, size)
+    local list = ENTRY_LISTS[tostring(name or ''):lower()]
+    if not list then return false, 'unknown list' end
+    if type(entries) ~= 'table' then return false, 'bad entries' end
+    local section, key, sizeKey, reload = list[1], list[2], list[3], list[4]
+    _config.set(section, key, entries)
+    if size and sizeKey then _config.set(section, sizeKey, tostring(size)) end
+    _config.save()
+    if reload then reload() end
+    return true, 'saved'
 end
 
 -- ─── Movement mode (phase 2, #362) ───────────────────────────────────────────
@@ -415,6 +543,26 @@ function Control.run(verb, words)
     return v.run(words or {})
 end
 
+-- Queue a verb for the main loop (Control.runDeferred). The GUI's way in for
+-- its buttons: a verb may wait (combatReset uses mq.delay), and that can't run
+-- inside an ImGui frame. A failure is printed like a /kactl one.
+local _deferred = {}
+
+function Control.defer(verb, words)
+    _deferred[#_deferred + 1] = { verb = verb, words = words or {} }
+end
+
+-- Run the queued verbs, in order. Called once per main-loop pass.
+function Control.runDeferred()
+    if #_deferred == 0 then return end
+    local queue = _deferred
+    _deferred = {}
+    for _, d in ipairs(queue) do
+        local ok, msg = Control.run(d.verb, d.words)
+        if not ok then printf('\ay/kactl %s: %s', d.verb, tostring(msg)) end
+    end
+end
+
 -- /kactl entry point. words: the command's arguments. Returns ok, msg.
 function Control.command(words)
     local verb = tostring(words[1] or ''):lower()
@@ -505,6 +653,7 @@ local SET_ERRORS = {
     unknown     = 'unknown setting',
     unsupported = 'not supported in the Lua port',
     badvalue    = 'bad value',
+    noplugin    = 'MQ2Melee plugin is not loaded',
 }
 
 Control.verb('set', 'set <name> <value>|toggle [save]', function(words)

@@ -162,8 +162,9 @@ function Status.drawCampButtons()
     local mv       = s.movement
     local camping  = mv.returnToCamp
     local hasCamp  = (mv.campX or 0) ~= 0 or (mv.campY or 0) ~= 0
-    -- [2] is a slash command or a function. The movement buttons call
-    -- Control.setMode directly (the GUI uses the control API, #360).
+    -- [2] is a function. The movement buttons call Control.setMode; the rest
+    -- queue a /kactl verb with Control.defer, which runs it on the main loop
+    -- (a verb may wait, and that can't happen inside the ImGui frame) (#360).
     local buttons = {
         -- Group camp toggle: camp here for everyone, or break camp for everyone.
         { camping and 'Break Camp##grpcamp' or 'Camp Here##grpcamp',
@@ -184,20 +185,20 @@ function Status.drawCampButtons()
           end, tip = 'The group\'s kissassist-lua boxes chase this toon (/kactl mode chase me others)' },
         { 'Stay Here', function() Control.setMode('manual', { others = true }) end,
           tip = 'The group\'s kissassist-lua boxes stop chasing and returning to camp (/kactl mode manual others)' },
-        { 'Burn Now', function() Control.run('burn', {}) end, disabled = not inFight,
+        { 'Burn Now', function() Control.defer('burn') end, disabled = not inFight,
           tip = 'Burn the fight target now; turns Burn on for this session (/kactl burn)' },
         -- A buff pass now (skipped in combat, so disabled then).
-        { 'Buff Now', function() Control.run('buff', { 'now' }) end, disabled = inFight,
+        { 'Buff Now', function() Control.defer('buff', { 'now' }) end, disabled = inFight,
           tip = 'Run a buff pass now (/kactl buff now); not during a fight' },
         -- Back off (Bind_BackOff): highlighted while backed off.
         { paused and 'Resume##backoff' or 'Back Off##backoff',
-          function() Control.run('backoff', { paused and 'off' or 'on' }) end,
+          function() Control.defer('backoff', { paused and 'off' or 'on' }) end,
           color = paused and { 0.8, 0.45, 0.1, 1.0 } or nil,
           tip = paused and 'Backed off: click to resume fighting (/kactl backoff off)'
               or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/kactl backoff on)' },
         -- Soft pause (#353): highlighted while paused.
         { kaPaused and 'Unpause##kapause' or 'Pause##kapause',
-          function() require('modules.pause').set(not kaPaused) end,
+          function() Control.defer('pause', { kaPaused and 'off' or 'on' }) end,
           color = kaPaused and { 0.7, 0.15, 0.5, 1.0 } or nil,
           tip = kaPaused and 'Paused: click to resume all automation (/kactl pause off)'
               or 'Pause all automation; commands and this window keep working (/kactl pause on)' },
@@ -216,8 +217,7 @@ function Status.drawCampButtons()
         if b.disabled then ImGui.BeginDisabled() end
         if b.color then ImGui.PushStyleColor(ImGuiCol.Button, b.color[1], b.color[2], b.color[3], b.color[4]) end
         if ImGui.Button(b[1], bw, 0) then
-            local action = b[2]
-            if type(action) == 'function' then action() else mq.cmd(tostring(action)) end
+            b[2]()
         end
         if b.color then ImGui.PopStyleColor() end
         if b.disabled then ImGui.EndDisabled() end

@@ -2,9 +2,9 @@
 
 local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
-local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local set      = Helpers.set
+local setText  = Helpers.setText
 local intInput = Helpers.intInput
 local Pull     = require('modules.pull')
 local GroupWatch = require('modules.groupwatch')
@@ -213,10 +213,8 @@ function PullUI.drawPull()
     local lvlText = ImGui.InputText('Pull Level', _levelBuf, 0)
     _levelBuf = lvlText
     if ImGui.IsItemDeactivatedAfterEdit() and lvlText ~= s.pull.levelSetting then
-        Pull.setPullLevel(lvlText)
+        setText('Pull', 'PullLevel', lvlText)
         _levelBuf = s.pull.levelSetting
-        Config.set('Pull', 'PullLevel', s.pull.levelSetting)
-        Config.save()
     end
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("min|max, min|max|linked (moves up as you level), auto (your level -5 to +2), 0|0 = any")
@@ -225,9 +223,7 @@ function PullUI.drawPull()
     local pauseText = ImGui.InputText('Pull Pause', _pauseBuf, 0)
     _pauseBuf = pauseText
     if ImGui.IsItemDeactivatedAfterEdit() and pauseText ~= s.pull.pauseSetting then
-        Pull.setPullPause(pauseText)
-        Config.set('Pull', 'PullPause', s.pull.pauseSetting)
-        Config.save()
+        setText('Pull', 'PullPause', pauseText)
     end
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("X|Y: pull X minutes, then rest Y minutes. X|Y|condN: also hold pulls while condition N is true. 0 = off")

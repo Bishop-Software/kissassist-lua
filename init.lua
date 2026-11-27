@@ -201,6 +201,7 @@ while not State.terminate do
         CantSee.respond() -- Event_CantSee: face, get back in sight, re-stick (mac:10820)
     end
     Cast.checkTribute()
+    Control.runDeferred()  -- the UI's buttons (Control.defer): run outside the ImGui frame
     if State.misc.pendingCampfire then  -- UI "Place Campfire Now" (the UI can't wait)
         State.misc.pendingCampfire = false
         Campfire.place()

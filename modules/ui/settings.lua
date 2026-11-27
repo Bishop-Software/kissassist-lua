@@ -1,7 +1,7 @@
 -- ui/settings.lua — Config tab: Settings, Conditions, AFK Tools sub-tabs.
 
-local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
+local Control  = require('modules.control')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local set      = Helpers.set
@@ -69,8 +69,10 @@ function Settings.drawConditions()
     ImGui.Separator()
     ImGui.Spacing()
 
-    -- Conditions are stored as an indexed array under the 'Cond' key.
-    local condArr = Config.get('KConditions', 'Cond', nil) or {}
+    -- Conditions are stored as an indexed array under the 'Cond' key. Edits go
+    -- through Control.setEntries, which reloads them (Cond.load).
+    local condArr  = Config.get('KConditions', 'Cond', nil) or {}
+    local condSize = s.cond.size or 5
 
     if ImGui.BeginTable('##condtbl', 3, 0) then
         ImGui.TableSetupColumn('Expression', ImGuiTableColumnFlags.WidthStretch, 0)
@@ -78,7 +80,7 @@ function Settings.drawConditions()
         ImGui.TableSetupColumn('',           ImGuiTableColumnFlags.WidthFixed,   32)
         ImGui.TableHeadersRow()
 
-        for i = 1, (s.cond.size or 5) do
+        for i = 1, condSize do
             local current = s.cond.expressions[i] or ''
             ImGui.TableNextRow()
             ImGui.TableSetColumnIndex(0)
@@ -86,10 +88,8 @@ function Settings.drawConditions()
             local newVal, changed = ImGui.InputText('##cond' .. i, current, 0)
             ImGui.PopItemWidth()
             if changed and newVal ~= current then
-                s.cond.expressions[i] = newVal ~= '' and newVal or nil
                 condArr[i] = newVal ~= '' and newVal or 'null'
-                Config.set('KConditions', 'Cond', condArr)
-                Config.save()
+                Control.setEntries('cond', condArr, condSize)
             end
             ImGui.TableSetColumnIndex(1)
             -- Match the INI/pickle key the expression is stored under (Cond1,
@@ -97,16 +97,13 @@ function Settings.drawConditions()
             ImGui.Text(string.format('Cond%d', i))
             ImGui.TableSetColumnIndex(2)
             if ImGui.Button('[-]##condrem' .. i) then
-                s.cond.expressions[i] = nil
-                if i == s.cond.size and s.cond.size > 1 then
-                    condArr[s.cond.size] = nil
-                    s.cond.size = s.cond.size - 1
-                    Config.set('KConditions', 'CondSize', tostring(s.cond.size))
+                if i == condSize and condSize > 1 then
+                    condArr[condSize] = nil
+                    condSize = condSize - 1
                 else
                     condArr[i] = 'null'
                 end
-                Config.set('KConditions', 'Cond', condArr)
-                Config.save()
+                Control.setEntries('cond', condArr, condSize)
             end
         end
         ImGui.EndTable()
@@ -114,11 +111,9 @@ function Settings.drawConditions()
 
     ImGui.Spacing()
     if ImGui.Button('[+ Add]') then
-        s.cond.size = (s.cond.size or 5) + 1
-        condArr[s.cond.size] = 'null'
-        Config.set('KConditions', 'Cond', condArr)
-        Config.set('KConditions', 'CondSize', tostring(s.cond.size))
-        Config.save()
+        condSize = condSize + 1
+        condArr[condSize] = 'null'
+        Control.setEntries('cond', condArr, condSize)
     end
 end
 
@@ -127,14 +122,7 @@ function Settings.drawAfkTools()
 
     ImGui.PushItemWidth(200)
     local newMode, modeChanged = ImGui.Combo('Mode##afkmode', s.afk.on + 1, AFK_MODE_LABELS)
-    if modeChanged then
-        s.afk.on = newMode - 1
-        Config.set('AFKTools', 'AFKToolsOn', tostring(s.afk.on))
-        Config.save()
-        if (s.afk.on == 1 or s.afk.on == 2) and mq.TLO.Plugin('MQ2Posse').IsLoaded() then
-            mq.cmdf('/posse radius %d', s.afk.pcRadius)
-        end
-    end
+    if modeChanged then set('AFKTools', 'AFKToolsOn', newMode - 1) end  -- also sets the MQ2Posse radius
     ImGui.PopItemWidth()
 
     -- GM Action: only when mode includes GM detection
@@ -142,27 +130,14 @@ function Settings.drawAfkTools()
         ImGui.Spacing()
         ImGui.PushItemWidth(200)
         local newAction, actionChanged = ImGui.Combo('GM Action##afkgmaction', math.max(1, s.afk.gmAction), AFK_ACTION_LABELS)
-        if actionChanged then
-            s.afk.gmAction = newAction
-            Config.set('AFKTools', 'AFKGMAction', tostring(newAction))
-            Config.save()
-        end
+        if actionChanged then set('AFKTools', 'AFKGMAction', newAction) end
         ImGui.PopItemWidth()
     end
 
     -- PC Radius: only when mode includes stranger detection
     if s.afk.on == 1 or s.afk.on == 2 then
         ImGui.Spacing()
-        local newRadius = ImGui.InputInt('PC Radius##afkpcradius', s.afk.pcRadius)
-        if newRadius ~= s.afk.pcRadius then
-            newRadius = math.max(1, math.min(5000, newRadius))
-            s.afk.pcRadius = newRadius
-            Config.set('AFKTools', 'AFKPCRadius', tostring(newRadius))
-            Config.save()
-            if mq.TLO.Plugin('MQ2Posse').IsLoaded() then
-                mq.cmdf('/posse radius %d', newRadius)
-            end
-        end
+        intInput('PC Radius##afkpcradius', s.afk.pcRadius, 1, 5000, 'AFKTools', 'AFKPCRadius')
     end
 
     -- Fellowship campfire (mac Campfire / CampfireBack)

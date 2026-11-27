@@ -24,6 +24,92 @@ local SUMMON_CORPSE_SPELLS = {
     { spell = "Conjure Corpse",             maxLevel = 70  },
 }
 
+-- One list from the config into State: 'Heals' (with the AutoRez entries and
+-- the derived heal points and group heals) or 'Cures'. Called at init and by
+-- Control.setEntries when the GUI edits a list, so an edit loads exactly what a
+-- restart would.
+function Heal.loadList(section)
+    local h = _state.heal
+    if section == 'Heals' then
+        h.healsArray, h.autoRezArray = {}, {}
+        h.groupHealArray, h.groupHealTimers = {}, {}
+        h.singleHealPoint, h.singleHealPointMA, h.singleHealPointRange = 0, 0, 0
+        local healsRaw = Config.get('Heals', 'Heals', nil)
+        if type(healsRaw) == 'table' then
+            for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
+                if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                    -- Rez spells live in the Heals array tagged with a rez type in the 3rd
+                    -- field (e.g. 'Gift of Resurrection|0|rez'). The .mac hoists these out of
+                    -- Heals into a dedicated AutoRez array at load (mac:6087-6111); mirror that
+                    -- so rezWithCheck can find them and the heal rotation ignores them.
+                    local rezType = (slot.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
+                    if rezType:find('rez', 1, true) then
+                        h.autoRezArray[#h.autoRezArray + 1] = slot
+                    else
+                        h.healsArray[#h.healsArray + 1] = slot
+                    end
+                end
+            end
+        end
+
+        -- Derive singleHealPoint/MA/Range from healsArray (mirrors FindSingleHeals, mac:12012)
+        for _, entry in ipairs(h.healsArray) do
+            local spell = entry.name:match('^([^|]+)') or ''
+            local pct   = tonumber(entry.name:match('^[^|]+|([^|]+)')) or 0
+            local tag   = (entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
+            if tag == 'ma' then
+                if pct > h.singleHealPointMA then h.singleHealPointMA = pct end
+            else
+                if pct > h.singleHealPoint then h.singleHealPoint = pct end
+            end
+            local r = mq.TLO.Spell(spell).Range() or 0
+            if r > h.singleHealPointRange then h.singleHealPointRange = r end
+        end
+        if h.singleHealPoint    == 0 then h.singleHealPoint    = 99  end
+        if h.singleHealPointMA  == 0 then h.singleHealPointMA  = h.singleHealPoint end
+        if h.singleHealPointRange == 0 then h.singleHealPointRange = 200 end
+        -- Build groupHealArray from healsArray (mirrors FindGroupHeals mac:12075).
+        -- Include spells whose TargetType contains 'group' (catches Group v2/v3 etc.)
+        -- or TargetType 'Targeted AE' when the entry tag is not 'MA' or 'ME'.
+        for _, entry in ipairs(h.healsArray) do
+            local spell = entry.name:match('^([^|]+)') or ''
+            local tag   = entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''
+            if spell ~= '' then
+                local tt    = mq.TLO.Spell(spell).TargetType() or ''
+                local ttLow = tt:lower()
+                local isGroup = ttLow:find('group', 1, true) ~= nil
+                local isAE    = tt == 'Targeted AE' and tag ~= 'MA' and tag ~= 'ME'
+                local isSingleSelf = ttLow == 'self' or ttLow == 'single'
+                if (isGroup or isAE) and not isSingleSelf then
+                    local n = #h.groupHealArray + 1
+                    h.groupHealArray[n]  = entry
+                    h.groupHealTimers[n] = 0
+                end
+            end
+        end
+
+        -- [Heals] AutoRez entries: SpellName|arg2|RezType (rez/rezooc/rezcombat)
+        local autoRezRaw = Config.get('Heals', 'AutoRez', nil)
+        if type(autoRezRaw) == 'table' then
+            for _, slot in ipairs(Config.parseCondArray(autoRezRaw)) do
+                if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                    h.autoRezArray[#h.autoRezArray + 1] = slot
+                end
+            end
+        end
+    elseif section == 'Cures' then
+        h.curesArray = {}
+        local curesRaw = Config.get('Cures', 'Cures', nil)
+        if type(curesRaw) == 'table' then
+            for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
+                if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
+                    h.curesArray[#h.curesArray + 1] = slot
+                end
+            end
+        end
+    end
+end
+
 -- Mirrors Bind_Settings heals/cures/general-med sections (kissassist.mac:14750).
 -- Defaults match LoadIni defaults in the mac.
 function Heal.init(state, utils, cast, cond, movement, comms)
@@ -67,62 +153,9 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     -- Lua-only switch for the OOC guild/fellowship rez pass; the mac always runs it.
     _state.heal.rezGuildFellowship = Config.get('Heals', 'RezGuildFellowship', '1') ~= '0'
 
-    local healsRaw = Config.get('Heals', 'Heals', nil)
-    if type(healsRaw) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
-                -- Rez spells live in the Heals array tagged with a rez type in the 3rd
-                -- field (e.g. 'Gift of Resurrection|0|rez'). The .mac hoists these out of
-                -- Heals into a dedicated AutoRez array at load (mac:6087-6111); mirror that
-                -- so rezWithCheck can find them and the heal rotation ignores them.
-                local rezType = (slot.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
-                if rezType:find('rez', 1, true) then
-                    _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = slot
-                else
-                    _state.heal.healsArray[#_state.heal.healsArray + 1] = slot
-                end
-            end
-        end
-    end
-
-    -- Derive singleHealPoint/MA/Range from healsArray (mirrors FindSingleHeals, mac:12012)
-    for _, entry in ipairs(_state.heal.healsArray) do
-        local spell = entry.name:match('^([^|]+)') or ''
-        local pct   = tonumber(entry.name:match('^[^|]+|([^|]+)')) or 0
-        local tag   = (entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''):lower()
-        if tag == 'ma' then
-            if pct > _state.heal.singleHealPointMA then _state.heal.singleHealPointMA = pct end
-        else
-            if pct > _state.heal.singleHealPoint then _state.heal.singleHealPoint = pct end
-        end
-        local r = mq.TLO.Spell(spell).Range() or 0
-        if r > _state.heal.singleHealPointRange then _state.heal.singleHealPointRange = r end
-    end
-    if _state.heal.singleHealPoint    == 0 then _state.heal.singleHealPoint    = 99  end
-    if _state.heal.singleHealPointMA  == 0 then _state.heal.singleHealPointMA  = _state.heal.singleHealPoint end
-    if _state.heal.singleHealPointRange == 0 then _state.heal.singleHealPointRange = 200 end
+    Heal.loadList('Heals')
     -- Wire session flag used by castMem guard (cast.lua:488)
     _state.session.heals = _state.heal.healsOn > 0
-
-    -- Build groupHealArray from healsArray (mirrors FindGroupHeals mac:12075).
-    -- Include spells whose TargetType contains 'group' (catches Group v2/v3 etc.)
-    -- or TargetType 'Targeted AE' when the entry tag is not 'MA' or 'ME'.
-    for _, entry in ipairs(_state.heal.healsArray) do
-        local spell = entry.name:match('^([^|]+)') or ''
-        local tag   = entry.name:match('^[^|]+|[^|]+|([^|]*)') or ''
-        if spell ~= '' then
-            local tt    = mq.TLO.Spell(spell).TargetType() or ''
-            local ttLow = tt:lower()
-            local isGroup = ttLow:find('group', 1, true) ~= nil
-            local isAE    = tt == 'Targeted AE' and tag ~= 'MA' and tag ~= 'ME'
-            local isSingleSelf = ttLow == 'self' or ttLow == 'single'
-            if (isGroup or isAE) and not isSingleSelf then
-                local n = #_state.heal.groupHealArray + 1
-                _state.heal.groupHealArray[n]  = entry
-                _state.heal.groupHealTimers[n] = 0
-            end
-        end
-    end
 
     -- Derive medStat from class once (Mana for casters, Endurance for melee/hybrids without mana; mirrors DoWeMed mac:3852)
     local MANA_CLASSES = {BST=true,BRD=true,CLR=true,DRU=true,ENC=true,MAG=true,NEC=true,PAL=true,RNG=true,SHM=true,SHD=true,WIZ=true}
@@ -132,24 +165,7 @@ function Heal.init(state, utils, cast, cond, movement, comms)
     -- [Cures]
     _state.heal.curesOn = tonumber(Config.get('Cures', 'CuresOn', '0')) or 0
 
-    local curesRaw = Config.get('Cures', 'Cures', nil)
-    if type(curesRaw) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
-                _state.heal.curesArray[#_state.heal.curesArray + 1] = slot
-            end
-        end
-    end
-
-    -- [Heals] AutoRez entries: SpellName|arg2|RezType (rez/rezooc/rezcombat)
-    local autoRezRaw = Config.get('Heals', 'AutoRez', nil)
-    if type(autoRezRaw) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(autoRezRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'NULL' and slot.name ~= 'null' then
-                _state.heal.autoRezArray[#_state.heal.autoRezArray + 1] = slot
-            end
-        end
-    end
+    Heal.loadList('Cures')
 
     _utils.debug('heals', string.format(
         'Heal.init done — healsOn=%d(%d spells) groupHeals=%d curesOn=%d(%d) autoRezOn=%d(%d) medOn=%s medStat=%s medStart=%d medStop=%d sHP=%d sHPma=%d sHPrange=%d',

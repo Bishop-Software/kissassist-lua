@@ -96,6 +96,13 @@ function M.run(TH, MockMQ)
             'healsArray[' .. i .. '] is not a rez entry')
     end
 
+    -- Heal.loadList('Heals') again (a GUI edit, Control.setEntries): rebuilt, not appended
+    local pointBefore = state.heal.singleHealPoint
+    Heal.loadList('Heals')
+    TH.assert_eq(#state.heal.autoRezArray, 4, 'loadList again: autoRezArray rebuilt (still 4)')
+    TH.assert_eq(#state.heal.healsArray, 2, 'loadList again: healsArray rebuilt (still 2)')
+    TH.assert_eq(state.heal.singleHealPoint, pointBefore, 'loadList again: same singleHealPoint')
+
     -- Cleanup: evict the fake so later suites re-require the real config/healing.
     package.loaded['modules.config']  = nil
     package.loaded['modules.healing'] = nil

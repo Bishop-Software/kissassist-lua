@@ -62,9 +62,7 @@ local function draw()
                 _pendingW = _savedFullW > 0 and _savedFullW or 640
                 _pendingH = _savedFullH > 0 and _savedFullH or 500
             end
-            _state.ui.miniMode = not miniMode
-            Config.set('UI', 'MiniMode', _state.ui.miniMode and '1' or '0')
-            Config.save()
+            Control.run('ui', { 'mini', miniMode and 'off' or 'on' })
         end
         ImGui.SetCursorPosY(savedY)
 

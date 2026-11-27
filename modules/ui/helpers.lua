@@ -34,6 +34,11 @@ function Helpers.set(section, key, value)
     return Control.set(key, value, { section = section, save = true })
 end
 
+-- A text setting (spell name, slot list): saved exactly as typed, empty included.
+function Helpers.setText(section, key, text)
+    return Control.set(key, text, { section = section, save = true, text = true })
+end
+
 -- Same for the few runtime-only settings the GUI never saved (PullHold).
 function Helpers.setRuntime(key, value)
     return Control.set(key, value)
