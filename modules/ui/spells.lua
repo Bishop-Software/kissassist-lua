@@ -4,6 +4,7 @@ local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 local intInput = Helpers.intInput
 
 local SpellsUI = {}
@@ -16,16 +17,9 @@ local _state
 local LSS_LABELS = { 'Off', 'Named Set', 'From INI' }
 
 function SpellsUI.drawSpellSlots()
-    checkbox('Check Stuck Gem', _state.cast.checkStuckGem, function(v)
-        _state.cast.checkStuckGem = v
-        Config.set('Spells', 'CheckStuckGem', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Check Stuck Gem', _state.cast.checkStuckGem, function(v) set('Spells', 'CheckStuckGem', v) end)
     checkbox('Casting Interrupt', (_state.cast.castingInterruptOn or 0) ~= 0, function(v)
-        local val = v and 62 or 0
-        _state.cast.castingInterruptOn = val
-        Config.set('Spells', 'CastingInterruptOn', tostring(val))
-        Config.save()
+        set('Spells', 'CastingInterruptOn', v)  -- on = 62, the mac's "all" bitmask
     end)
 
     ImGui.Spacing()
@@ -113,36 +107,23 @@ function SpellsUI.drawBuffs()
     local s = _state
 
     checkbox('Buffs On', s.buffs.buffsOn, function(v)
-        s.buffs.buffsOn = v
-        Config.set('Buffs', 'BuffsOn', v and (s.buffs.buffGroupPets and '2' or '1') or '0')
-        Config.save()
+        set('Buffs', 'BuffsOn', v and (s.buffs.buffGroupPets and 2 or 1) or 0)
     end)
     if s.buffs.buffsOn then
         -- BuffsOn=2: also buff group members' pets (mac:4579), checked with the
         -- owner over actors (Lua characters) or DanNet (.mac characters).
         checkbox('Buff Group Pets', s.buffs.buffGroupPets, function(v)
-            s.buffs.buffGroupPets = v
-            Config.set('Buffs', 'BuffsOn', v and '2' or '1')
-            Config.save()
+            set('Buffs', 'BuffsOn', v and 2 or 1)  -- Control sets buffGroupPets from BuffsOn 2
         end)
         if ImGui.IsItemHovered() then
             ImGui.SetTooltip('Also cast your group buffs on group members\' pets (BuffsOn=2).\nOwners running KissAssist Lua are asked directly; .mac owners need\nDanNetOn and MQ2DanNet. Not for cleric, paladin, wizard, bard and\npure melee owners.')
         end
     end
-    checkbox('Rebuff On', s.buffs.rebuffOn, function(v)
-        s.buffs.rebuffOn = v
-        Config.set('Buffs', 'RebuffOn', v and '1' or '0')
-        Config.save()
-    end)
-    checkbox('Mount On', s.misc.mountOn, function(v)
-        s.misc.mountOn = v
-        Config.set('General', 'MountOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Rebuff On', s.buffs.rebuffOn, function(v) set('Buffs', 'RebuffOn', v) end)
+    checkbox('Mount On', s.misc.mountOn, function(v) set('General', 'MountOn', v) end)
 
     ImGui.Spacing()
-    intInput('Check Timer', s.buffs.checkBuffsTimer, 1, 3600, 'Buffs', 'CheckBuffsTimer',
-        function(v) s.buffs.checkBuffsTimer = v end)
+    intInput('Check Timer', s.buffs.checkBuffsTimer, 1, 3600, 'Buffs', 'CheckBuffsTimer')
 
     -- Misc Gem Re-Mem (mac:4701-4705)
     ImGui.Spacing()
@@ -163,12 +144,10 @@ function SpellsUI.drawBuffs()
         local maxGem = _state.cast.gemSlots or 8
         intInput('Misc Gem##miscgem', _state.cast.miscGem, 0, maxGem, 'Spells', 'MiscGem',
             function(v)
-                _state.cast.miscGem = v
                 _state.cast.reMemMiscSpell = v > 0 and (mq.TLO.Me.Gem(v).Name() or '') or ''
             end)
         intInput('Misc Gem LW##miscgemlw', _state.cast.miscGemLW, 0, maxGem, 'Spells', 'MiscGemLW',
             function(v)
-                _state.cast.miscGemLW = v
                 _state.cast.reMemMiscSpellLW = v > 0 and (mq.TLO.Me.Gem(v).Name() or '') or ''
             end)
     end

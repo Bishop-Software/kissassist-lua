@@ -4,6 +4,7 @@ local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 local intInput = Helpers.intInput
 
 local AFK_MODE_LABELS   = { 'Off', 'Stranger + GM', 'Stranger only', 'GM only' }
@@ -25,21 +26,17 @@ function Settings.drawControls()
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
-    intInput('Camp Radius', s.movement.campRadius,  1, 1000, 'General', 'CampRadius', function(v) s.movement.campRadius = v end)
-    intInput('Chase Distance', s.movement.chaseDistance, 1, 500, 'General', 'ChaseDistance', function(v) s.movement.chaseDistance = v end)
-    intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart',   function(v) s.heal.medStart       = v end)
-    intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop',    function(v) s.heal.medStop        = v end)
+    intInput('Camp Radius', s.movement.campRadius,  1, 1000, 'General', 'CampRadius')
+    intInput('Chase Distance', s.movement.chaseDistance, 1, 500, 'General', 'ChaseDistance')
+    intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart')
+    intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop')
 
     -- What keeps running under /kapause (#353)
     ImGui.Spacing()
     ImGui.Separator()
     ImGui.Text('While Paused (/kapause)')
     local function pauseToggle(label, field, key, tip)
-        checkbox(label, s.session[field], function(v)
-            s.session[field] = v
-            Config.set('General', key, v and '1' or '0')
-            Config.save()
-        end)
+        checkbox(label, s.session[field], function(v) set('General', key, v) end)
         if ImGui.IsItemHovered() then ImGui.SetTooltip(tip .. ' (' .. key .. ')') end
     end
     pauseToggle('Heal While Paused', 'healWhilePaused', 'HealWhilePaused',
@@ -53,11 +50,7 @@ end
 function Settings.drawConditions()
     local s = _state
 
-    checkbox('Conditions On', s.cond.on, function(v)
-        s.cond.on = v
-        Config.set('KConditions', 'ConOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Conditions On', s.cond.on, function(v) set('KConditions', 'ConOn', v) end)
 
     ImGui.Spacing()
     ImGui.Separator()
@@ -164,9 +157,7 @@ function Settings.drawAfkTools()
     ImGui.Separator()
     ImGui.Text('Fellowship Campfire')
     checkbox('Place Campfire at Camp', (s.misc.campfireOn or 0) ~= 0, function(v)
-        s.misc.campfireOn = v and math.max(1, s.misc.campfireKit or 1) or 0
-        Config.set('General', 'CampfireOn', tostring(s.misc.campfireOn))
-        Config.save()
+        set('General', 'CampfireOn', v and math.max(1, s.misc.campfireKit or 1) or 0)
     end)
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Out of combat, in camp: place a fellowship campfire when 3+ fellowship\n'
@@ -179,9 +170,7 @@ function Settings.drawAfkTools()
     if ImGui.Button('Place Campfire Now##cfnow') then s.misc.pendingCampfire = true end
 
     checkbox('Click Back to Camp', (s.afk.clickBacktoCamp or 0) ~= 0, function(v)
-        s.afk.clickBacktoCamp = v and 1 or 0
-        Config.set('AFKTools', 'ClickBacktoCamp', tostring(s.afk.clickBacktoCamp))
-        Config.save()
+        set('AFKTools', 'ClickBacktoCamp', v)
     end)
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Dead and out of the camp zone: click the Fellowship Registration\n'

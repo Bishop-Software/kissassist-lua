@@ -1,6 +1,7 @@
 local mq      = require('mq')
 local Utils   = require('modules.utils')
 local Aliases = require('modules.aliases')
+local Control = require('modules.control')
 
 local Binds = {}
 
@@ -259,133 +260,8 @@ end
 -- ─── /togglevariable and /changevarint ───────────────────────────────────────
 -- Both take the mac's variable names (ChaseAssist, MeleeOn, ...), so aliases left
 -- over from kissassist.mac (/chase, /meleeon, /assistat, ...) keep working.
-
--- State sub-tables searched for a variable, in order.
-local VAR_TABLES = {
-    'session', 'combat', 'cast', 'pull', 'movement', 'heal', 'buffs', 'pet',
-    'loot', 'dps', 'misc', 'bard', 'mez', 'afk', 'merc', 'charm', 'debuff', 'cond',
-}
-
--- Mac names the port spells differently (lowercase mac name -> table, field).
--- Everything else is found by a case-insensitive field search.
-local MAC_VAR_NAMES = {
-    peton      = { 'pet', 'on' },     pettoyson   = { 'pet', 'toysOn' },
-    pethold    = { 'pet', 'holdOn' }, petcombaton = { 'pet', 'combatOn' },
-    looton     = { 'loot', 'on' },    afktoolson  = { 'afk', 'on' },
-    mezon      = { 'mez', 'on' },     conon       = { 'cond', 'on' },
-    charmon    = { 'charm', 'on' },   mercon      = { 'merc', 'on' },
-    debuffon   = { 'debuff', 'on' },  pullhold    = { 'pull', 'hold' },
-    dpspaused  = { 'dps', 'paused' },
-    -- session.assistAt is only the command-line value; combat uses this one
-    assistat   = { 'combat', 'assistAt' },
-    mercassistat = { 'merc', 'assistAt' },
-}
-
--- Mac variables that have no counterpart in the port.
-local UNSUPPORTED_VARS = {
-    dpsmeter = true, dpsspam = true, dpswriteon = true,
-}
-
--- Find a variable by its mac or port name. Returns table, field (or nil).
-local function findVar(name)
-    local lname = name:lower()
-    local alias = MAC_VAR_NAMES[lname]
-    if alias and state[alias[1]] then return state[alias[1]], alias[2] end
-    for _, sub in ipairs(VAR_TABLES) do
-        local t = state[sub]
-        if t then
-            if t[name] ~= nil then return t, name end
-            for k in pairs(t) do
-                if type(k) == 'string' and k:lower() == lname then return t, k end
-            end
-        end
-    end
-end
-
--- Convert a value to the field's type. on/1 = on, off/0/empty = off, another
--- number is used as is (mac:8378-8406). Returns the new value and on/off.
-local function convertValue(cur, field, arg)
-    local a   = tostring(arg or ''):match('^%s*(.-)%s*$')
-    local la  = a:lower()
-    local num = tonumber(a)
-    local on
-    if la == 'on' then on = true
-    elseif la == 'off' or la == '' or la == 'null' then on = false
-    elseif num then on = num > 0
-    else on = true end
-    if type(cur) == 'boolean' then return on, on end
-    if type(cur) == 'number' then
-        if num then return num, num > 0 end
-        if not on then return 0, false end
-        return field == 'castingInterruptOn' and 62 or 1, true  -- 62 = the mac's "all" bitmask
-    end
-    if on and a ~= '' and la ~= 'on' then return a, true end
-    return on and '1' or '0', on
-end
-
-local function stickOff()
-    if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
-end
-
--- Side effects of turning a variable on/off (mac Bind_ToggleVariable 8406-8470,
--- Bind_ChangeVarInt 11256-11335). persist: also write the change to the INI.
--- raw: the value as typed (DPSOn 2 needs more than on/off).
-local function varSideEffects(field, on, whoToChase, persist, raw)
-    local mv = state.movement
-    if field == 'dpsOn' then
-        -- DPSOn 2 = any HP + wait out the spell cooldown (combat.dpsOnOoc)
-        state.combat.dpsOnOoc = on and tonumber(raw) == 2
-    elseif field == 'chaseAssist' then
-        if on then
-            if whoToChase and whoToChase ~= '' and whoToChase ~= 'null'
-               and whoToChase ~= mv.whoToChase then
-                mv.whoToChase = whoToChase
-                printf('\ayI Will Now Chase %s', whoToChase)
-            end
-            if mv.returnToCamp then
-                mv.returnToCamp = false
-                if persist then _config.set('General', 'ReturnToCamp', '0') end
-            end
-            if (mq.TLO.Me.Pet.ID() or 0) > 0 and (mq.TLO.Me.Pet.Stance() or ''):upper() ~= 'FOLLOW' then
-                mq.cmd('/pet follow')
-            end
-        else
-            stickOff()
-        end
-    elseif field == 'returnToCamp' and on then
-        -- New camp right here (mac:8417-8432)
-        mv.campX, mv.campY, mv.campZ = mq.TLO.Me.X(), mq.TLO.Me.Y(), mq.TLO.Me.FloorZ()
-        mv.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
-        mv.campZone     = mq.TLO.Zone.ID()
-        mv.campZoneName = mq.TLO.Zone.ShortName() or ''
-        state.pull.mapSet = false
-        if state.session.chaseAssist then
-            state.session.chaseAssist = false
-            _config.set('General', 'ChaseAssist', '0')  -- the mac saves this one (mac:8425)
-            _config.save()
-            stickOff()
-            printf('\ay>> ChaseAssist Off')
-        end
-        printf('\ay>> New camp set %.1f, %.1f', mv.campY or 0, mv.campX or 0)
-    elseif field == 'autoRezAll' then
-        if on then printf('\ayNow Rezing Everyone.')
-        else
-            state.heal.corpseRezCheck = 'null'
-            printf('\ayNo longer Rezing Everyone.')
-        end
-    elseif field == 'targetSwitchingOn' and on and not state.session.iAmMA then
-        state.combat.targetSwitchingOn = false  -- MA only (mac:8460)
-    elseif field == 'maxRadius' then
-        mv.campRadiusExceed = (state.pull.maxRadius or 0) + 200  -- mac:11277
-    elseif field == 'xTarHeal' then
-        if (state.heal.healsOn or 0) == 0 then
-            state.heal.xTarHeal = 0
-            printf('\ayTurn on Heals first. Setting XTarget Healing OFF!')  -- mac:11313
-        else
-            require('modules.healing').setXTargetHealList(state.heal.xTarHealList)
-        end
-    end
-end
+-- Thin adapters: the work is Control.set (modules/control.lua); these keep the
+-- mac's argument forms and messages.
 
 -- /togglevariable <name> [on|off|1|0|value] [who]. Port of Bind_ToggleVariable
 -- (mac:8371). As in the mac, no value turns it off. Not saved to the INI.
@@ -395,25 +271,23 @@ local function onToggleVariable(varName, val, extra)
         printf('\ay/togglevariable <name> [on|off|value]')
         return
     end
-    if varName:lower() == 'waithere' then  -- mac:8473-8477
-        state.session.chaseAssist   = false
-        state.movement.returnToCamp = false
-        stickOff()
+    local ok, msg, info = Control.set(varName, val, { who = extra })
+    if not ok then
+        if msg == 'unsupported' then
+            printf('\ay%s is not supported in the Lua port.', varName)
+        elseif msg == 'badvalue' then
+            printf('\ay/togglevariable: bad value \at%s\ay for \at%s', tostring(val), varName)
+        else
+            printf('\ay/togglevariable: unknown variable \at%s', varName)
+        end
         return
     end
-    if UNSUPPORTED_VARS[varName:lower()] then
-        printf('\ay%s is not supported in the Lua port.', varName)
+    if msg == 'waithere' then return end
+    if info.shown then
+        printf('\ay>> Setting: (%s) to (%s)', varName, info.shown)
         return
     end
-    local tbl, field = findVar(varName)
-    if not tbl then
-        printf('\ay/togglevariable: unknown variable \at%s', varName)
-        return
-    end
-    local value, on = convertValue(tbl[field], field, val)
-    tbl[field] = value
-    varSideEffects(field, on, extra, false, val)
-    printf('\ay>> Setting: (%s) to (%s) (%s)', varName, on and 'On' or 'Off', tostring(tbl[field]))
+    printf('\ay>> Setting: (%s) to (%s) (%s)', varName, info.on and 'On' or 'Off', tostring(info.now))
 end
 
 -- /changevarint <Section> <Name> <value>: set a variable and save it to the INI.
@@ -430,32 +304,23 @@ local function onChangeVarInt(a1, a2, a3)
         printf('\ay/changevarint <Section> <Name> <value>')
         return
     end
-    -- GroupWatchOn "1|20", GroupWatchPct, GroupWatchCheck "condN" (mac:14569-14587)
-    local GroupWatch = require('modules.groupwatch')
-    if GroupWatch.isVar(name) then
-        local shown = GroupWatch.setVar(name, value)
-        if not shown then
+    local ok, msg, info = Control.set(name, value, { section = section, save = section ~= nil })
+    if not ok then
+        if msg == 'badvalue' then
             printf('\ay/changevarint: bad value \at%s\ay for \at%s', value, name)
-            return
+        elseif msg == 'unsupported' then
+            printf('\ay%s is not supported in the Lua port.', name)
+        else
+            printf('\ay/changevarint: unknown variable \at%s', name)
         end
-        printf('\ayChanging %s to %s', name, shown)
-        if section then GroupWatch.save() end
         return
     end
-    local tbl, field = findVar(name)
-    if not tbl then
-        printf('\ay/changevarint: unknown variable \at%s', name)
+    if msg == 'waithere' then return end
+    if info.shown then
+        printf('\ayChanging %s to %s', name, info.shown)
         return
     end
-    local old = tbl[field]
-    local newValue, on = convertValue(old, field, value)
-    tbl[field] = newValue
-    printf('\ayChanging %s from %s to %s', name, tostring(old), tostring(newValue))
-    if section then
-        _config.set(section, name, tostring(value))
-    end
-    varSideEffects(field, on, nil, section ~= nil, value)
-    if section then _config.save() end
+    printf('\ayChanging %s from %s to %s', name, tostring(info.old), tostring(info.value))
 end
 
 -- ─── Movement / camp ──────────────────────────────────────────────────────────

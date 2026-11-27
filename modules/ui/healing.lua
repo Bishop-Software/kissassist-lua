@@ -3,6 +3,7 @@
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 
 local Heal     = require('modules.healing')
 
@@ -39,17 +40,9 @@ end
 function HealingUI.drawHealThresholds()
     local s = _state
 
-    checkbox('Heals On', s.heal.healsOn ~= 0, function(v)
-        s.heal.healsOn = v and 1 or 0
-        Config.set('Heals', 'HealsOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Heals On', s.heal.healsOn ~= 0, function(v) set('Heals', 'HealsOn', v) end)
     ImGui.SameLine(160)
-    checkbox('Rez Guild/Fellowship', s.heal.rezGuildFellowship ~= false, function(v)
-        s.heal.rezGuildFellowship = v
-        Config.set('Heals', 'RezGuildFellowship', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Rez Guild/Fellowship', s.heal.rezGuildFellowship ~= false, function(v) set('Heals', 'RezGuildFellowship', v) end)
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Out of combat, rez nearby corpses of guild and fellowship members.\nNeeds AutoRezOn and a rez in the heal list.')
     end

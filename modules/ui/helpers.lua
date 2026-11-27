@@ -1,7 +1,8 @@
 -- ui/helpers.lua — shared ImGui widgets and lookup tables used across the
 -- ui/* tab modules. Stateless: takes everything it needs as parameters.
 
-local Config = require('modules.config')
+local Config  = require('modules.config')
+local Control = require('modules.control')
 
 local Helpers = {}
 Helpers.Config = Config
@@ -27,13 +28,25 @@ function Helpers.checkbox(label, value, onChange)
     ImGui.Text(label)
 end
 
-function Helpers.intInput(label, value, min, max, configSection, configKey, stateSet)
+-- Change a setting from the GUI: Control.set (modules/control.lua) sets it with
+-- its side effects and, as the GUI always has, saves it to the INI on click.
+function Helpers.set(section, key, value)
+    return Control.set(key, value, { section = section, save = true })
+end
+
+-- Same for the few runtime-only settings the GUI never saved (PullHold).
+function Helpers.setRuntime(key, value)
+    return Control.set(key, value)
+end
+
+-- Number input for one INI setting. onChange(v), if given, runs after the set
+-- for GUI-only follow-up work.
+function Helpers.intInput(label, value, min, max, configSection, configKey, onChange)
     local newVal = ImGui.InputInt(label, value)
     if newVal ~= value then
         newVal = math.max(min, math.min(max, newVal))
-        stateSet(newVal)
-        Config.set(configSection, configKey, tostring(newVal))
-        Config.save()
+        Helpers.set(configSection, configKey, newVal)
+        if onChange then onChange(newVal) end
     end
 end
 

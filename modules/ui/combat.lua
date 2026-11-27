@@ -7,6 +7,7 @@ local Movement   = require('modules.movement')
 local Roles      = require('modules.roles')
 local Config     = Helpers.Config
 local checkbox   = Helpers.checkbox
+local set      = Helpers.set
 local intInput   = Helpers.intInput
 local GLT_VALUES  = Helpers.GLT_VALUES
 local GLT_LABELS  = Helpers.GLT_LABELS
@@ -63,17 +64,9 @@ function CombatUI.drawMelee()
     local s = _state
 
     -- Toggles
-    checkbox('Melee', s.combat.meleeOn, function(v)
-        s.combat.meleeOn = v
-        Config.set('Melee', 'MeleeOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Melee', s.combat.meleeOn, function(v) set('Melee', 'MeleeOn', v) end)
 
-    checkbox('Auto-Acquire Targets', s.combat.targetSwitchingOn, function(v)
-        s.combat.targetSwitchingOn = v
-        Config.set('Melee', 'TargetSwitchingOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Auto-Acquire Targets', s.combat.targetSwitchingOn, function(v) set('Melee', 'TargetSwitchingOn', v) end)
 
     checkbox('Manual Target Swapping', s.combat.manualTargetMode, function(_)
         mq.cmd('/katargetmode')
@@ -105,31 +98,22 @@ function CombatUI.drawMelee()
         end
     end
 
-    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(v)
-        s.combat.autoFireOn = v and 1 or 0
-        Config.set('Melee', 'AutoFireOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(v) set('Melee', 'AutoFireOn', v) end)
 
-    checkbox('LOS Check', Config.get('General', 'LOSBeforeCombat', '0') == '1', function(v)
-        Config.set('General', 'LOSBeforeCombat', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('LOS Check', s.combat.losBeforeCombat, function(v) set('General', 'LOSBeforeCombat', v) end)
 
     if s.session.iAmARogue then
         checkbox('Auto Hide', s.misc.autoHide, function(v)
-            s.misc.autoHide = v
-            Config.set('Melee', 'AutoHide', v and '1' or '0')
             Config.set('General', 'AutoHide', nil)  -- drop the old misplaced key
-            Config.save()
+            set('Melee', 'AutoHide', v)
         end)
     end
 
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
-    intInput('Assist %',    s.combat.assistAt,      1,  100, 'Melee', 'AssistAt',        function(v) s.combat.assistAt      = v end)
-    intInput('Melee Dist',  s.combat.meleeDistance,  1,  500, 'Melee', 'MeleeDistance',   function(v) s.combat.meleeDistance = v end)
+    intInput('Assist %',    s.combat.assistAt,      1,  100, 'Melee', 'AssistAt')
+    intInput('Melee Dist',  s.combat.meleeDistance,  1,  500, 'Melee', 'MeleeDistance')
     local faceMobLabels = { 'Off', 'Fast (no camera)', 'Smooth (no camera)' }
     local faceMobIdx = (s.movement.faceMobOn or 0) + 1
     ImGui.PushItemWidth(200)
@@ -237,11 +221,7 @@ end
 function CombatUI.drawAggro()
     local s = _state
 
-    checkbox('Aggro', s.combat.aggroOn, function(v)
-        s.combat.aggroOn = v
-        Config.set('Aggro', 'AggroOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Aggro', s.combat.aggroOn, function(v) set('Aggro', 'AggroOn', v) end)
 
     ImGui.Spacing()
     ImGui.Separator()
@@ -509,8 +489,8 @@ function CombatUI.drawDPS()
     end
 
     ImGui.Spacing()
-    intInput('DPS Skip %',   s.combat.dpsSkip,     0,  100, 'DPS', 'DPSSkip',     function(v) s.combat.dpsSkip     = v end)
-    intInput('DPS Interval', s.combat.dpsInterval, 0, 3600, 'DPS', 'DPSInterval', function(v) s.combat.dpsInterval = v end)
+    intInput('DPS Skip %',   s.combat.dpsSkip,     0,  100, 'DPS', 'DPSSkip')
+    intInput('DPS Interval', s.combat.dpsInterval, 0, 3600, 'DPS', 'DPSInterval')
 
     ImGui.Spacing()
     ImGui.Separator()
@@ -638,17 +618,9 @@ end
 function CombatUI.drawBurn()
     local s = _state
 
-    checkbox('Burn', s.combat.burnOn, function(v)
-        s.combat.burnOn = v
-        Config.set('Burn', 'BurnOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Burn', s.combat.burnOn, function(v) set('Burn', 'BurnOn', v) end)
 
-    checkbox('Use Tribute', s.combat.useTribute, function(v)
-        s.combat.useTribute = v
-        Config.set('Burn', 'UseTribute', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Use Tribute', s.combat.useTribute, function(v) set('Burn', 'UseTribute', v) end)
 
     ImGui.Spacing()
     local burnNamedLabels = { 'Off', 'Burn all named', 'Burn watch list only' }
@@ -792,15 +764,10 @@ end
 function CombatUI.drawAE()
     local s = _state
 
-    checkbox('AE On', s.combat.aeOn, function(v)
-        s.combat.aeOn = v
-        Config.set('AE', 'AEOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('AE On', s.combat.aeOn, function(v) set('AE', 'AEOn', v) end)
 
     ImGui.Spacing()
-    intInput('AE Radius', s.combat.aeRadius, 10, 500, 'AE', 'AERadius',
-        function(v) s.combat.aeRadius = v end)
+    intInput('AE Radius', s.combat.aeRadius, 10, 500, 'AE', 'AERadius')
 
     ImGui.Spacing()
     ImGui.Separator()

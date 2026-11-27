@@ -4,6 +4,7 @@ local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 local intInput = Helpers.intInput
 
 local SupportUI = {}
@@ -22,66 +23,30 @@ function SupportUI.drawPet()
             ImGui.Spacing()
 
             -- Row 1
-            checkbox('Pet', s.pet.on, function(v)
-                s.pet.on = v
-                Config.set('Pet', 'PetOn', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Pet', s.pet.on, function(v) set('Pet', 'PetOn', v) end)
             ImGui.SameLine(120)
-            checkbox('Pet Buffs', s.buffs.petBuffsOn, function(v)
-                s.buffs.petBuffsOn = v
-                Config.set('Pet', 'PetBuffsOn', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Pet Buffs', s.buffs.petBuffsOn, function(v) set('Pet', 'PetBuffsOn', v) end)
 
             -- Row 2
-            checkbox('Shrink', s.pet.shrinkOn, function(v)
-                s.pet.shrinkOn = v
-                Config.set('Pet', 'PetShrinkOn', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Shrink', s.pet.shrinkOn, function(v) set('Pet', 'PetShrinkOn', v) end)
             ImGui.SameLine(120)
-            checkbox('Toys', s.pet.toysOn, function(v)
-                s.pet.toysOn = v
-                Config.set('Pet', 'PetToysOn', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Toys', s.pet.toysOn, function(v) set('Pet', 'PetToysOn', v) end)
 
             -- Row 3
-            checkbox('Suspend', s.pet.suspend, function(v)
-                s.pet.suspend = v
-                Config.set('Pet', 'PetSuspend', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Suspend', s.pet.suspend, function(v) set('Pet', 'PetSuspend', v) end)
             ImGui.SameLine(120)
-            checkbox('Hold', s.pet.holdOn ~= 0, function(v)
-                s.pet.holdOn = v and 1 or 0
-                Config.set('Pet', 'PetHoldOn', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Hold', s.pet.holdOn ~= 0, function(v) set('Pet', 'PetHoldOn', v) end)
 
             -- Row 4
-            checkbox('Taunt Off', s.pet.tauntOverride, function(v)
-                s.pet.tauntOverride = v
-                Config.set('Pet', 'PetTauntOverride', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Taunt Off', s.pet.tauntOverride, function(v) set('Pet', 'PetTauntOverride', v) end)
             ImGui.SameLine(120)
-            checkbox('Heal on Med', s.pet.forceHealOnMed, function(v)
-                s.pet.forceHealOnMed = v
-                Config.set('Pet', 'PetForceHealOnMed', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Heal on Med', s.pet.forceHealOnMed, function(v) set('Pet', 'PetForceHealOnMed', v) end)
             if ImGui.IsItemHovered() then
                 ImGui.SetTooltip('Pet-tank pullers: heal the pet up to MedStop before every pull,\nnot only when it drops to half health.')
             end
 
             -- Row 5
-            checkbox('Move When Hit', s.pet.moveWhenHit, function(v)
-                s.pet.moveWhenHit = v
-                Config.set('Pet', 'MoveWhenHit', v and '1' or '0')
-                Config.save()
-            end)
+            checkbox('Move When Hit', s.pet.moveWhenHit, function(v) set('Pet', 'MoveWhenHit', v) end)
             if ImGui.IsItemHovered() then
                 ImGui.SetTooltip('Pet tanks: when a mob hits you, step away from it, or go back\nto camp if you are out of camp with Return to Camp on.')
             end
@@ -253,14 +218,9 @@ end
 function SupportUI.drawMerc()
     local s = _state
 
-    checkbox('Merc', s.merc.on ~= 0, function(v)
-        s.merc.on = v and 1 or 0
-        Config.set('Merc', 'MercOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Merc', s.merc.on ~= 0, function(v) set('Merc', 'MercOn', v) end)
 
-    intInput('Assist %', s.merc.assistAt, 1, 100, 'Merc', 'MercAssistAt',
-        function(v) s.merc.assistAt = v end)
+    intInput('Assist %', s.merc.assistAt, 1, 100, 'Merc', 'MercAssistAt')
 
     ImGui.Spacing()
     ImGui.Separator()

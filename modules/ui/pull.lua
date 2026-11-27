@@ -4,6 +4,7 @@ local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
+local set      = Helpers.set
 local intInput = Helpers.intInput
 local Pull     = require('modules.pull')
 local GroupWatch = require('modules.groupwatch')
@@ -161,39 +162,21 @@ function PullUI.drawPull()
     local s = _state
 
     -- Toggles
-    checkbox('Pull', not s.pull.hold, function(v)
-        s.pull.hold = not v
-    end)
+    checkbox('Pull', not s.pull.hold, function(v) Helpers.setRuntime('PullHold', not v) end)
     -- Only the puller role chain pulls (mac:8841).
     if s.session.role == 'puller' then
         ImGui.SameLine(160)
-        checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v)
-            s.pull.chainPull = v and 1 or 0
-            Config.set('Pull', 'ChainPull', v and '1' or '0')
-            Config.save()
-        end)
+        checkbox('Chain Pull', s.pull.chainPull ~= 0, function(v) set('Pull', 'ChainPull', v) end)
     end
 
-    checkbox('Pull On Return', s.pull.pullOnReturn, function(v)
-        s.pull.pullOnReturn = v
-        Config.set('Pull', 'PullOnReturn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Pull On Return', s.pull.pullOnReturn, function(v) set('Pull', 'PullOnReturn', v) end)
     ImGui.SameLine(160)
-    checkbox('No-Pull Areas', s.pull.pullLocsOn, function(v)
-        s.pull.pullLocsOn = v
-        Config.set('PullAdvanced', 'PullLocsOn', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('No-Pull Areas', s.pull.pullLocsOn, function(v) set('PullAdvanced', 'PullLocsOn', v) end)
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("Don't pull mobs inside this zone's no-pull areas (set them below)")
     end
 
-    checkbox('Melee Pull Stick', s.pull.meleeStick, function(v)
-        s.pull.meleeStick = v
-        Config.set('Pull', 'PullMeleeStick', v and '1' or '0')
-        Config.save()
-    end)
+    checkbox('Melee Pull Stick', s.pull.meleeStick, function(v) set('Pull', 'PullMeleeStick', v) end)
     ImGui.SameLine(160)
     -- Per session, not saved (mac Bind_SetPullRanking).
     checkbox('Pull Ranking', s.pull.ranking, function(v) Pull.setRanking(v) end)
@@ -201,37 +184,28 @@ function PullUI.drawPull()
         ImGui.SetTooltip("Pull the MobsToPull entries marked with ':' first")
     end
     if s.session.role == 'pullerpettank' then
-        checkbox('Group Puller Role', s.pull.roleToggle, function(v)
-            s.pull.roleToggle = v
-            Config.set('Pull', 'PullRoleToggle', v and '1' or '0')
-            Config.save()
-        end)
+        checkbox('Group Puller Role', s.pull.roleToggle, function(v) set('Pull', 'PullRoleToggle', v) end)
         if ImGui.IsItemHovered() then
             ImGui.SetTooltip('Take the group Puller role while pulling (group leader with a merc only)')
         end
         if s.session.iAmABard then ImGui.SameLine(160) end
     end
     if s.session.iAmABard then
-        checkbox('Twist On Pull', s.bard.pullTwistOn, function(v)
-            s.bard.pullTwistOn = v
-            Config.set('Pull', 'PullTwistOn', v and '1' or '0')
-            Config.save()
-        end)
+        checkbox('Twist On Pull', s.bard.pullTwistOn, function(v) set('Pull', 'PullTwistOn', v) end)
     end
 
     -- Numeric settings
     ImGui.Spacing()
     ImGui.Separator()
-    intInput('Max Radius',  s.pull.maxRadius,    1, 2000, 'Pull', 'MaxRadius',    function(v) s.pull.maxRadius    = v end)
-    intInput('Max Z Range', s.pull.maxZRange,    1, 2000, 'Pull', 'MaxZRange',    function(v) s.pull.maxZRange    = v end)
+    intInput('Max Radius',  s.pull.maxRadius,    1, 2000, 'Pull', 'MaxRadius')
+    intInput('Max Z Range', s.pull.maxZRange,    1, 2000, 'Pull', 'MaxZRange')
     -- Pull range comes from PullWith (Pull.rangeSet); this scales it.
     intInput('Pull Range %', s.pull.radiusToUse,  1,  100, 'Pull', 'PullRadiusToUse', function(v)
         s.pull.radiusToUse = v
         Pull.rangeSet()
     end)
     if s.pull.chainPull ~= 0 then
-        intInput('Chain Pull HP %', s.pull.chainPullHP, 1, 100, 'Pull', 'ChainPullHP',
-            function(v) s.pull.chainPullHP = v end)
+        intInput('Chain Pull HP %', s.pull.chainPullHP, 1, 100, 'Pull', 'ChainPullHP')
     end
     -- PullLevel: 'min|max', 'min|max|linked', 'auto' or '0|0'. Applied when
     -- the field loses focus so partial text isn't parsed while typing.
@@ -258,7 +232,7 @@ function PullUI.drawPull()
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip("X|Y: pull X minutes, then rest Y minutes. X|Y|condN: also hold pulls while condition N is true. 0 = off")
     end
-    intInput('Pull Wait (s)', s.pull.pullWait, 0, 3600, 'Pull', 'PullWait', function(v) s.pull.pullWait = v end)
+    intInput('Pull Wait (s)', s.pull.pullWait, 0, 3600, 'Pull', 'PullWait')
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Seconds to wait for respawns when no mob can be found. 0 = off')
     end
