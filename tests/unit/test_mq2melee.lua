@@ -76,7 +76,7 @@ function M.run(TH, MockMQ)
                                     paused = state.dps.paused }
         end,
     }
-    Binds.register(state, {}, {}, combat, { set = function() end, save = function() end }, {})
+    Binds.register(state, {}, {}, combat, { get = function() end, set = function() end, save = function() end }, {})
     local backoff = bound['/backoff']
     TH.assert_true(backoff ~= nil, '/backoff is bound')
 

@@ -40,6 +40,7 @@ local NAMES = {
     charmon      = { 'charm', 'on' },     mercon      = { 'merc', 'on' },
     debuffon     = { 'debuff', 'on' },    pullhold    = { 'pull', 'hold' },
     dpspaused    = { 'dps', 'paused' },
+    pullranking  = { 'pull', 'ranking' },
     -- session.assistAt is only the command-line value; combat uses this one
     assistat     = { 'combat', 'assistAt' },
     mercassistat = { 'merc', 'assistAt' },
@@ -161,6 +162,14 @@ local function sideEffects(field, on, who, save, raw)
         end
     elseif field == 'targetSwitchingOn' and on and not _state.session.iAmMA then
         _state.combat.targetSwitchingOn = false  -- MA only (mac:8460)
+    elseif field == 'ranking' then
+        -- PullRanking: rebuild the pull list, puller roles only (mac:15019)
+        local Pull = require('modules.pull')
+        if require('modules.pull.util').isPullerRole(_state.session.role) then
+            Pull.setRanking(on)
+        else
+            Pull.setRanking(false, true)
+        end
     elseif field == 'maxRadius' then
         mv.campRadiusExceed = (_state.pull.maxRadius or 0) + 200  -- mac:11277
     elseif field == 'xTarHeal' then
@@ -397,6 +406,13 @@ function Control.sectionOf(name)
         end
     end
     return foundSection, foundKey
+end
+
+-- Run a verb without printing or touching LastResult (the GUI's way in).
+function Control.run(verb, words)
+    local v = VERBS[verb]
+    if not v then return false, 'unknown verb' end
+    return v.run(words or {})
 end
 
 -- /kactl entry point. words: the command's arguments. Returns ok, msg.

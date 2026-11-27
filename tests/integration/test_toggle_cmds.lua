@@ -124,6 +124,29 @@ function M.run(mq, State, TH)
     mq.cmd('/kactl set MeleeOn') ; mq.delay(D)
     TH.assert_true(State.combat.meleeOn, '/kactl set MeleeOn (no value) → rejected, unchanged')
     State.combat.meleeOn = origMelee
+
+    -- /kactl replacements for the mac's commands (#363, 3b) -----------------------
+    -- /backoff stops the fight and resets combat, so run it out of combat.
+    local origBackoff = State.dps.paused
+    mq.cmd('/kactl backoff on') ; mq.delay(D)
+    TH.assert_true(State.dps.paused, '/kactl backoff on')
+    mq.cmd('/kactl backoff off') ; mq.delay(D)
+    TH.assert_false(State.dps.paused, '/kactl backoff off')
+    State.dps.paused = origBackoff
+
+    local origDebug = State.debug.combat
+    mq.cmd('/kactl debug combat on') ; mq.delay(D)
+    TH.assert_true(State.debug.combat, '/kactl debug combat on')
+    mq.cmd('/kactl debug combat off') ; mq.delay(D)
+    TH.assert_false(State.debug.combat, '/kactl debug combat off')
+    State.debug.combat = origDebug
+
+    local origIgnore = State.pull.mobsToIgnoreByID
+    mq.cmd('/kactl ignore clear') ; mq.delay(D)
+    TH.assert_eq(State.pull.mobsToIgnoreByID, 'null', '/kactl ignore clear')
+    State.pull.mobsToIgnoreByID = origIgnore
+
+    TH.assert_eq(type(State.session.legacyCmdNotice), 'boolean', 'LegacyCmdNotice loaded')
     mq.cmd(origPaused and '/kactl pause on' or '/kactl pause off') ; mq.delay(D)
 end
 

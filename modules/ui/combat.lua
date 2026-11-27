@@ -22,7 +22,7 @@ local _state
 -- Switch MA picks (Melee panel). Index into Roles.MA_ROLE_CHOICES; 1 = tank.
 local _maPick, _maRolePick, _maBroadcast = nil, 1, true
 
--- Main Assist: show the current MA and switch it through /switchma (#346).
+-- Main Assist: show the current MA and switch it through /kactl ma (#346, #363).
 local function drawSwitchMA(s)
     ImGui.Separator()
     ImGui.Text('Main Assist:')
@@ -52,7 +52,7 @@ local function drawSwitchMA(s)
     ImGui.SameLine()
     _maBroadcast = ImGui.Checkbox('Broadcast##switchmabc', _maBroadcast)
     if ImGui.IsItemHovered() then
-        ImGui.SetTooltip('Tell the other KissAssist characters in the group to switch too (/switchma)')
+        ImGui.SetTooltip('Tell the other KissAssist characters in the group to switch too (/kactl ma ... group)')
     end
 end
 

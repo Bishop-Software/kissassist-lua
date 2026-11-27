@@ -681,24 +681,35 @@ local function addBurn(name)
     return true, 'added ' .. name .. ' to the burn list'
 end
 
--- /kactl list <list> add [name]. Phase 3a has the two lists whose commands were
--- Lua only; the mac's /addpull, /addignore, /addimmune, /addfriend and
--- /tbmanager lists join in the next step.
+-- /kactl list <list> <action> [name]. LISTS[list][action](name) -> ok, msg.
+-- burn and charmimmune are here; the mac's lists (pull, ignore, mezimmune,
+-- friend, toobuff) are added in Binds.register, where their commands are.
 local LISTS = {
-    burn        = function(name) return addBurn(name) end,
-    charmimmune = function(name)
-        if name and name ~= '' then return false, 'charmimmune adds the target; no name' end
+    burn        = { add = function(name) return addBurn(name) end },
+    charmimmune = { add = function(name)
+        if name then return false, 'charmimmune adds the target; no name' end
         return addCharmImmune()
-    end,
+    end },
 }
 
 local function kactlList(words)
     local list, action = tostring(words[1] or ''):lower(), tostring(words[2] or ''):lower()
-    local add = LISTS[list]
-    if not add then return false, 'lists: burn, charmimmune' end
-    if action ~= 'add' then return false, 'expects add' end
+    local actions = LISTS[list]
+    if not actions then
+        local names = {}
+        for n in pairs(LISTS) do names[#names + 1] = n end
+        table.sort(names)
+        return false, 'lists: ' .. table.concat(names, ', ')
+    end
+    local fn = actions[action]
+    if not fn then
+        local names = {}
+        for n in pairs(actions) do names[#names + 1] = n end
+        table.sort(names)
+        return false, list .. ' takes ' .. table.concat(names, ', ')
+    end
     local name = #words > 2 and table.concat(words, ' ', 3) or nil
-    return add(name)
+    return fn(name)
 end
 
 -- /kactl medley quiet on|off|toggle: bard only; MQ2Medley's quiet mode (was
@@ -985,6 +996,129 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
+-- ─── The mac's commands: deprecated, each with a /kactl replacement ───────────
+-- The 30 commands kissassist.mac binds stay as they are (mixed groups, MQ2Boxr
+-- and the mac's aliases send them), but each prints a one-line notice, once per
+-- session, naming its /kactl form. [General] LegacyCmdNotice=0 turns that off.
+
+local _noticed = {}
+local _shown   = {}  -- every notice shown this session, '<key> -> <replacement>'
+
+-- The notices shown so far (for tests and /kactl check-style reports).
+function Binds.shownNotices() return _shown end
+
+-- /togglevariable and /changevarint name the variable, so someone typing the
+-- /camphere alias reads about ReturnToCamp, not a command they never typed.
+local function varReplacement(name, save)
+    local l = tostring(name or ''):lower()
+    if l == 'returntocamp' then return '/kactl mode camp here (or mode manual)' end
+    if l == 'chaseassist' then return '/kactl mode chase [name] (or mode manual)' end
+    if l == 'waithere' then return '/kactl mode manual' end
+    return string.format('/kactl set %s <value>%s', name, save and ' save' or '')
+end
+
+local function notice(key, replacement)
+    if state.session.legacyCmdNotice == false or _noticed[key] then return end
+    _noticed[key] = true
+    _shown[#_shown + 1] = key .. ' -> ' .. replacement
+    printf('\ay%s is deprecated; use \at%s\ay (once per session; [General] LegacyCmdNotice=0 hides these).',
+        key, replacement)
+end
+
+-- Bind a mac command; replacement is a string or a function(...) -> key, replacement.
+local function legacy(cmd, fn, replacement)
+    bind(cmd, function(...)
+        if type(replacement) == 'function' then
+            notice(replacement(...))
+        else
+            notice(cmd, replacement)
+        end
+        fn(...)
+    end)
+end
+
+-- /kactl verbs that replace the mac's commands. Strict arguments; the work is
+-- the mac command's own handler, so its usual messages still print.
+local function only(words, n, usage)
+    if #words ~= n then return false, 'expects ' .. usage end
+    return true
+end
+
+local function kactlBackoff(words)
+    local wait = Control.takeFlag(words, 'wait')
+    if #words ~= 1 then return false, 'expects on, off or toggle [wait]' end
+    local on, err = Control.onOff(words[1], state.dps.paused)
+    if on == nil then return false, err end
+    onBackOff(on and 'on' or 'off', wait and '1' or '0')
+    return true, on and 'backed off' or 'fighting'
+end
+
+-- /kactl burn [<id>]: burn now on that spawn, the fight target or the NPC
+-- target. Turns BurnOn on for the session first, as MQ2Boxr's /burn on doburn does.
+local function kactlBurn(words)
+    if #words > 1 then return false, 'expects [<id>]' end
+    if words[1] and not tonumber(words[1]) then return false, 'expects a spawn ID' end
+    if not state.combat.burnOn then
+        state.combat.burnOn     = true
+        state.movement.campZone = mq.TLO.Zone.ID()
+    end
+    onBurn(words[1] or '')
+    return true, 'burning ID ' .. tostring(state.combat.burnID)
+end
+
+-- /kactl ignore <id>|clear: ignore one spawn ID for the session (/addignore <id> 1).
+local function kactlIgnore(words)
+    if #words ~= 1 then return false, 'expects a spawn ID or clear' end
+    if tostring(words[1]):lower() == 'clear' then
+        state.pull.mobsToIgnoreByID = 'null'
+        return true, 'session ignore list cleared'
+    end
+    local id = math.floor(tonumber(words[1]) or 0)
+    if id <= 0 or (mq.TLO.Spawn('id ' .. id).Type() or ''):upper() ~= 'NPC' then
+        return false, 'no NPC with ID ' .. tostring(words[1])
+    end
+    onAddIgnore(tostring(id), 1)
+    return true, 'ignoring ID ' .. id
+end
+
+-- /kactl switch <id>: a non-MA switches to the called target (/switchnow).
+local function kactlSwitch(words)
+    if #words ~= 1 or not tonumber(words[1]) then return false, 'expects a spawn ID' end
+    if state.session.iAmMA then return false, 'the main assist picks its own target (use target)' end
+    onSwitch(nil, words[1])
+    return true, 'switching to ID ' .. words[1]
+end
+
+-- /kactl ma <name> [role] [group]: change the main assist (/switchma). Only
+-- tells the group with 'group' (the mac's /switchma does unless told not to).
+local function kactlMA(words)
+    local group = Control.takeFlag(words, 'group')
+    if #words < 1 or #words > 2 then return false, 'expects <name> [role] [group]' end
+    require('modules.roles').switchMA(words[1], words[2], group)
+    return true, 'main assist ' .. words[1]
+end
+
+-- /kactl cast <spell name...> [<id>]: cast by name (/kisscast); a trailing number is the target.
+local function kactlCast(words)
+    if #words == 0 then return false, 'expects <spell> [<id>]' end
+    local id
+    if #words > 1 and tonumber(words[#words]) then id = table.remove(words) end
+    onKissCast(table.concat(words, ' '), id)
+    return true, 'cast ' .. table.concat(words, ' ')
+end
+
+local function kactlDebug(words)
+    local log = Control.takeFlag(words, 'log')
+    if #words ~= 2 then return false, 'expects <area>|all on|off|toggle [log]' end
+    local area = tostring(words[1]):lower()
+    local field = area == 'all' and 'all' or DEBUG_FIELDS[area]
+    if not field then return false, 'unknown area ' .. area end
+    local on, err = Control.onOff(words[2], state.debug[field])
+    if on == nil then return false, err end
+    onDebug(area, on and 'on' or 'off', log and 'log' or nil)
+    return true, string.format('debug %s %s', area, on and 'on' or 'off')
+end
+
 -- _comms: group messages now go out through Control (modules/control.lua);
 -- the argument stays so the call in init.lua and the tests don't change.
 function Binds.register(s, b, cast, combat, config, _comms)
@@ -993,58 +1127,133 @@ function Binds.register(s, b, cast, combat, config, _comms)
     _cast   = cast
     _combat = combat
     _config = config
+    state.session.legacyCmdNotice = _config.get('General', 'LegacyCmdNotice', '1') ~= '0'
 
-    -- Debug / utility
-    bind('/debug',          onDebug)
-    bind('/parse',          onParse)
-    bind('/zoneinfo',       onZoneInfo)
-    bind('/aggroinfo',      onAggroInfo)
-    bind('/iniwrite',       onIniWrite)
-    bind('/writespells',    onWriteSpells)
-    bind('/memmyspells',    onMemMySpells)
-    bind('/mycmd',          onMyCmds)
-
-    bind('/kisscheck',      onKissCheck)
-    bind('/kasettings',     onKaSettings)
-    bind('/togglevariable', onToggleVariable)
-    bind('/changevarint',   onChangeVarInt)
-
-    -- Combat
-    bind('/burn',              onBurn)
-    bind('/backoff',           onBackOff)
-    bind('/switchnow',         onSwitch)
-    bind('/switchma',          onSwitchMA)
-    bind('/kisscast',       onKissCast)
+    -- The mac's commands (deprecated; the notice names the /kactl form)
+    legacy('/debug',          onDebug,        '/kactl debug <area>|all on|off|toggle [log]')
+    legacy('/parse',          onParse,        '/kactl parse <expression>')
+    legacy('/zoneinfo',       onZoneInfo,     '/kactl info zone')
+    legacy('/aggroinfo',      onAggroInfo,    '/kactl info aggro')
+    legacy('/iniwrite',       onIniWrite,     '/kactl ini write')
+    legacy('/writespells',    onWriteSpells,  '/kactl spells write')
+    legacy('/memmyspells',    onMemMySpells,  '/kactl spells mem [set]')
+    legacy('/mycmd',          onMyCmds,       '/kactl mycmd [command]')
+    legacy('/kisscheck',      onKissCheck,    '/kactl check [sections]')
+    legacy('/kasettings',     onKaSettings,   '/kactl ui on')
+    legacy('/togglevariable', onToggleVariable, function(name)
+        return '/togglevariable ' .. tostring(name or ''), varReplacement(name, false)
+    end)
+    legacy('/changevarint',   onChangeVarInt, function(a1, a2, a3)
+        local name = (a3 and a3 ~= '') and a2 or a1
+        return '/changevarint ' .. tostring(name or ''), varReplacement(name, a3 and a3 ~= '')
+    end)
+    legacy('/burn',           onBurn,         '/kactl burn [<id>] (and /kactl set BurnOn on|off)')
+    legacy('/backoff',        onBackOff,      '/kactl backoff on|off|toggle [wait]')
+    legacy('/switchnow',      onSwitch,       '/kactl switch <id>')
+    legacy('/switchma',       onSwitchMA,     '/kactl ma <name> [role] [group]')
+    legacy('/kisscast',       onKissCast,     '/kactl cast <spell> [<id>]')
     -- /peton and /autofireon are mac aliases (modules/aliases.lua), not commands.
+    legacy('/makecamphere',   onMakeCampHere, '/kactl mode camp here group')
+    legacy('/stayhere',       onStayHere,     '/kactl mode manual others')
+    legacy('/chaseme',        onChaseMe,      '/kactl mode chase me others')
+    legacy('/trackmedown',    onTrackMeDown,  '/kactl mode chase <name> (or mode manual)')
+    legacy('/SetPullArc',     onSetPullArc,   '/kactl pullarc <width> [dir]')
+    legacy('/setpullranking', onSetPullRanking, '/kactl set PullRanking on|off')
+    legacy('/buffgroup',      onBuffGroup,    '/kactl buff now')
+    legacy('/campfire',       onCampfire,     '/kactl campfire')
+    legacy('/tbmanager',      onTbManager,    '/kactl list toobuff add|remove|clear|reset [<id>]')
+    legacy('/addfriend',      onAddFriend,    '/kactl list friend add')
+    legacy('/addpull',        onAddPull,      '/kactl list pull add [name]')
+    legacy('/addignore',      onAddIgnore,    function(_name, byID)
+        if tonumber(byID) == 1 then return '/addignore <id> 1', '/kactl ignore <id>' end
+        return '/addignore', '/kactl list ignore add [name]'
+    end)
+    legacy('/addimmune',      onAddMezImmune, '/kactl list mezimmune add')
 
-    -- Movement / camp
-    bind('/makecamphere',   onMakeCampHere)
-    bind('/stayhere',       onStayHere)
-    bind('/chaseme',        onChaseMe)
-    bind('/trackmedown',    onTrackMeDown)
-    bind('/SetPullArc',     onSetPullArc)
-    bind('/setpullranking', onSetPullRanking)
-
-    -- Buffs / group / misc
-    bind('/buffgroup',      onBuffGroup)
-    bind('/campfire',       onCampfire)
-    bind('/tbmanager',      onTbManager)
-    bind('/addfriend',      onAddFriend)
-
-    -- Pull management
-    bind('/addpull',        onAddPull)
-    bind('/addignore',      onAddIgnore)
-    bind('/addimmune',      onAddMezImmune)
+    -- The mac's lists in /kactl list (the burn and charmimmune lists are above).
+    local function addOnly(fn, takesName)
+        return { add = function(name)
+            if name and not takesName then return false, 'adds the target; no name' end
+            fn(name)
+            return true, 'added'
+        end }
+    end
+    LISTS.pull      = addOnly(onAddPull, true)
+    LISTS.ignore    = addOnly(onAddIgnore, true)
+    LISTS.mezimmune = addOnly(onAddMezImmune, false)
+    LISTS.friend    = addOnly(onAddFriend, false)
+    local function tb(action)
+        return function(id)
+            if id and not tonumber(id) then return false, 'expects a spawn ID (or your target)' end
+            onTbManager(action, id)
+            return true, 'too buff list ' .. action
+        end
+    end
+    LISTS.toobuff = { add = tb('add'), remove = tb('remove'), clear = tb('clear'), reset = tb('reset') }
 
     -- Script control: /kactl <verb> [args] (modules/control.lua, #360). The
     -- verbs whose code lives here; mode, set, pause and stop are in control.lua,
     -- ui in ui.lua. Lua-only commands (/kapause, /kastop, /katest, /charmon, ...)
-    -- became these verbs in #363.
+    -- became these verbs in #363; the mac's commands got theirs in #363 too.
     Control.verb('target', 'target <id>|clear', kactlTarget)
     Control.verb('charm',  'charm on|off|toggle | keep on|off|toggle  [save] | set | reset', kactlCharm)
     Control.verb('medley', 'medley quiet on|off|toggle', kactlMedley)
-    Control.verb('list',   'list burn|charmimmune add [name]', kactlList)
+    Control.verb('list',   'list burn|charmimmune|pull|ignore|mezimmune|friend add [name] | toobuff add|remove|clear|reset [<id>]', kactlList)
     Control.verb('test',   'test <suite>|all', kactlTest)
+    Control.verb('backoff', 'backoff on|off|toggle [wait]', kactlBackoff)
+    Control.verb('burn',    'burn [<id>]', kactlBurn)
+    Control.verb('ignore',  'ignore <id>|clear', kactlIgnore)
+    Control.verb('switch',  'switch <id>', kactlSwitch)
+    Control.verb('ma',      'ma <name> [role] [group]', kactlMA)
+    Control.verb('cast',    'cast <spell> [<id>]', kactlCast)
+    Control.verb('debug',   'debug <area>|all on|off|toggle [log]', kactlDebug)
+    Control.verb('pullarc', 'pullarc <width> [dir]', function(words)
+        if #words < 1 or #words > 2 or not tonumber(words[1]) then return false, 'expects <width> [dir]' end
+        onSetPullArc(words[1], words[2])
+        return true, 'pull arc ' .. words[1]
+    end)
+    Control.verb('buff', 'buff now', function(words)
+        local ok, err = only(words, 1, 'now')
+        if not ok or tostring(words[1]):lower() ~= 'now' then return false, err or 'expects now' end
+        onBuffGroup()
+        return true, 'buff pass'
+    end)
+    Control.verb('campfire', 'campfire', function(words)
+        if #words > 0 then return false, 'takes no arguments' end
+        onCampfire()
+        return true, 'campfire'
+    end)
+    Control.verb('ini', 'ini write', function(words)
+        if #words ~= 1 or tostring(words[1]):lower() ~= 'write' then return false, 'expects write' end
+        onIniWrite()
+        return true, 'config saved'
+    end)
+    Control.verb('spells', 'spells write | mem [set]', function(words)
+        local what = tostring(words[1] or ''):lower()
+        if what == 'write' and #words == 1 then onWriteSpells(); return true, 'spells written' end
+        if what == 'mem' and #words <= 2 then onMemMySpells(nil, words[2]); return true, 'memming spells' end
+        return false, 'expects write or mem [set]'
+    end)
+    Control.verb('check', 'check [sections]', function(words)
+        onKissCheck(unpack(words))
+        return true, 'checked'
+    end)
+    Control.verb('info', 'info zone|aggro', function(words)
+        local what = tostring(words[1] or ''):lower()
+        if #words ~= 1 then return false, 'expects zone or aggro' end
+        if what == 'zone' then onZoneInfo() elseif what == 'aggro' then onAggroInfo()
+        else return false, 'expects zone or aggro' end
+        return true, what
+    end)
+    Control.verb('parse', 'parse <expression>', function(words)
+        if #words == 0 then return false, 'expects an expression' end
+        onParse(table.concat(words, ' '))
+        return true, 'parsed'
+    end)
+    Control.verb('mycmd', 'mycmd [command]', function(words)
+        onMyCmds(unpack(words))
+        return true, 'sent'
+    end)
     bind('/kactl', function(...) Control.command({ ... }) end)
 
     -- The mac's /alias shortcuts (mac LoadAliases). Runs after every bind so names

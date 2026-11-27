@@ -43,6 +43,7 @@ local State = {
         chaseAssist     = false,
         pullPath        = 'null',
         heals           = false,  -- set by Heal.init; mirrors healsOn > 0; guards castMem
+        legacyCmdNotice = true,   -- [General] LegacyCmdNotice: notice when a deprecated mac command is used (#363)
         paused          = false,  -- soft pause, /kactl pause (#353); see modules/pause.lua
         healWhilePaused = false,  -- [General] HealWhilePaused: cures/heals keep running while paused
         moveWhilePaused = false,  -- [General] MoveWhilePaused: camp return / chase keep running while paused
