@@ -284,10 +284,12 @@ function Roles.maSnapshot()
     }
 end
 
--- Pure. The /kactl ma line the UI sends (#363; 'group' tells the group too).
--- Sent as a command rather than called, so the switch runs outside the ImGui frame.
-function Roles.switchMACommand(name, role, broadcast)
-    return string.format('/kactl ma %s %s%s', name, role or 'tank', broadcast and ' group' or '')
+-- Pure. The /kactl ma words the UI queues with Control.defer (#363; 'group'
+-- tells the group too). Deferred, so the switch runs outside the ImGui frame.
+function Roles.switchMAWords(name, role, broadcast)
+    local words = { name, role or 'tank' }
+    if broadcast then words[3] = 'group' end
+    return words
 end
 
 return Roles

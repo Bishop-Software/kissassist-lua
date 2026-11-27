@@ -112,6 +112,45 @@ function Settings.setMQ2Melee(state, on)
     return true
 end
 
+-- One ability list from the config into State: 'DPS', 'Burn', 'Aggro' or 'AE'.
+-- Called at load and by Control.setEntries when the GUI edits a list, so an
+-- edit loads exactly what a restart would.
+Settings.LISTS = { 'DPS', 'Burn', 'Aggro', 'AE' }
+
+function Settings.loadList(state, section)
+    local c = state.combat
+    if section == 'DPS' then
+        Settings.splitDps(state, Config.get('DPS', 'DPS', nil))
+    elseif section == 'Burn' then
+        -- Burn spell/disc array
+        c.burnArray = {}
+        local burnArr = Config.get('Burn', 'Burn', nil)
+        if type(burnArr) == 'table' then
+            for _, v in ipairs(burnArr) do
+                if v and v ~= '' then c.burnArray[#c.burnArray + 1] = v end
+            end
+        end
+    elseif section == 'Aggro' then
+        -- Aggro management array, parsed into { name, condNo } slots
+        c.aggroArray = {}
+        local rawAggro = Config.get('Aggro', 'Aggro', nil)
+        if type(rawAggro) == 'table' then
+            for _, slot in ipairs(Config.parseCondArray(rawAggro)) do
+                if slot and slot.name and slot.name ~= '' then c.aggroArray[#c.aggroArray + 1] = slot end
+            end
+        end
+    elseif section == 'AE' then
+        -- AE rotation array (index positions kept)
+        c.aeArray = {}
+        local rawAE = Config.get('AE', 'AE', nil)
+        if type(rawAE) == 'table' then
+            for i, v in ipairs(rawAE) do
+                if v and v ~= '' then c.aeArray[i] = v end
+            end
+        end
+    end
+end
+
 function Settings.load(state, utils)
     local _state = state
 
@@ -168,39 +207,11 @@ function Settings.load(state, utils)
     _state.combat.autoBurnTimer   = tonumber(Config.get('General', 'AutoBurnTimer',   '0')) or 0
     _state.combat.losBeforeCombat = Config.get('General', 'LOSBeforeCombat', '0') == '1'
 
-    -- DPS array: state.debuff.* is now loaded by Debuff.init()
-    Settings.splitDps(_state, Config.get('DPS', 'DPS', nil))
-
-    -- Burn spell/disc array
-    local burnArr = Config.get('Burn', 'Burn', nil)
-    if type(burnArr) == 'table' then
-        for _, v in ipairs(burnArr) do
-            if v and v ~= '' then
-                _state.combat.burnArray[#_state.combat.burnArray + 1] = v
-            end
-        end
-    end
-
-    -- Aggro management array — parsed into { name, condNo } slots.
-    _state.combat.aggroOn = Config.get('Aggro', 'AggroOn', '0') == '1'
-    local rawAggro = Config.get('Aggro', 'Aggro', nil)
-    if type(rawAggro) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(rawAggro)) do
-            if slot and slot.name and slot.name ~= '' then
-                _state.combat.aggroArray[#_state.combat.aggroArray + 1] = slot
-            end
-        end
-    end
-
-    -- AE rotation array
+    -- DPS, Burn, Aggro and AE lists (state.debuff.* is loaded by Debuff.init())
+    _state.combat.aggroOn  = Config.get('Aggro', 'AggroOn', '0') == '1'
     _state.combat.aeOn     = Config.get('AE', 'AEOn',     '0') == '1'
     _state.combat.aeRadius = tonumber(Config.get('AE', 'AERadius', '50')) or 50
-    local rawAE = Config.get('AE', 'AE', nil)
-    if type(rawAE) == 'table' then
-        for i, v in ipairs(rawAE) do
-            if v and v ~= '' then _state.combat.aeArray[i] = v end
-        end
-    end
+    for _, section in ipairs(Settings.LISTS) do Settings.loadList(_state, section) end
 
     -- Pet combat config
     _state.pet.assistAt            = tonumber(Config.get('Pet', 'PetAssistAt',       '95'))  or 95

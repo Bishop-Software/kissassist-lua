@@ -1,6 +1,7 @@
 -- ui/bard.lua — Bard tab (class-gated): medley controls + song set editor.
 
 local mq = require('mq')
+local Control = require('modules.control')
 
 local BardUI = {}
 local _state
@@ -141,10 +142,7 @@ function BardUI.drawBard()
     -- Quiet mode toggle
     ImGui.SameLine()
     local quietVal, quietChanged = ImGui.Checkbox('Quiet##medleyquiet', bard.medleyQuiet)
-    if quietChanged then
-        mq.cmd('/medley quiet')
-        _state.bard.medleyQuiet = quietVal
-    end
+    if quietChanged then Control.run('medley', { 'quiet', quietVal and 'on' or 'off' }) end
 
     -- Song set editor sub-tabs
     ImGui.Spacing()

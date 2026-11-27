@@ -1,13 +1,12 @@
 -- ui/combat.lua — Combat tab: Melee, DPS, Debuff, Burn, Aggro, AE sub-tabs.
 
-local mq = require('mq')
 local Helpers    = require('modules.ui.helpers')
-local CombatSettings = require('modules.combat.settings')
-local Movement   = require('modules.movement')
+local Control    = require('modules.control')
 local Roles      = require('modules.roles')
 local Config     = Helpers.Config
 local checkbox   = Helpers.checkbox
-local set      = Helpers.set
+local set        = Helpers.set
+local setText    = Helpers.setText
 local intInput   = Helpers.intInput
 local GLT_VALUES  = Helpers.GLT_VALUES
 local GLT_LABELS  = Helpers.GLT_LABELS
@@ -46,7 +45,7 @@ local function drawSwitchMA(s)
     end
     ImGui.SameLine()
     if ImGui.Button('Switch MA##switchma') then
-        mq.cmd(Roles.switchMACommand(names[_maPick], Roles.MA_ROLE_CHOICES[_maRolePick], _maBroadcast))
+        Control.defer('ma', Roles.switchMAWords(names[_maPick], Roles.MA_ROLE_CHOICES[_maRolePick], _maBroadcast))
         _maPick = nil  -- re-read the current MA next frame
     end
     ImGui.SameLine()
@@ -73,13 +72,10 @@ function CombatUI.drawMelee()
     end)
 
     checkbox('Use MQ2Melee', s.combat.useMQ2Melee, function(v)
-        if not CombatSettings.setMQ2Melee(s, v) then
+        local _, err = set('Melee', 'UseMQ2Melee', v)
+        if err == 'noplugin' then
             printf('\ayMQ2Melee plugin is not loaded. Load it with /plugin mq2melee first.')
-            return
         end
-        Config.set('Melee', 'UseMQ2Melee', v and tostring(s.combat.mq2MeleeMode or 1) or '0')
-        Config.save()
-        Movement.resolveStickHow()  -- MQ2Melee does its own sticking
     end)
     if s.combat.useMQ2Melee then
         -- UseMQ2Melee 1 / 2: MQ2Melee's stickmode 0 (automatic) / 1 (its INI stickcmd)
@@ -90,12 +86,7 @@ function CombatUI.drawMelee()
         if ImGui.IsItemHovered() then
             ImGui.SetTooltip('How MQ2Melee sticks to the target: on its own, or with the stickcmd\nfrom your MQ2Melee INI (UseMQ2Melee=2)')
         end
-        if changed and mode ~= s.combat.mq2MeleeMode then
-            s.combat.mq2MeleeMode = mode
-            mq.cmdf('/squelch /melee stickmode=%d', mode == 2 and 1 or 0)
-            Config.set('Melee', 'UseMQ2Melee', tostring(mode))
-            Config.save()
-        end
+        if changed and mode ~= s.combat.mq2MeleeMode then set('Melee', 'UseMQ2Melee', mode) end
     end
 
     checkbox('AutoFire', (s.combat.autoFireOn or 0) ~= 0, function(v) set('Melee', 'AutoFireOn', v) end)
@@ -103,10 +94,7 @@ function CombatUI.drawMelee()
     checkbox('LOS Check', s.combat.losBeforeCombat, function(v) set('General', 'LOSBeforeCombat', v) end)
 
     if s.session.iAmARogue then
-        checkbox('Auto Hide', s.misc.autoHide, function(v)
-            Config.set('General', 'AutoHide', nil)  -- drop the old misplaced key
-            set('Melee', 'AutoHide', v)
-        end)
+        checkbox('Auto Hide', s.misc.autoHide, function(v) set('Melee', 'AutoHide', v) end)
     end
 
     -- Numeric settings
@@ -118,12 +106,7 @@ function CombatUI.drawMelee()
     local faceMobIdx = (s.movement.faceMobOn or 0) + 1
     ImGui.PushItemWidth(200)
     local newFaceIdx, faceChanged = ImGui.Combo('Face Mob##facemob', faceMobIdx, faceMobLabels)
-    if faceChanged then
-        local newVal = newFaceIdx - 1
-        s.movement.faceMobOn = newVal
-        Config.set('Melee', 'FaceMobOn', tostring(newVal))
-        Config.save()
-    end
+    if faceChanged then set('Melee', 'FaceMobOn', newFaceIdx - 1) end
     ImGui.PopItemWidth()
     -- Stick style
     ImGui.Spacing()
@@ -157,13 +140,7 @@ function CombatUI.drawMelee()
         ImGui.SetTooltip('Sticking with: ' .. ((s.movement.stickHow or '0') == '0'
             and 'plain stick' or s.movement.stickHow))
     end
-    if changed then
-        local newVal = stickValues[newIdx] or 'auto'
-        s.movement.dStickHow = newVal
-        Config.set('Melee', 'StickHow', newVal)
-        Config.save()
-        Movement.resolveStickHow()
-    end
+    if changed then setText('Melee', 'StickHow', stickValues[newIdx] or 'auto') end
     ImGui.PopItemWidth()
 
     drawSwitchMA(s)
@@ -229,15 +206,6 @@ function CombatUI.drawAggro()
 
     local aggroRaw  = Config.get('Aggro', 'Aggro',     nil) or {}
     local aggroSize = tonumber(Config.get('Aggro', 'AggroSize', '10')) or 10
-
-    local function syncAggroArray()
-        s.combat.aggroArray = {}
-        for _, slot in ipairs(Config.parseCondArray(aggroRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                s.combat.aggroArray[#s.combat.aggroArray + 1] = slot
-            end
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -305,13 +273,10 @@ function CombatUI.drawAggro()
                 if i == aggroSize and aggroSize > 1 then
                     aggroRaw[i] = nil
                     aggroSize   = aggroSize - 1
-                    Config.set('Aggro', 'AggroSize', tostring(aggroSize))
                 else
                     aggroRaw[i] = 'null'
                 end
-                Config.set('Aggro', 'Aggro', aggroRaw)
-                Config.save()
-                syncAggroArray()
+                Control.setEntries('aggro', aggroRaw, aggroSize)
             end
 
             if sc or pc or gc or tac or cc then
@@ -323,9 +288,7 @@ function CombatUI.drawAggro()
                     tac and newTarget or target,
                     cc  and newCond   or cond
                 ) or 'null'
-                Config.set('Aggro', 'Aggro', aggroRaw)
-                Config.save()
-                syncAggroArray()
+                Control.setEntries('aggro', aggroRaw, aggroSize)
             end
         end
         ImGui.EndTable()
@@ -335,9 +298,7 @@ function CombatUI.drawAggro()
     if ImGui.Button('[+ Add]') then
         aggroSize = aggroSize + 1
         aggroRaw[aggroSize] = 'null'
-        Config.set('Aggro', 'AggroSize', tostring(aggroSize))
-        Config.set('Aggro', 'Aggro', aggroRaw)
-        Config.save()
+        Control.setEntries('aggro', aggroRaw, aggroSize)
     end
 end
 
@@ -351,11 +312,7 @@ function CombatUI.drawDebuffs()
     local DEBUFF_ON_LABELS = { 'Off', 'In Combat', 'OOC Also' }
     local debuffOnIdx = (s.debuff.on or 0) + 1
     local newDebuffOnIdx, debuffOnChanged = ImGui.Combo('Debuff##debuffon', debuffOnIdx, DEBUFF_ON_LABELS)
-    if debuffOnChanged then
-        s.debuff.on = newDebuffOnIdx - 1
-        Config.set('Debuff', 'DebuffOn', tostring(s.debuff.on))
-        Config.save()
-    end
+    if debuffOnChanged then set('Debuff', 'DebuffOn', newDebuffOnIdx - 1) end
 
     ImGui.Spacing()
     ImGui.Separator()
@@ -363,29 +320,6 @@ function CombatUI.drawDebuffs()
 
     local debuffRaw  = Config.get('Debuff', 'Debuff',     nil) or {}
     local debuffSize = tonumber(Config.get('Debuff', 'DebuffSize', '0')) or 0
-
-    local function syncDebuffArray()
-        s.debuff.slots = {}
-        s.debuff.count = 0
-        s.debuff.size  = debuffSize
-        for i = 1, debuffSize do
-            local raw = debuffRaw[i] or 'null'
-            if raw ~= 'null' and raw ~= '' then
-                local cond    = ''
-                local condPos = raw:lower():find('|cond%d')
-                if condPos then
-                    cond = raw:sub(condPos + 1)
-                    raw  = raw:sub(1, condPos - 1)
-                end
-                local spell  = raw
-                local condNo = tonumber(cond:lower():match('cond(%d+)')) or 0
-                if spell ~= '' then
-                    s.debuff.slots[#s.debuff.slots + 1] = { spell = spell, condNo = condNo }
-                    s.debuff.count = s.debuff.count + 1
-                end
-            end
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -431,22 +365,17 @@ function CombatUI.drawDebuffs()
                 if i == debuffSize and debuffSize > 1 then
                     debuffRaw[i] = nil
                     debuffSize   = debuffSize - 1
-                    Config.set('Debuff', 'DebuffSize', tostring(debuffSize))
                 else
                     debuffRaw[i] = 'null'
                 end
-                Config.set('Debuff', 'Debuff', debuffRaw)
-                Config.save()
-                syncDebuffArray()
+                Control.setEntries('debuff', debuffRaw, debuffSize)
             end
 
             if sc or cc then
                 local spellVal = sc and newSpell or spell
                 local condVal  = cc and newCond  or cond
                 debuffRaw[i]   = spellVal ~= '' and (spellVal .. (condVal ~= '' and '|' .. condVal or '')) or 'null'
-                Config.set('Debuff', 'Debuff', debuffRaw)
-                Config.save()
-                syncDebuffArray()
+                Control.setEntries('debuff', debuffRaw, debuffSize)
             end
         end
         ImGui.EndTable()
@@ -456,9 +385,7 @@ function CombatUI.drawDebuffs()
     if ImGui.Button('[+ Add]##dbadd') then
         debuffSize = debuffSize + 1
         debuffRaw[debuffSize] = 'null'
-        Config.set('Debuff', 'DebuffSize', tostring(debuffSize))
-        Config.set('Debuff', 'Debuff', debuffRaw)
-        Config.save()
+        Control.setEntries('debuff', debuffRaw, debuffSize)
     end
 end
 
@@ -481,12 +408,7 @@ function CombatUI.drawDPS()
             .. 'On, any HP: entries start at any HP, and the rotation waits out the\n'
             .. '  global spell cooldown so it keeps strict priority order (DPSOn=2).')
     end
-    if modeChanged then
-        s.combat.dpsOn    = newMode > 1
-        s.combat.dpsOnOoc = newMode == 3
-        Config.set('DPS', 'DPSOn', tostring(newMode - 1))
-        Config.save()
-    end
+    if modeChanged then set('DPS', 'DPSOn', newMode - 1) end
 
     ImGui.Spacing()
     intInput('DPS Skip %',   s.combat.dpsSkip,     0,  100, 'DPS', 'DPSSkip')
@@ -500,10 +422,6 @@ function CombatUI.drawDPS()
     local dpsSize = tonumber(Config.get('DPS', 'DPSSize', '20')) or 20
 
     -- Rebuild the rotation and the mash/ambush/weave arrays from the edited entries.
-    local function syncDpsArray()
-        CombatSettings.splitDps(s, dpsRaw)
-    end
-
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
         condLabels[j + 1] = string.format('Cond%d', j)
@@ -566,13 +484,10 @@ function CombatUI.drawDPS()
                 if i == dpsSize and dpsSize > 1 then
                     dpsRaw[i] = nil
                     dpsSize   = dpsSize - 1
-                    Config.set('DPS', 'DPSSize', tostring(dpsSize))
                 else
                     dpsRaw[i] = 'null'
                 end
-                Config.set('DPS', 'DPS', dpsRaw)
-                Config.save()
-                syncDpsArray()
+                Control.setEntries('dps', dpsRaw, dpsSize)
             end
 
             if sc or tc or tac or dc or cc then
@@ -584,9 +499,7 @@ function CombatUI.drawDPS()
                     dc  and newDamod   or damod,
                     cc  and newCond    or cond
                 ) or 'null'
-                Config.set('DPS', 'DPS', dpsRaw)
-                Config.save()
-                syncDpsArray()
+                Control.setEntries('dps', dpsRaw, dpsSize)
             end
         end
         ImGui.EndTable()
@@ -596,9 +509,7 @@ function CombatUI.drawDPS()
     if ImGui.Button('[+ Add]') then
         dpsSize = dpsSize + 1
         dpsRaw[dpsSize] = 'null'
-        Config.set('DPS', 'DPSSize', tostring(dpsSize))
-        Config.set('DPS', 'DPS', dpsRaw)
-        Config.save()
+        Control.setEntries('dps', dpsRaw, dpsSize)
     end
 end
 
@@ -627,12 +538,7 @@ function CombatUI.drawBurn()
     local burnNamedIdx = (s.combat.burnAllNamed or 0) + 1
     ImGui.PushItemWidth(200)
     local newBurnIdx, burnChanged = ImGui.Combo('Burn Named##burnnamed', burnNamedIdx, burnNamedLabels)
-    if burnChanged then
-        local newVal = newBurnIdx - 1
-        s.combat.burnAllNamed = newVal
-        Config.set('Burn', 'BurnAllNamed', tostring(newVal))
-        Config.save()
-    end
+    if burnChanged then set('Burn', 'BurnAllNamed', newBurnIdx - 1) end
     ImGui.PopItemWidth()
 
     ImGui.Spacing()
@@ -643,16 +549,6 @@ function CombatUI.drawBurn()
     local burnSize = tonumber(Config.get('Burn', 'BurnSize', '15')) or 15
 
     -- Cast.doBurn consumes raw entry strings (same as Combat.init), not parsed slot tables.
-    local function syncBurnArray()
-        s.combat.burnArray = {}
-        for i = 1, burnSize do
-            local v = burnRaw[i]
-            if v and v ~= '' and v:lower() ~= 'null' then
-                s.combat.burnArray[#s.combat.burnArray + 1] = v
-            end
-        end
-    end
-
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
         condLabels[j + 1] = string.format('Cond%d', j)
@@ -702,21 +598,16 @@ function CombatUI.drawBurn()
                 if i == burnSize and burnSize > 1 then
                     burnRaw[i] = nil
                     burnSize   = burnSize - 1
-                    Config.set('Burn', 'BurnSize', tostring(burnSize))
                 else
                     burnRaw[i] = 'null'
                 end
-                Config.set('Burn', 'Burn', burnRaw)
-                Config.save()
-                syncBurnArray()
+                Control.setEntries('burn', burnRaw, burnSize)
             end
 
             if sc or tac or cc then
                 local spellVal = sc and newSpell or spell
                 burnRaw[i] = spellVal ~= '' and joinBurn(spellVal, newTarget, newCondNo) or 'null'
-                Config.set('Burn', 'Burn', burnRaw)
-                Config.save()
-                syncBurnArray()
+                Control.setEntries('burn', burnRaw, burnSize)
             end
         end
         ImGui.EndTable()
@@ -726,9 +617,7 @@ function CombatUI.drawBurn()
     if ImGui.Button('[+ Add]') then
         burnSize = burnSize + 1
         burnRaw[burnSize] = 'null'
-        Config.set('Burn', 'BurnSize', tostring(burnSize))
-        Config.set('Burn', 'Burn', burnRaw)
-        Config.save()
+        Control.setEntries('burn', burnRaw, burnSize)
     end
 end
 
@@ -775,14 +664,6 @@ function CombatUI.drawAE()
 
     local aeRaw  = Config.get('AE', 'AE',     nil) or {}
     local aeSize = tonumber(Config.get('AE', 'AESize', '10')) or 10
-
-    local function syncAEArray()
-        s.combat.aeArray = {}
-        for i = 1, aeSize do
-            local v = aeRaw[i] or 'null'
-            if v ~= 'null' and v ~= '' then s.combat.aeArray[i] = v end
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -842,13 +723,10 @@ function CombatUI.drawAE()
                 if i == aeSize and aeSize > 1 then
                     aeRaw[i] = nil
                     aeSize   = aeSize - 1
-                    Config.set('AE', 'AESize', tostring(aeSize))
                 else
                     aeRaw[i] = 'null'
                 end
-                Config.set('AE', 'AE', aeRaw)
-                Config.save()
-                syncAEArray()
+                Control.setEntries('ae', aeRaw, aeSize)
             end
 
             if sc or nc or tac or cc then
@@ -857,9 +735,7 @@ function CombatUI.drawAE()
                 local tg = tac and newTarget or target
                 local cn = cc  and newCond   or cond
                 aeRaw[i] = sp ~= '' and joinAE(sp, ct, tg, cn) or 'null'
-                Config.set('AE', 'AE', aeRaw)
-                Config.save()
-                syncAEArray()
+                Control.setEntries('ae', aeRaw, aeSize)
             end
         end
         ImGui.EndTable()
@@ -869,9 +745,7 @@ function CombatUI.drawAE()
     if ImGui.Button('[+ Add]') then
         aeSize = aeSize + 1
         aeRaw[aeSize] = 'null'
-        Config.set('AE', 'AESize', tostring(aeSize))
-        Config.set('AE', 'AE', aeRaw)
-        Config.save()
+        Control.setEntries('ae', aeRaw, aeSize)
     end
 end
 

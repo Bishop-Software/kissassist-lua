@@ -1,9 +1,9 @@
 -- ui/cc.lua — CC tab: Mez + Charm sub-tabs (class-gated).
 
 local Helpers  = require('modules.ui.helpers')
-local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local set      = Helpers.set
+local setText  = Helpers.setText
 local intInput = Helpers.intInput
 
 local MEZ_MODE_LABELS = { 'Off', 'Single + AE', 'Single only', 'AE only' }
@@ -19,11 +19,7 @@ function CC.drawCC()
             ImGui.Spacing()
             ImGui.PushItemWidth(200)
             local newMode, modeChanged = ImGui.Combo('Mode##mezmode', s.mez.on + 1, MEZ_MODE_LABELS)
-            if modeChanged then
-                s.mez.on = newMode - 1
-                Config.set('Mez', 'MezOn', tostring(s.mez.on))
-                Config.save()
-            end
+            if modeChanged then set('Mez', 'MezOn', newMode - 1) end
             ImGui.PopItemWidth()
 
             ImGui.Spacing()
@@ -53,20 +49,13 @@ function CC.drawCC()
                 local mezSpell, msc = ImGui.InputText('##mezspell', s.mez.spell, 0)
                 ImGui.PopItemWidth()
                 if msc and mezSpell ~= s.mez.spell then
-                    s.mez.spell = mezSpell
-                    Config.set('Mez', 'MezSpell', mezSpell .. '|' .. (s.mez.singleCount or 2))
-                    Config.save()
+                    setText('Mez', 'MezSpell', mezSpell .. '|' .. (s.mez.singleCount or 2))
                 end
                 ImGui.TableSetColumnIndex(1)
                 ImGui.PushItemWidth(-1)
                 local sc, scc = ImGui.InputInt('##singlecount', s.mez.singleCount or 2, 1, 1)
                 ImGui.PopItemWidth()
-                if scc then
-                    sc = math.max(2, sc)
-                    s.mez.singleCount = sc
-                    Config.set('Mez', 'MezSpell', s.mez.spell .. '|' .. sc)
-                    Config.save()
-                end
+                if scc then setText('Mez', 'MezSpell', s.mez.spell .. '|' .. math.max(2, sc)) end
                 ImGui.TableSetColumnIndex(2)
                 ImGui.Text('Mez Spell')
 
@@ -77,20 +66,13 @@ function CC.drawCC()
                 local aeMezSpell, asc = ImGui.InputText('##aespell', s.mez.aeSpell, 0)
                 ImGui.PopItemWidth()
                 if asc and aeMezSpell ~= s.mez.aeSpell then
-                    s.mez.aeSpell = aeMezSpell
-                    Config.set('Mez', 'MezAESpell', aeMezSpell .. '|' .. (s.mez.aeCount or 0))
-                    Config.save()
+                    setText('Mez', 'MezAESpell', aeMezSpell .. '|' .. (s.mez.aeCount or 0))
                 end
                 ImGui.TableSetColumnIndex(1)
                 ImGui.PushItemWidth(-1)
                 local ac, acc = ImGui.InputInt('##aecount', s.mez.aeCount or 0, 1, 1)
                 ImGui.PopItemWidth()
-                if acc then
-                    ac = math.max(0, ac)
-                    s.mez.aeCount = ac
-                    Config.set('Mez', 'MezAESpell', s.mez.aeSpell .. '|' .. ac)
-                    Config.save()
-                end
+                if acc then setText('Mez', 'MezAESpell', s.mez.aeSpell .. '|' .. math.max(0, ac)) end
                 ImGui.TableSetColumnIndex(2)
                 ImGui.Text('AE Mez Spell')
 
@@ -101,9 +83,7 @@ function CC.drawCC()
                 local debuffSpell, dsc = ImGui.InputText('##mezDebuff', s.mez.mezDebuffSpell, 0)
                 ImGui.PopItemWidth()
                 if dsc and debuffSpell ~= s.mez.mezDebuffSpell then
-                    s.mez.mezDebuffSpell = debuffSpell
-                    Config.set('Mez', 'MezDebuffSpell', debuffSpell)
-                    Config.save()
+                    setText('Mez', 'MezDebuffSpell', debuffSpell)
                 end
                 ImGui.TableSetColumnIndex(1)
                 ImGui.TextDisabled('—')
@@ -135,9 +115,7 @@ function CC.drawCC()
                 ImGui.PushItemWidth(220)
                 local charmSpell, csc = ImGui.InputText('Charm Spell##charmspell', s.charm.spell, 0)
                 if csc and charmSpell ~= s.charm.spell then
-                    s.charm.spell = charmSpell
-                    Config.set('Charm', 'CharmSpell', charmSpell)
-                    Config.save()
+                    setText('Charm', 'CharmSpell', charmSpell)
                 end
                 ImGui.PopItemWidth()
                 ImGui.EndTabItem()

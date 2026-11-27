@@ -26,11 +26,19 @@ function Debuff.init(state, utils, cast, healing, cond, combat)
     _cond    = cond
     _combat  = combat
 
-    local debuffOn   = tonumber(Config.get('Debuff', 'DebuffOn',   '0')) or 0
+    local debuffOn = tonumber(Config.get('Debuff', 'DebuffOn', '0')) or 0
+    _state.debuff.on = debuffOn
+    Debuff.loadList()
+
+    _utils.debug('debuff', 'Debuff.init: on=%d size=%d count=%d', debuffOn, _state.debuff.size, _state.debuff.count)
+end
+
+-- The [Debuff] list from the config into State. Called at init and by
+-- Control.setEntries when the GUI edits the list.
+function Debuff.loadList()
     local debuffSize = tonumber(Config.get('Debuff', 'DebuffSize', '0')) or 0
     local debuffRaw  = Config.get('Debuff', 'Debuff', nil) or {}
 
-    _state.debuff.on    = debuffOn
     _state.debuff.size  = debuffSize
     _state.debuff.slots = {}
     _state.debuff.count = 0
@@ -45,8 +53,6 @@ function Debuff.init(state, utils, cast, healing, cond, combat)
             end
         end
     end
-
-    _utils.debug('debuff', 'Debuff.init: on=%d size=%d count=%d', debuffOn, debuffSize, _state.debuff.count)
 end
 
 -- Scan XTarget auto-haters in melee range with LOS; return array of spawn IDs.

@@ -1,11 +1,11 @@
 -- ui/healing.lua — Healing tab: Heals (thresholds) + Cures sub-tabs.
 
 local Helpers  = require('modules.ui.helpers')
+local Control  = require('modules.control')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local set      = Helpers.set
-
-local Heal     = require('modules.healing')
+local setText  = Helpers.setText
 
 local HealingUI = {}
 local _state
@@ -54,12 +54,7 @@ function HealingUI.drawHealThresholds()
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Also heal the people in the XTarget slots below, e.g. a tank in another group')
     end
-    if changed then
-        s.heal.xTarHeal = mode - 1
-        Config.set('Heals', 'XTarHeal', tostring(s.heal.xTarHeal))
-        Config.save()
-        Heal.setXTargetHealList(s.heal.xTarHealList)
-    end
+    if changed then set('Heals', 'XTarHeal', mode - 1) end
     if (s.heal.xTarHeal or 0) > 0 then
         _xtarBuf = _xtarBuf or s.heal.xTarHealList
         ImGui.PushItemWidth(170)
@@ -70,10 +65,7 @@ function HealingUI.drawHealThresholds()
             ImGui.SetTooltip('5|6|7 = those slots, all / auto = every slot not set to Auto Hater, autopc = Specific PC slots')
         end
         if ImGui.IsItemDeactivatedAfterEdit() and text ~= s.heal.xTarHealList then
-            s.heal.xTarHealList = text
-            Config.set('Heals', 'XTarHealList', text)
-            Config.save()
-            Heal.setXTargetHealList(text)
+            setText('Heals', 'XTarHealList', text)
         end
         local slots = s.heal.xTarToHeal or {}
         if #slots > 0 then
@@ -92,15 +84,6 @@ function HealingUI.drawHealThresholds()
 
     local healsRaw  = Config.get('Heals', 'Heals',     nil) or {}
     local healsSize = tonumber(Config.get('Heals', 'HealsSize', '15')) or 15
-
-    local function syncHealsArray()
-        s.heal.healsArray = {}
-        for _, slot in ipairs(Config.parseCondArray(healsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                s.heal.healsArray[#s.heal.healsArray + 1] = slot
-            end
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -154,13 +137,10 @@ function HealingUI.drawHealThresholds()
                 if i == healsSize and healsSize > 1 then
                     healsRaw[i] = nil
                     healsSize   = healsSize - 1
-                    Config.set('Heals', 'HealsSize', tostring(healsSize))
                 else
                     healsRaw[i] = 'null'
                 end
-                Config.set('Heals', 'Heals', healsRaw)
-                Config.save()
-                syncHealsArray()
+                Control.setEntries('heals', healsRaw, healsSize)
             end
 
             if sc or pc or tac or cc then
@@ -171,9 +151,7 @@ function HealingUI.drawHealThresholds()
                     tac and newTag or tag,
                     cc  and newCond or cond
                 ) or 'null'
-                Config.set('Heals', 'Heals', healsRaw)
-                Config.save()
-                syncHealsArray()
+                Control.setEntries('heals', healsRaw, healsSize)
             end
         end
         ImGui.EndTable()
@@ -183,9 +161,7 @@ function HealingUI.drawHealThresholds()
     if ImGui.Button('[+ Add]') then
         healsSize = healsSize + 1
         healsRaw[healsSize] = 'null'
-        Config.set('Heals', 'HealsSize', tostring(healsSize))
-        Config.set('Heals', 'Heals', healsRaw)
-        Config.save()
+        Control.setEntries('heals', healsRaw, healsSize)
     end
 end
 
@@ -245,11 +221,7 @@ function HealingUI.drawCures()
     local curesOnLabels = { 'Off', 'Everyone', 'Self Only', 'Group Only' }
     -- ImGui.Combo is 1-based; CuresOn is 0-3 (0=off 1=everyone 2=self 3=group)
     local newCuresOnIdx, coc = ImGui.Combo('Cures Mode##curesOn', (s.heal.curesOn or 0) + 1, curesOnLabels)
-    if coc then
-        s.heal.curesOn = newCuresOnIdx - 1
-        Config.set('Cures', 'CuresOn', tostring(s.heal.curesOn))
-        Config.save()
-    end
+    if coc then set('Cures', 'CuresOn', newCuresOnIdx - 1) end
 
     ImGui.Spacing()
     ImGui.Separator()
@@ -257,13 +229,6 @@ function HealingUI.drawCures()
 
     local curesRaw  = Config.get('Cures', 'Cures',     nil) or {}
     local curesSize = tonumber(Config.get('Cures', 'CuresSize', '5')) or 5
-
-    local function syncCuresArray()
-        s.heal.curesArray = {}
-        for _, slot in ipairs(Config.parseCondArray(curesRaw)) do
-            s.heal.curesArray[#s.heal.curesArray + 1] = slot
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -322,9 +287,7 @@ function HealingUI.drawCures()
                 local finalSpell    = sc    and newSpell    or spell
                 local out = joinCure(finalSpell, finalDtype, finalSelf, finalCond)
                 curesRaw[i] = (out == '') and 'null' or out
-                Config.set('Cures', 'Cures', curesRaw)
-                Config.save()
-                syncCuresArray()
+                Control.setEntries('cures', curesRaw, curesSize)
             end
 
             -- Remove
@@ -333,13 +296,10 @@ function HealingUI.drawCures()
                 if i == curesSize and curesSize > 1 then
                     curesRaw[curesSize] = nil
                     curesSize = curesSize - 1
-                    Config.set('Cures', 'CuresSize', tostring(curesSize))
                 else
                     curesRaw[i] = 'null'
                 end
-                Config.set('Cures', 'Cures', curesRaw)
-                Config.save()
-                syncCuresArray()
+                Control.setEntries('cures', curesRaw, curesSize)
             end
         end
         ImGui.EndTable()
@@ -349,9 +309,7 @@ function HealingUI.drawCures()
     if ImGui.Button('[+ Add]') then
         curesSize = curesSize + 1
         curesRaw[curesSize] = 'null'
-        Config.set('Cures', 'Cures', curesRaw)
-        Config.set('Cures', 'CuresSize', tostring(curesSize))
-        Config.save()
+        Control.setEntries('cures', curesRaw, curesSize)
     end
 end
 

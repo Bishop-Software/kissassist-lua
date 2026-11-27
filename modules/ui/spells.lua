@@ -2,9 +2,11 @@
 
 local mq = require('mq')
 local Helpers  = require('modules.ui.helpers')
+local Control  = require('modules.control')
 local Config   = Helpers.Config
 local checkbox = Helpers.checkbox
 local set      = Helpers.set
+local setText  = Helpers.setText
 local intInput = Helpers.intInput
 
 local SpellsUI = {}
@@ -31,9 +33,7 @@ function SpellsUI.drawSpellSlots()
     ImGui.PopItemWidth()
     if modeChanged then
         lssMode = newModeIdx - 1
-        _state.cast.loadSpellSet = lssMode
-        Config.set('Spells', 'LoadSpellSet', tostring(lssMode))
-        Config.save()
+        set('Spells', 'LoadSpellSet', lssMode)
     end
 
     -- SpellSetName input (only visible in mode 1)
@@ -42,11 +42,7 @@ function SpellsUI.drawSpellSlots()
         ImGui.PushItemWidth(180)
         local newName, nameChanged = ImGui.InputText('Set Name##lssname', setName, 0)
         ImGui.PopItemWidth()
-        if nameChanged and newName ~= setName then
-            _state.cast.spellSetName = newName
-            Config.set('Spells', 'SpellSetName', newName)
-            Config.save()
-        end
+        if nameChanged and newName ~= setName then setText('Spells', 'SpellSetName', newName) end
     end
 
     ImGui.Spacing()
@@ -58,8 +54,7 @@ function SpellsUI.drawSpellSlots()
         local newVal, changed = ImGui.InputText('Gem ' .. i .. '##gem' .. i, current, 0)
         if changed and newVal ~= current then
             gems[i] = newVal
-            Config.set('Spells', 'Gems', gems)
-            Config.save()
+            Control.setEntries('gems', gems)
         end
     end
     ImGui.PopItemWidth()
@@ -135,11 +130,7 @@ function SpellsUI.drawBuffs()
     -- ImGui.Combo is 1-based; MiscGemRemem is 0-3 (0=off 1=both 2=short 3=LW)
     local newRemem, rrc = ImGui.Combo('Re-Mem Mode##miscremem', (_state.cast.miscGemRemem or 0) + 1, REMEM_LABELS)
     ImGui.PopItemWidth()
-    if rrc then
-        _state.cast.miscGemRemem = newRemem - 1
-        Config.set('Spells', 'MiscGemRemem', tostring(_state.cast.miscGemRemem))
-        Config.save()
-    end
+    if rrc then set('Spells', 'MiscGemRemem', newRemem - 1) end
     if (_state.cast.miscGemRemem or 0) ~= 0 then
         local maxGem = _state.cast.gemSlots or 8
         intInput('Misc Gem##miscgem', _state.cast.miscGem, 0, maxGem, 'Spells', 'MiscGem',
@@ -158,15 +149,6 @@ function SpellsUI.drawBuffs()
 
     local buffsRaw  = Config.get('Buffs', 'Buffs',     nil) or {}
     local buffsSize = tonumber(Config.get('Buffs', 'BuffsSize', '20')) or 20
-
-    local function syncBuffsArray()
-        s.buffs.buffsArray = {}
-        for _, slot in ipairs(Config.parseCondArray(buffsRaw)) do
-            if slot and slot.name and slot.name ~= '' and slot.name ~= 'null' then
-                s.buffs.buffsArray[#s.buffs.buffsArray + 1] = slot
-            end
-        end
-    end
 
     local condLabels = { '(none)' }
     for j = 1, (s.cond.size or 0) do
@@ -210,13 +192,10 @@ function SpellsUI.drawBuffs()
                 if i == buffsSize and buffsSize > 1 then
                     buffsRaw[i] = nil
                     buffsSize   = buffsSize - 1
-                    Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
                 else
                     buffsRaw[i] = 'null'
                 end
-                Config.set('Buffs', 'Buffs', buffsRaw)
-                Config.save()
-                syncBuffsArray()
+                Control.setEntries('buffs', buffsRaw, buffsSize)
             end
 
             if sc or tc or cc then
@@ -226,9 +205,7 @@ function SpellsUI.drawBuffs()
                     tc and newTag  or tag,
                     cc and newCond or cond
                 ) or 'null'
-                Config.set('Buffs', 'Buffs', buffsRaw)
-                Config.save()
-                syncBuffsArray()
+                Control.setEntries('buffs', buffsRaw, buffsSize)
             end
         end
         ImGui.EndTable()
@@ -238,9 +215,7 @@ function SpellsUI.drawBuffs()
     if ImGui.Button('[+ Add]') then
         buffsSize = buffsSize + 1
         buffsRaw[buffsSize] = 'null'
-        Config.set('Buffs', 'BuffsSize', tostring(buffsSize))
-        Config.set('Buffs', 'Buffs', buffsRaw)
-        Config.save()
+        Control.setEntries('buffs', buffsRaw, buffsSize)
     end
 end
 
@@ -299,20 +274,17 @@ function SpellsUI.drawGoM()
                 if i == gomSize and gomSize > 1 then
                     gomRaw[i] = nil
                     gomSize   = gomSize - 1
-                    Config.set('GoM', 'GoMSize', tostring(gomSize))
                 else
                     gomRaw[i] = 'null'
                 end
-                Config.set('GoM', 'GoMSpell', gomRaw)
-                Config.save()
+                Control.setEntries('gom', gomRaw, gomSize)
             end
 
             if sc or tc then
                 local s = sc and newSpell or spell
                 local t = tc and newTgt   or tgt
                 gomRaw[i] = s ~= '' and joinGom(s, t) or 'null'
-                Config.set('GoM', 'GoMSpell', gomRaw)
-                Config.save()
+                Control.setEntries('gom', gomRaw, gomSize)
             end
         end
         ImGui.EndTable()
@@ -322,9 +294,7 @@ function SpellsUI.drawGoM()
     if ImGui.Button('[+ Add]') then
         gomSize = gomSize + 1
         gomRaw[gomSize] = 'null'
-        Config.set('GoM', 'GoMSize', tostring(gomSize))
-        Config.set('GoM', 'GoMSpell', gomRaw)
-        Config.save()
+        Control.setEntries('gom', gomRaw, gomSize)
     end
 end
 

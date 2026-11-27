@@ -1532,6 +1532,37 @@ end
 
 -- Mirrors Bind_Settings buff loading (kissassist.mac:14657-14671) and
 -- Pet buff loading from [Pet] INI section.
+-- One list from the config into State: 'Buffs', 'PetBuffs' or 'PetToys'.
+-- Called at init and by Control.setEntries when the GUI edits a list, so an
+-- edit loads exactly what a restart would.
+local function condSlots(section, key)
+    local out = {}
+    local raw = Config.get(section, key, nil)
+    if type(raw) == 'table' then
+        for _, slot in ipairs(Config.parseCondArray(raw)) do
+            if slot and slot.name and slot.name ~= '' then out[#out + 1] = slot end
+        end
+    end
+    return out
+end
+
+function Buffs.loadList(name)
+    if name == 'Buffs' then
+        _state.buffs.buffsArray = condSlots('Buffs', 'Buffs')
+    elseif name == 'PetBuffs' then
+        _state.buffs.petBuffsArray = condSlots('Pet', 'PetBuffs')
+    elseif name == 'PetToys' then
+        local toys = {}
+        local raw = Config.get('Pet', 'PetToys', nil)
+        if type(raw) == 'table' then
+            for _, v in ipairs(raw) do
+                if v and v ~= '' then toys[#toys + 1] = v end
+            end
+        end
+        _state.pet.toysArray = toys
+    end
+end
+
 function Buffs.init(state, utils, cast, heal, comms, cond)
     _state = state
     _utils = utils
@@ -1561,14 +1592,7 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
     _state.buffs.checkBuffsTimer = tonumber(Config.get('Buffs', 'CheckBuffsTimer', '10')) or 10
     _state.buffs.powerSource     = Config.get('Buffs', 'PowerSource',    '') or ''
 
-    local buffsArr = Config.get('Buffs', 'Buffs', nil)
-    if type(buffsArr) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(buffsArr)) do
-            if slot and slot.name and slot.name ~= '' then
-                _state.buffs.buffsArray[#_state.buffs.buffsArray + 1] = slot
-            end
-        end
-    end
+    Buffs.loadList('Buffs')
 
     -- Mount toggle from [General] (mac:4200); mount spell comes from |Mount entry in buffsArray
     local mountOnRaw = Config.get('General', 'MountOn', nil)
@@ -1578,28 +1602,14 @@ function Buffs.init(state, utils, cast, heal, comms, cond)
 
     -- [Pet] buff list
     _state.buffs.petBuffsOn = Config.get('Pet', 'PetBuffsOn', '0') == '1'
-    local petBuffsArr = Config.get('Pet', 'PetBuffs', nil)
-    if type(petBuffsArr) == 'table' then
-        for _, slot in ipairs(Config.parseCondArray(petBuffsArr)) do
-            if slot and slot.name and slot.name ~= '' then
-                _state.buffs.petBuffsArray[#_state.buffs.petBuffsArray + 1] = slot
-            end
-        end
-    end
+    Buffs.loadList('PetBuffs')
 
     -- [Pet] on / shrink / toys fields
     _state.pet.on          = Config.get('Pet', 'PetOn',          '0') == '1'
     _state.pet.shrinkOn    = Config.get('Pet', 'PetShrinkOn',    '0') == '1'
     _state.pet.shrinkSpell = Config.get('Pet', 'PetShrinkSpell', '') or ''
     _state.pet.toysOn      = Config.get('Pet', 'PetToysOn',      '0') == '1'
-    local petToysArr = Config.get('Pet', 'PetToys', nil)
-    if type(petToysArr) == 'table' then
-        for _, v in ipairs(petToysArr) do
-            if v and v ~= '' then
-                _state.pet.toysArray[#_state.pet.toysArray + 1] = v
-            end
-        end
-    end
+    Buffs.loadList('PetToys')
 
     utils.debug('buffs',
         'Buffs.init: buffsOn=%s buffs#=%d petBuffsOn=%s petBuffs#=%d rebuffOn=%s checkBuffsTimer=%d mountOn=%s danNetOn=%s',

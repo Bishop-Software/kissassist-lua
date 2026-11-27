@@ -246,10 +246,10 @@ function M.run(TH, MockMQ)
     TH.assert_eq(#names, 1, 'maChoices: no MA -> just me')
     TH.assert_eq(idx, 1, 'maChoices: no MA -> first entry selected')
 
-    TH.assert_eq(Roles.switchMACommand('Tanky', 'tank', true), '/kactl ma Tanky tank group',
-        'switchMACommand: broadcast -> group')
-    TH.assert_eq(Roles.switchMACommand('Tanky', 'offtank', false), '/kactl ma Tanky offtank',
-        'switchMACommand: no broadcast -> no group')
+    TH.assert_eq(table.concat(Roles.switchMAWords('Tanky', 'tank', true), ' '), 'Tanky tank group',
+        'switchMAWords: broadcast -> group')
+    TH.assert_eq(table.concat(Roles.switchMAWords('Tanky', 'offtank', false), ' '), 'Tanky offtank',
+        'switchMAWords: no broadcast -> no group')
     TH.assert_eq(Roles.MA_ROLE_CHOICES[1], 'tank', 'MA_ROLE_CHOICES: tank first (the bind default)')
     local allKnown = true
     for _, r in ipairs(Roles.MA_ROLE_CHOICES) do

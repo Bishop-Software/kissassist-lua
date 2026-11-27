@@ -190,6 +190,191 @@ function M.run(TH, MockMQ)
     ok, msg = Control.set('GroupWatchOn', 'bad')
     TH.assert_true(not ok and msg == 'badvalue', 'GroupWatch bad value -> badvalue')
 
+    -- ── 3c: the GUI's remaining settings (#363) ─────────────────────────────
+    -- Names the GUI now sets through Control instead of writing State/Config.
+    for _, k in ipairs({
+        { 'AFKGMAction', 'afk', 'gmAction' },   { 'AFKPCRadius', 'afk', 'pcRadius' },
+        { 'AFKToolsOn', 'afk', 'on' },          { 'CharmSpell', 'charm', 'spell' },
+        { 'PetSpell', 'pet', 'spell' },         { 'PetShrinkSpell', 'pet', 'shrinkSpell' },
+        { 'StickHow', 'movement', 'dStickHow' }, { 'MezOn', 'mez', 'on' },
+        { 'MezDebuffSpell', 'mez', 'mezDebuffSpell' }, { 'DebuffOn', 'debuff', 'on' },
+        { 'CuresOn', 'heal', 'curesOn' },       { 'XTarHeal', 'heal', 'xTarHeal' },
+        { 'XTarHealList', 'heal', 'xTarHealList' }, { 'FaceMobOn', 'movement', 'faceMobOn' },
+        { 'BurnAllNamed', 'combat', 'burnAllNamed' }, { 'LoadSpellSet', 'cast', 'loadSpellSet' },
+        { 'SpellSetName', 'cast', 'spellSetName' }, { 'MiscGemRemem', 'cast', 'miscGemRemem' },
+    }) do
+        tbl, field = Control.resolve(k[1])
+        TH.assert_true(tbl == state[k[2]] and field == k[3],
+            string.format('resolve %s -> %s.%s', k[1], k[2], k[3]))
+    end
+
+    -- Stubs for the modules the side effects and SPECIAL settings call.
+    local stubNames = { 'modules.movement', 'modules.healing', 'modules.pull', 'modules.combat.settings' }
+    local savedStubs = {}
+    for _, n in ipairs(stubNames) do savedStubs[n] = package.loaded[n] end
+    local calls = {}
+    package.loaded['modules.movement'] = { resolveStickHow = function() calls.stick = (calls.stick or 0) + 1 end }
+    package.loaded['modules.healing']  = { setXTargetHealList = function(v) calls.xtar = v end }
+    package.loaded['modules.pull'] = {
+        setPullLevel = function(v) state.pull.levelSetting = v; calls.level = v end,
+        setPullPause = function(v) state.pull.pauseSetting = v; calls.pause = v end,
+    }
+    local meleeLoaded = true
+    package.loaded['modules.combat.settings'] = {
+        setMQ2Melee = function(st, on)
+            if on and not meleeLoaded then return false end
+            st.combat.useMQ2Melee = on
+            calls.melee = on
+            return true
+        end,
+    }
+
+    -- text: kept exactly as given, empty included
+    cfg.reset()
+    Control.set('CharmSpell', 'Beguile', { section = 'Charm', save = true, text = true })
+    TH.assert_eq(state.charm.spell, 'Beguile', 'text setting: spell name set')
+    TH.assert_eq(cfg.last(), 'Charm/CharmSpell=Beguile', 'text setting: saved as typed')
+    Control.set('CharmSpell', '', { section = 'Charm', save = true, text = true })
+    TH.assert_eq(state.charm.spell, '', "text setting: empty stays empty (not '0')")
+    TH.assert_eq(cfg.last(), 'Charm/CharmSpell=', 'text setting: empty saved')
+
+    -- StickHow: the INI value, then resolved by role
+    calls.stick = 0
+    Control.set('StickHow', 'behind', { section = 'Melee', save = true, text = true })
+    TH.assert_eq(state.movement.dStickHow, 'behind', 'StickHow sets dStickHow')
+    TH.assert_eq(calls.stick, 1, 'StickHow re-resolves the stick')
+
+    -- XTarHealList: the slot list is applied
+    Control.set('XTarHealList', '5|6', { text = true })
+    TH.assert_eq(calls.xtar, '5|6', 'XTarHealList applied (setXTargetHealList)')
+
+    -- AutoHide: saving drops the old [General] key
+    cfg.reset()
+    Control.set('AutoHide', true, { section = 'Melee', save = true })
+    local dropped = false
+    for _, s in ipairs(cfg.sets) do
+        if s[1] == 'General' and s[2] == 'AutoHide' and s[3] == nil then dropped = true end
+    end
+    TH.assert_true(dropped, 'AutoHide save drops [General] AutoHide')
+
+    -- AFK: MQ2Posse gets the PC radius
+    MockMQ.set('TLO.Plugin', function() return { IsLoaded = function() return true end } end)
+    Control.set('AFKPCRadius', 750, { section = 'AFKTools', save = true })
+    TH.assert_eq(state.afk.pcRadius, 750, 'AFKPCRadius set')
+    TH.assert_true(MockMQ.cmdCalled('/posse radius 750'), 'AFKPCRadius: /posse radius sent')
+    Control.set('AFKToolsOn', 2)
+    TH.assert_eq(state.afk.on, 2, 'AFKToolsOn 2 set')
+
+    -- MezSpell / MezAESpell: 'spell|count' into two fields
+    cfg.reset()
+    Control.set('MezSpell', 'Mesmerize|3', { section = 'Mez', save = true, text = true })
+    TH.assert_true(state.mez.spell == 'Mesmerize' and state.mez.singleCount == 3, 'MezSpell: spell + count')
+    TH.assert_eq(cfg.last(), 'Mez/MezSpell=Mesmerize|3', 'MezSpell saved as spell|count')
+    Control.set('MezSpell', 'Mesmerize|1')
+    TH.assert_eq(state.mez.singleCount, 2, 'MezSpell: count at least 2 (mac)')
+    Control.set('MezAESpell', 'Color Slant|0')
+    TH.assert_true(state.mez.aeSpell == 'Color Slant' and state.mez.aeCount == 0, 'MezAESpell: 0 = off')
+    state.mez.aeCount = 4
+    Control.set('MezAESpell', 'Color Flux')
+    TH.assert_true(state.mez.aeSpell == 'Color Flux' and state.mez.aeCount == 4, 'MezAESpell: no count keeps it')
+
+    -- PullLevel / PullPause: parsed by the pull module, saved as it keeps them
+    cfg.reset()
+    ok = Control.set('PullLevel', '10|20', { section = 'Pull', save = true, text = true })
+    TH.assert_true(ok and calls.level == '10|20', 'PullLevel goes to Pull.setPullLevel')
+    TH.assert_eq(cfg.last(), 'Pull/PullLevel=10|20', 'PullLevel saved')
+    Control.set('PullPause', '30|5', { section = 'Pull', save = true, text = true })
+    TH.assert_eq(calls.pause, '30|5', 'PullPause goes to Pull.setPullPause')
+
+    -- UseMQ2Melee 0 / 1 / 2
+    cfg.reset()
+    state.combat.mq2MeleeMode = 1
+    ok = Control.set('UseMQ2Melee', 2, { section = 'Melee', save = true })
+    TH.assert_true(ok and state.combat.useMQ2Melee and state.combat.mq2MeleeMode == 2, 'UseMQ2Melee 2: on, INI stickcmd')
+    TH.assert_eq(cfg.last(), 'Melee/UseMQ2Melee=2', 'UseMQ2Melee 2 saved')
+    Control.set('UseMQ2Melee', false, { section = 'Melee', save = true })
+    TH.assert_true(not state.combat.useMQ2Melee and state.combat.mq2MeleeMode == 2, 'UseMQ2Melee off keeps mode 2')
+    TH.assert_eq(cfg.last(), 'Melee/UseMQ2Melee=0', 'UseMQ2Melee off saved as 0')
+    Control.set('UseMQ2Melee', true, { section = 'Melee', save = true })
+    TH.assert_eq(cfg.last(), 'Melee/UseMQ2Melee=2', 'UseMQ2Melee on (boolean) keeps mode 2')
+    ok, msg = Control.set('UseMQ2Melee', 5)
+    TH.assert_true(not ok and msg == 'badvalue', 'UseMQ2Melee 5 -> badvalue')
+    meleeLoaded = false
+    state.combat.useMQ2Melee = false
+    cfg.reset()
+    ok, msg = Control.set('UseMQ2Melee', true, { section = 'Melee', save = true })
+    TH.assert_true(not ok and msg == 'noplugin', 'UseMQ2Melee without the plugin -> noplugin')
+    TH.assert_eq(#cfg.sets, 0, 'UseMQ2Melee without the plugin: nothing saved')
+
+    -- ── Control.setEntries: the GUI's list editors ──────────────────────────
+    local reloads = {}
+    local function note(what) reloads[#reloads + 1] = what end
+    local savedEntryMods = {}
+    for _, n in ipairs({ 'modules.buffs', 'modules.debuff', 'modules.cond' }) do
+        savedEntryMods[n] = package.loaded[n] or false
+    end
+    package.loaded['modules.combat.settings'] = { loadList = function(st, sec)
+        TH.assert_true(st == state, 'combat loadList gets State'); note('combat:' .. sec) end }
+    package.loaded['modules.healing'] = { loadList = function(sec) note('heal:' .. sec) end }
+    package.loaded['modules.buffs']   = { loadList = function(name) note('buffs:' .. name) end }
+    package.loaded['modules.debuff']  = { loadList = function() note('debuff') end }
+    package.loaded['modules.cond']    = { load = function() note('cond') end }
+
+    local function setOf(section, key)
+        for i = #cfg.sets, 1, -1 do
+            local s = cfg.sets[i]
+            if s[1] == section and s[2] == key then return s[3] end
+        end
+    end
+    local LISTS = {
+        { 'dps', 'DPS', 'DPS', 'DPSSize', 'combat:DPS' },
+        { 'burn', 'Burn', 'Burn', 'BurnSize', 'combat:Burn' },
+        { 'aggro', 'Aggro', 'Aggro', 'AggroSize', 'combat:Aggro' },
+        { 'ae', 'AE', 'AE', 'AESize', 'combat:AE' },
+        { 'debuff', 'Debuff', 'Debuff', 'DebuffSize', 'debuff' },
+        { 'heals', 'Heals', 'Heals', 'HealsSize', 'heal:Heals' },
+        { 'cures', 'Cures', 'Cures', 'CuresSize', 'heal:Cures' },
+        { 'buffs', 'Buffs', 'Buffs', 'BuffsSize', 'buffs:Buffs' },
+        { 'petbuffs', 'Pet', 'PetBuffs', 'PetBuffsSize', 'buffs:PetBuffs' },
+        { 'pettoys', 'Pet', 'PetToys', 'PetToysSize', 'buffs:PetToys' },
+        { 'cond', 'KConditions', 'Cond', 'CondSize', 'cond' },
+        { 'gom', 'GoM', 'GoMSpell', 'GoMSize', nil },
+    }
+    for _, l in ipairs(LISTS) do
+        cfg.reset()
+        reloads = {}
+        local arr = { 'Entry One|50', 'null' }
+        ok = Control.setEntries(l[1], arr, 2)
+        TH.assert_true(ok, 'setEntries ' .. l[1] .. ': ok')
+        TH.assert_true(setOf(l[2], l[3]) == arr, string.format('setEntries %s: [%s] %s saved', l[1], l[2], l[3]))
+        TH.assert_eq(setOf(l[2], l[4]), '2', string.format('setEntries %s: %s saved', l[1], l[4]))
+        TH.assert_eq(cfg.saves, 1, 'setEntries ' .. l[1] .. ': Config.save once')
+        TH.assert_eq(table.concat(reloads, ','), l[5] or '', 'setEntries ' .. l[1] .. ': reloaded by its module')
+    end
+    cfg.reset()
+    Control.setEntries('DPS', { 'x' })
+    TH.assert_nil(setOf('DPS', 'DPSSize'), 'setEntries: no size -> size key left alone (any-case name)')
+    Control.setEntries('gems', { 'Spell A', 'Spell B' }, 8)
+    TH.assert_true(setOf('Spells', 'Gems') ~= nil and #cfg.sets == 2, 'setEntries gems: saved, no size key')
+    ok, msg = Control.setEntries('nosuch', {})
+    TH.assert_true(not ok and msg == 'unknown list', 'setEntries: unknown list')
+    ok, msg = Control.setEntries('dps', 'text')
+    TH.assert_true(not ok and msg == 'bad entries', 'setEntries: entries must be a table')
+
+    for _, n in ipairs(stubNames) do package.loaded[n] = savedStubs[n] end
+    for n, v in pairs(savedEntryMods) do package.loaded[n] = v or nil end
+
+    -- ── Control.defer: the GUI's buttons run on the main loop ──────────────
+    local ran = {}
+    Control.verb('zzdefer', 'zzdefer', function(words) ran[#ran + 1] = words[1] or ''; return true end)
+    Control.defer('zzdefer', { 'a' })
+    Control.defer('zzdefer', { 'b' })
+    TH.assert_eq(#ran, 0, 'defer: nothing runs until runDeferred')
+    Control.runDeferred()
+    TH.assert_eq(table.concat(ran, ','), 'a,b', 'runDeferred: queued verbs run in order')
+    Control.runDeferred()
+    TH.assert_eq(#ran, 2, 'runDeferred: the queue is emptied')
+
     -- ── /togglevariable and /changevarint adapters ──────────────────────────
     local saved = { aliases = package.loaded['modules.aliases'], bind = MockMQ.bind }
     package.loaded['modules.aliases'] = { sync = function() return 0, 0 end }
