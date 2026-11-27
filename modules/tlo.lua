@@ -4,8 +4,10 @@
 --   ${KissAssist.State}       "Paused" or "Running"
 --   ${KissAssist.Role}        current role
 --   ${KissAssist.MainAssist}  current main assist
+--   ${KissAssist.Mode}        movement mode: manual, camp or chase (#362)
 -- The macro registers no TLO, so the name can't clash with kissassist.mac.
-local mq = require('mq')
+local mq      = require('mq')
+local Control = require('modules.control')
 
 local Tlo = {}
 
@@ -20,6 +22,7 @@ Tlo.members = {
     State      = function() return 'string', _state.session.paused and 'Paused' or 'Running' end,
     Role       = function() return 'string', _state.session.role or '' end,
     MainAssist = function() return 'string', _state.session.mainAssist or '' end,
+    Mode       = function() return 'string', Control.modeOf(_state) end,
 }
 
 function Tlo.init(state)

@@ -1,20 +1,25 @@
--- modules/control.lua — the one place that changes a kissassist-lua setting.
--- /togglevariable, /changevarint and the GUI's checkboxes and number inputs all
--- call Control.set, so a setting gets the same side effects however it changes.
--- (kactl control API design, phase 1; /kactl itself comes in a later phase.)
+-- modules/control.lua — the one place that changes a kissassist-lua setting or
+-- movement mode. /togglevariable, /changevarint, the camp/chase commands, the
+-- GUI, group messages and /kactl all come through here, so a change behaves the
+-- same however it arrives (kactl control API design, #360).
 --
--- Control.set never prints its own result: it returns ok, msg, info and the
--- caller decides what to show. The side effects keep the mac's messages
+--   Control.set(name, value, opts)   a variable (phase 1, #361)
+--   Control.setMode(mode, opts)      manual / camp / chase (phase 2, #362)
+--   /kactl mode ...                  Control.command
+--
+-- Neither prints its own result: they return ok, msg, info and the caller
+-- decides what to show. The side effects keep the mac's messages
 -- ("New camp set", "I Will Now Chase ...").
 local mq = require('mq')
 
 local Control = {}
 
-local _state, _config
+local _state, _config, _comms
 
-function Control.init(state, config)
+function Control.init(state, config, comms)
     _state  = state
     _config = config
+    _comms  = comms
 end
 
 -- State sub-tables searched for a variable, in order.
@@ -131,36 +136,23 @@ local function sideEffects(field, on, who, save, raw)
         -- BuffsOn 2 = also buff group members' pets (mac:4579)
         if on then _state.buffs.buffGroupPets = tonumber(raw) == 2 end
     elseif field == 'chaseAssist' then
+        -- /chase on [who], /chaseon: chase mode (mac:8406-8416)
         if on then
-            if who and who ~= '' and who ~= 'null' and who ~= mv.whoToChase then
-                mv.whoToChase = who
-                printf('\ayI Will Now Chase %s', who)
-            end
-            if mv.returnToCamp then
-                mv.returnToCamp = false
-                if save then _config.set('General', 'ReturnToCamp', '0') end
-            end
-            if (mq.TLO.Me.Pet.ID() or 0) > 0 and (mq.TLO.Me.Pet.Stance() or ''):upper() ~= 'FOLLOW' then
-                mq.cmd('/pet follow')
-            end
+            local wasCamping = mv.returnToCamp
+            Control.setMode('chase', { who = who })
+            if wasCamping and save then _config.set('General', 'ReturnToCamp', '0') end
         else
             stickOff()
         end
     elseif field == 'returnToCamp' and on then
-        -- New camp right here (mac:8417-8432)
-        mv.campX, mv.campY, mv.campZ = mq.TLO.Me.X(), mq.TLO.Me.Y(), mq.TLO.Me.FloorZ()
-        mv.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
-        mv.campZone     = mq.TLO.Zone.ID()
-        mv.campZoneName = mq.TLO.Zone.ShortName() or ''
-        _state.pull.mapSet = false
-        if _state.session.chaseAssist then
-            _state.session.chaseAssist = false
+        -- /camphere on: camp mode with a new camp right here (mac:8417-8432)
+        local wasChasing = _state.session.chaseAssist
+        Control.setMode('camp', { here = true })
+        if wasChasing then
             _config.set('General', 'ChaseAssist', '0')  -- the mac saves this one (mac:8425)
             _config.save()
-            stickOff()
             printf('\ay>> ChaseAssist Off')
         end
-        printf('\ay>> New camp set %.1f, %.1f', mv.campY or 0, mv.campX or 0)
     elseif field == 'autoRezAll' then
         if on then printf('\ayNow Rezing Everyone.')
         else
@@ -197,9 +189,7 @@ function Control.set(name, value, opts)
     local lname = tostring(name or ''):lower()
     if lname == '' then return false, 'unknown' end
     if lname == 'waithere' then
-        _state.session.chaseAssist   = false
-        _state.movement.returnToCamp = false
-        stickOff()
+        Control.setMode('manual')
         return true, 'waithere', {}
     end
     if UNSUPPORTED[lname] then return false, 'unsupported' end
@@ -223,6 +213,199 @@ function Control.set(name, value, opts)
     sideEffects(field, on, opts.who, save, value)
     if save then _config.save() end
     return true, 'set', { field = field, old = old, value = newValue, now = tbl[field], on = on }
+end
+
+-- ─── Movement mode (phase 2, #362) ───────────────────────────────────────────
+-- manual: no chasing, no camp return (the camp spot is kept unless 'clear').
+-- camp:   return to camp, no chasing.
+-- chase:  chase someone, no camp return.
+-- Both flags are set together, so there is never a moment with both or with
+-- the old one still on (MQ2Boxr's Manual sends /chaseoff and /camphere off
+-- 300 ms apart).
+
+local MODES = { manual = true, camp = true, chase = true }
+
+-- The mode the two flags describe. Pure: also used by the ${KissAssist} TLO.
+function Control.modeOf(state)
+    if state.session.chaseAssist then return 'chase' end
+    if state.movement.returnToCamp then return 'camp' end
+    return 'manual'
+end
+
+function Control.mode() return Control.modeOf(_state) end
+
+local function hasCamp()
+    local mv = _state.movement
+    return (mv.campX or 0) ~= 0 or (mv.campY or 0) ~= 0
+end
+
+local function myCampSpot()
+    return {
+        x = mq.TLO.Me.X(), y = mq.TLO.Me.Y(), z = mq.TLO.Me.FloorZ(),
+        zone = mq.TLO.Zone.ID(), zoneName = mq.TLO.Zone.ShortName() or '',
+    }
+end
+
+-- Camp spot: at = { x, y, z, zone, zoneName } (a group CAMP), else right here.
+local function setCampSpot(at)
+    local mv = _state.movement
+    local spot = at or myCampSpot()
+    mv.campX        = spot.x or mv.campX
+    mv.campY        = spot.y or mv.campY
+    mv.campZ        = spot.z or mv.campZ
+    mv.campZone     = spot.zone or mv.campZone
+    mv.campZoneName = spot.zoneName or mv.campZoneName
+    mv.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0  -- mac:8424
+    _state.pull.mapSet = false  -- repaint the map circles around the new camp
+end
+
+-- The group message for a mode; the boxes that get it run the same setMode
+-- (modules/comms.lua). Only members of our group/raid are listened to.
+local function broadcastMode(mode, opts)
+    if not _comms then return end
+    if mode == 'camp' then
+        if opts.resume then
+            _comms.broadcast('CAMPON', {})
+        else
+            local mv = _state.movement
+            local spot = opts.others and myCampSpot()
+                or { x = mv.campX, y = mv.campY, z = mv.campZ, zone = mv.campZone, zoneName = mv.campZoneName }
+            _comms.broadcast('CAMP', spot)
+        end
+    elseif mode == 'chase' then
+        _comms.broadcast('CHASE', { who = opts.who or _state.movement.whoToChase })
+    elseif opts.clear then
+        _comms.broadcast('CAMPOFF', {})
+    else
+        _comms.broadcast('STAY', {})
+    end
+end
+
+-- Set the movement mode: Control.setMode(mode, opts) -> ok, msg, info.
+--   mode   'manual' | 'camp' | 'chase'
+--   opts   who:    chase target (chase; kept as is when not given)
+--          here:   camp: a new camp at this spot (the default)
+--          resume: camp: back to the kept camp
+--          at:     camp: a new camp at { x, y, z, zone, zoneName } (a group CAMP)
+--          clear:  manual: also clear the camp spot
+--          group:  this toon and the group/raid's kissassist-lua boxes
+--          others: only the group/raid's boxes, not this toon (the mac's
+--                  /stayhere and /chaseme)
+-- On failure msg is 'badmode', 'nocamp' (resume with no camp) or 'nowho'.
+function Control.setMode(mode, opts)
+    opts = opts or {}
+    mode = tostring(mode or ''):lower()
+    if not MODES[mode] then return false, 'badmode' end
+    local mv, ses = _state.movement, _state.session
+    local who = opts.who
+    if who == 'null' then who = nil end
+    if mode == 'chase' and opts.others and (who or '') == '' then return false, 'nowho' end
+
+    if not opts.others then
+        if mode == 'camp' then
+            if opts.at then
+                setCampSpot(opts.at)
+            elseif opts.resume then
+                if not hasCamp() then return false, 'nocamp' end
+            else
+                setCampSpot()
+                printf('\ay>> New camp set %.1f, %.1f', mv.campY or 0, mv.campX or 0)
+            end
+            if ses.chaseAssist then stickOff() end
+            ses.chaseAssist = false
+            mv.returnToCamp = true
+        elseif mode == 'chase' then
+            if who and who ~= '' and who ~= mv.whoToChase then
+                mv.whoToChase = who
+                printf('\ayI Will Now Chase %s', who)
+            end
+            mv.returnToCamp = false
+            ses.chaseAssist = true
+            if (mq.TLO.Me.Pet.ID() or 0) > 0 and (mq.TLO.Me.Pet.Stance() or ''):upper() ~= 'FOLLOW' then
+                mq.cmd('/pet follow')
+            end
+        else
+            ses.chaseAssist = false
+            mv.returnToCamp = false
+            stickOff()
+            if opts.clear then
+                mv.campX, mv.campY, mv.campZ, mv.campZoneName = 0, 0, 0, ''
+            end
+        end
+    end
+
+    if opts.group or opts.others then broadcastMode(mode, opts) end
+    return true, 'set', { mode = mode }
+end
+
+-- ─── /kactl ──────────────────────────────────────────────────────────────────
+-- /kactl <verb> [args]: the strict, script-safe way in. Phase 2 has one verb:
+--   /kactl mode manual [clear] [group|others]
+--   /kactl mode camp [here|resume] [group|others]
+--   /kactl mode chase [<name>|me] [group|others]
+-- Quiet unless 'verbose' is given or it fails.
+
+local MODE_USAGE = '/kactl mode manual [clear] | camp [here|resume] | chase [<name>|me]  [group|others] [verbose]'
+
+-- Parse the words after 'mode'. Returns mode, opts, verbose or nil, error.
+function Control.parseMode(words)
+    local mode = tostring(words[1] or ''):lower()
+    if not MODES[mode] then return nil, 'mode must be manual, camp or chase' end
+    local opts, verbose = {}, false
+    for i = 2, #words do
+        local w  = tostring(words[i])
+        local lw = w:lower()
+        if lw == '' then
+            goto continue  -- empty argument
+        end
+        if lw == 'verbose' then
+            verbose = true
+        elseif lw == 'group' or lw == 'others' then
+            if opts.group or opts.others then return nil, 'use group or others, not both' end
+            opts[lw] = true
+        elseif lw == 'here' or lw == 'resume' then
+            if mode ~= 'camp' then return nil, lw .. ' only goes with camp' end
+            if opts.here or opts.resume then return nil, 'use here or resume, not both' end
+            opts[lw] = true
+        elseif lw == 'clear' then
+            if mode ~= 'manual' then return nil, 'clear only goes with manual' end
+            opts.clear = true
+        elseif mode == 'chase' and not opts.who then
+            opts.who = (lw == 'me') and (mq.TLO.Me.CleanName() or '') or w
+        else
+            return nil, 'unexpected word: ' .. w
+        end
+        ::continue::
+    end
+    return mode, opts, verbose
+end
+
+local MODE_ERRORS = {
+    nocamp = 'no camp to resume (set one with /kactl mode camp here)',
+    nowho  = 'chase with others needs a name (or me)',
+}
+
+-- /kactl entry point. words: the command's arguments. Returns ok, msg.
+function Control.command(words)
+    local verb = tostring(words[1] or ''):lower()
+    if verb ~= 'mode' then
+        printf('\ay/kactl: unknown verb \at%s\ay. Usage: %s', words[1] or '', MODE_USAGE)
+        return false, 'badverb'
+    end
+    local rest = {}
+    for i = 2, #words do rest[#rest + 1] = words[i] end
+    local mode, opts, verbose = Control.parseMode(rest)
+    if not mode then
+        printf('\ay/kactl mode: %s. Usage: %s', opts, MODE_USAGE)
+        return false, opts
+    end
+    local ok, msg = Control.setMode(mode, opts)
+    if not ok then
+        printf('\ay/kactl mode: %s', MODE_ERRORS[msg] or msg)
+    elseif verbose then
+        printf('\ay/kactl: mode %s', Control.mode())
+    end
+    return ok, msg
 end
 
 return Control

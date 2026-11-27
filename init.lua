@@ -153,8 +153,9 @@ Pull.setGroupWatch(GroupWatch)
 Roles.init(State, Utils, Pull, Movement, Combat, Comms)
 Roles.saveBaseline()
 Roles.checkRoles(1)
--- Control (modules/control.lua) sets variables for the binds and the GUI.
-Control.init(State, Config)
+-- Control (modules/control.lua) sets variables and the movement mode for the
+-- binds, the GUI and group messages.
+Control.init(State, Config, Comms)
 Binds.register(State, Buffs, Cast, Combat, Config, Comms)
 UI.init(State)
 Tlo.init(State)

@@ -21,7 +21,7 @@ function Binds.isBound(name)
     return false
 end
 
-local state, _buffs, _cast, _combat, _config, _comms
+local state, _buffs, _cast, _combat, _config
 
 -- Maps /debug subcommand names to state.debug field names
 local DEBUG_FIELDS = {
@@ -324,86 +324,42 @@ local function onChangeVarInt(a1, a2, a3)
 end
 
 -- ─── Movement / camp ──────────────────────────────────────────────────────────
+-- The mac's camp/chase commands, as adapters over Control.setMode
+-- (modules/control.lua). /kactl mode is the script-safe form of each.
 
+-- /makecamphere: this toon and the group's kissassist-lua boxes camp at this spot.
+-- (The mac's has the other boxes camp each at their own spot and leaves the
+-- sender alone, mac:11373; the port has always used one shared spot.)
+-- /kactl mode camp here group
 local function onMakeCampHere()
-    state.movement.campX        = mq.TLO.Me.X()
-    state.movement.campY        = mq.TLO.Me.Y()
-    state.movement.campZ        = mq.TLO.Me.FloorZ()
-    state.movement.campZone     = mq.TLO.Zone.ID()
-    state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
-    state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0  -- mac:8424
-    state.movement.returnToCamp = true
-    state.session.chaseAssist   = false
-    state.pull.mapSet           = false  -- repaint the map circles around the new camp
-    printf('\ay>> Camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
-    if _comms then
-        _comms.broadcast('CAMP', {
-            x        = state.movement.campX,
-            y        = state.movement.campY,
-            z        = state.movement.campZ,
-            zone     = state.movement.campZone,
-            zoneName = state.movement.campZoneName,
-        })
-    end
+    Control.setMode('camp', { here = true, group = true })
 end
 
+-- /stayhere: the other boxes stop where they are, no chasing, no camp return;
+-- this toon is left as it is (mac:11361 sends /waithere to the group).
+-- /kactl mode manual others
 local function onStayHere()
-    state.movement.campX        = mq.TLO.Me.X()
-    state.movement.campY        = mq.TLO.Me.Y()
-    state.movement.campZ        = mq.TLO.Me.FloorZ()
-    state.movement.campZone     = mq.TLO.Zone.ID()
-    state.movement.campZoneName = mq.TLO.Zone.ShortName() or ''
-    state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
-    state.movement.returnToCamp = true
-    state.session.chaseAssist   = false
-    printf('\ay>> StayHere — camp set at %.1f, %.1f', state.movement.campY, state.movement.campX)
-    if _comms then _comms.broadcast('STAY', {}) end
+    Control.setMode('manual', { others = true })
+    printf('\ay>> StayHere: the group stops chasing and returning to camp.')
 end
 
--- /campoff [group] (Lua only). Alone: this toon stops returning to camp but keeps
--- the spot, so /campon resumes it. 'group': break camp for the whole group, this
--- toon and every kissassist-lua box in the group/raid (CAMPOFF), clearing the spot.
-local function onCampOff(scope)
-    local mv = state.movement
-    mv.returnToCamp = false
-    if (scope or ''):lower() == 'group' then
-        mv.campX, mv.campY, mv.campZ, mv.campZoneName = 0, 0, 0, ''
-        printf('\ay>> Camp broken for the group.')
-        if _comms then _comms.broadcast('CAMPOFF', {}) end
-    else
-        printf('\ay>> Camp off for this toon (the camp is kept; /campon resumes it).')
-    end
-end
-
--- /campon (Lua only): this toon goes back to the camp it had before /campoff.
-local function onCampOn()
-    local mv = state.movement
-    if (mv.campX or 0) == 0 and (mv.campY or 0) == 0 then
-        printf('\ay>> No camp to resume: set one with /makecamphere.')
-        return
-    end
-    mv.returnToCamp           = true
-    state.session.chaseAssist = false
-    printf('\ay>> Camp on: back to camp at %.1f, %.1f', mv.campY, mv.campX)
-end
-
+-- /chaseme: the other boxes chase this toon; this toon is left as it is
+-- (mac:11349 sends /chase on <me> to the group). /kactl mode chase me others
 local function onChaseMe()
     local myName = mq.TLO.Me.CleanName() or ''
-    state.movement.whoToChase  = myName
-    state.session.chaseAssist  = true
+    Control.setMode('chase', { who = myName, others = true })
     printf('\ay>> ChaseMe %s', myName)
-    if _comms then _comms.broadcast('CHASE', { who = myName }) end
 end
 
--- Mirrors Bind_TrackMeDown (kissassist.mac). Sets chase target; no arg toggles off.
+-- Mirrors Bind_TrackMeDown (kissassist.mac). Sets chase target; no arg turns
+-- chasing off. /kactl mode chase <name>
 local function onTrackMeDown(name, _useNavOnly, _ignoreDist)
     if not name or name == '' then
-        state.session.chaseAssist  = false
-        state.movement.whoToChase  = ''
+        Control.set('ChaseAssist', false)
+        state.movement.whoToChase = ''
         printf('\ayChase assist disabled.')
     else
-        state.movement.whoToChase  = name
-        state.session.chaseAssist  = true
+        Control.setMode('chase', { who = name })
         printf('\ayChasing: \at%s', name)
     end
 end
@@ -1021,13 +977,14 @@ end
 
 -- ─── Registration ─────────────────────────────────────────────────────────────
 
-function Binds.register(s, b, cast, combat, config, comms)
+-- _comms: group messages now go out through Control (modules/control.lua);
+-- the argument stays so the call in init.lua and the tests don't change.
+function Binds.register(s, b, cast, combat, config, _comms)
     state   = s
     _buffs  = b
     _cast   = cast
     _combat = combat
     _config = config
-    _comms  = comms
 
     -- Debug / utility
     bind('/debug',          onDebug)
@@ -1067,8 +1024,6 @@ function Binds.register(s, b, cast, combat, config, comms)
     -- Movement / camp
     bind('/makecamphere',   onMakeCampHere)
     bind('/stayhere',       onStayHere)
-    bind('/campoff',        onCampOff)
-    bind('/campon',         onCampOn)
     bind('/chaseme',        onChaseMe)
     bind('/trackmedown',    onTrackMeDown)
     bind('/SetPullArc',     onSetPullArc)
@@ -1104,6 +1059,8 @@ function Binds.register(s, b, cast, combat, config, comms)
 
     -- Script control
     -- /kapause [on|off|1|0]: soft pause (#353); no argument toggles.
+    -- /kactl <verb> [args]: script control (modules/control.lua, #360)
+    bind('/kactl', function(...) Control.command({ ... }) end)
     bind('/kapause', function(arg)
         local Pause = require('modules.pause')
         Pause.set(Pause.parseArg(arg))
