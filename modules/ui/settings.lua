@@ -32,10 +32,10 @@ function Settings.drawControls()
     intInput('Med Start %', s.heal.medStart,        1,  100, 'General', 'MedStart')
     intInput('Med Stop %',  s.heal.medStop,         1,  100, 'General', 'MedStop')
 
-    -- What keeps running under /kapause (#353)
+    -- What keeps running under /kactl pause (#353)
     ImGui.Spacing()
     ImGui.Separator()
-    ImGui.Text('While Paused (/kapause)')
+    ImGui.Text('While Paused (/kactl pause)')
     local function pauseToggle(label, field, key, tip)
         checkbox(label, s.session[field], function(v) set('General', key, v) end)
         if ImGui.IsItemHovered() then ImGui.SetTooltip(tip .. ' (' .. key .. ')') end

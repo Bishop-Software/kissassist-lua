@@ -390,7 +390,7 @@ function Movement.doWeChase()
         end
 
         mq.doevents()
-        if moveBlocked() then break end  -- /kapause already stopped stick/nav/moveto
+        if moveBlocked() then break end  -- /kactl pause already stopped stick/nav/moveto
 
         -- Leash: disable ChaseAssist if target drifted too far
         local spawnID = chaseSpawn.ID() or 0

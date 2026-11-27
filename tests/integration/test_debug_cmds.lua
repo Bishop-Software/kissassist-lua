@@ -2,7 +2,7 @@
 -- Integration tests for /debug, /kisscheck, /zoneinfo binds.
 -- Covers test plan section S2.1.x.
 --
--- Run in-game while kissassist is running: /katest debug_cmds
+-- Run in-game while kissassist is running: /kactl test debug_cmds
 local M = {}
 
 local D = 50  -- ms delay after each mq.cmd() to let the deferred bind execute

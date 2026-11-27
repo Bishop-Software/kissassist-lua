@@ -37,7 +37,7 @@ function Config.parseArgs(state, args)
         elseif a == 'autoload' then
             state.session.loadFromIni = true
         elseif a == 'paused' then
-            -- Start soft-paused (#353); /kapause off to begin. Checked before the
+            -- Start soft-paused (#353); /kactl pause off to begin. Checked before the
             -- bare-name MA fallback below.
             state.session.paused = true
         elseif a == 'ma' and args[i+1] then
@@ -316,7 +316,7 @@ function Config.migrateIni(state)
         BurnMedley       = r('General','BurnMedley') or 'burn',
         GoMMedley        = r('General','GoMMedley') or 'gomSong',
         MountOn          = r('General','MountOn'),
-        -- Lua port only (#353): what keeps running under /kapause
+        -- Lua port only (#353): what keeps running under /kactl pause
         HealWhilePaused      = r('General','HealWhilePaused'),
         MoveWhilePaused      = r('General','MoveWhilePaused'),
         WarnAggroWhilePaused = r('General','WarnAggroWhilePaused'),

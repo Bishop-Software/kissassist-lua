@@ -37,7 +37,7 @@ function Pause.warnAggro(now)
     now = now or os.clock()
     if now < _nextWarn then return false end
     _nextWarn = now + WARN_EVERY
-    printf('\arKissAssist is PAUSED and you have aggro!\aw Use \at/kapause off\aw to resume.')
+    printf('\arKissAssist is PAUSED and you have aggro!\aw Use \at/kactl pause off\aw to resume.')
     mq.cmd('/beep')
     return true
 end
@@ -62,7 +62,7 @@ local function stopEverything()
 end
 
 -- Set the pause state. Idempotent: returns false when nothing changed, so
--- /kapause on twice (or MQ2Boxr re-sending it) does nothing the second time.
+-- /kactl pause on twice (or MQ2Boxr re-sending it) does nothing the second time.
 function Pause.set(on)
     on = on == true
     if _state.session.paused == on then return false end
@@ -70,7 +70,7 @@ function Pause.set(on)
     if on then
         _nextWarn = 0  -- a fresh pause warns about aggro straight away
         stopEverything()
-        printf('\ayKissAssist paused.\aw Use \at/kapause off\aw to resume.')
+        printf('\ayKissAssist paused.\aw Use \at/kactl pause off\aw to resume.')
     else
         -- /backoff turns MQ2Melee back on itself when it ends.
         if _state.combat.useMQ2Melee and not _state.dps.paused then
@@ -79,15 +79,6 @@ function Pause.set(on)
         printf('\agKissAssist resumed.')
     end
     return true
-end
-
--- /kapause argument: on/1 and off/0 set it, anything else toggles.
--- Returns the new state the command asks for.
-function Pause.parseArg(arg)
-    local a = (arg or ''):lower()
-    if a == 'on' or a == '1' then return true end
-    if a == 'off' or a == '0' then return false end
-    return not Pause.isPaused()
 end
 
 return Pause

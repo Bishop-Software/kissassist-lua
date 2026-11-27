@@ -120,7 +120,7 @@ function CC.drawCC()
                 ImGui.Spacing()
                 checkbox('Charm On', s.charm.on, function(v) set('Charm', 'CharmOn', v) end)
                 if ImGui.IsItemHovered() then
-                    ImGui.SetTooltip('Charm a pet from nearby mobs and keep it charmed (also /charmon)')
+                    ImGui.SetTooltip('Charm a pet from nearby mobs and keep it charmed (also /kactl charm on)')
                 end
                 ImGui.SameLine()
                 checkbox('Charm Keep', s.charm.keep, function(v) set('Charm', 'CharmKeep', v) end)

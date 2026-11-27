@@ -1,7 +1,7 @@
 -- tests/unit/test_pause.lua
 -- Soft pause (#353): Pause.set is idempotent, stops everything in progress when
--- pausing, turns MQ2Melee back on when resuming (unless /backoff is on), and
--- Pause.parseArg reads on/off/1/0 or toggles.
+-- pausing, and turns MQ2Melee back on when resuming (unless /backoff is on).
+-- /kactl pause on|off|toggle is covered in test_control.
 local M = {}
 
 function M.run(TH, MockMQ)
@@ -91,19 +91,6 @@ function M.run(TH, MockMQ)
     MockMQ.reset()
     Pause.set(false)
     TH.assert_false(MockMQ.cmdCalled('/squelch /melee on'), 'backed off: melee stays off on resume')
-
-    -- ── parseArg ─────────────────────────────────────────────────────────────
-    fresh()
-    TH.assert_true(Pause.parseArg('on'), 'on -> true')
-    TH.assert_true(Pause.parseArg('ON'), 'ON -> true')
-    TH.assert_true(Pause.parseArg('1'), '1 -> true')
-    TH.assert_false(Pause.parseArg('off'), 'off -> false')
-    TH.assert_false(Pause.parseArg('0'), '0 -> false')
-    TH.assert_true(Pause.parseArg(nil), 'no arg while unpaused -> pause')
-    TH.assert_true(Pause.parseArg(''), 'empty arg while unpaused -> pause')
-    Pause.set(true)
-    TH.assert_false(Pause.parseArg(nil), 'no arg while paused -> resume')
-    TH.assert_false(Pause.parseArg('toggle'), 'unknown arg toggles')
 
     -- ── loadSettings: [General] *WhilePaused, default off ───────────────────
     s = fresh()

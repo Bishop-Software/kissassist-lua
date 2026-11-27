@@ -214,7 +214,7 @@ local function tickPreamble(myID, fromWhere)
     until not _state.combat.eventFlag
 
     if _state.terminate then return BREAK end
-    -- Soft pause (#353): /kapause already stopped attack/stick and reset combat.
+    -- Soft pause (#353): /kactl pause already stopped attack/stick and reset combat.
     if _state.session.paused then return BREAK end
 
     -- Died mid-fight (or now hovering as a corpse): stop the loop so we

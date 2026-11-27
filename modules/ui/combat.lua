@@ -68,8 +68,8 @@ function CombatUI.drawMelee()
 
     checkbox('Auto-Acquire Targets', s.combat.targetSwitchingOn, function(v) set('Melee', 'TargetSwitchingOn', v) end)
 
-    checkbox('Manual Target Swapping', s.combat.manualTargetMode, function(_)
-        mq.cmd('/katargetmode')
+    checkbox('Manual Target Swapping', s.combat.manualTargetMode, function(v)
+        set('Melee', 'ManualTargetMode', v)
     end)
 
     checkbox('Use MQ2Melee', s.combat.useMQ2Melee, function(v)

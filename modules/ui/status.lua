@@ -193,11 +193,12 @@ function Status.drawCampButtons()
           color = paused and { 0.8, 0.45, 0.1, 1.0 } or nil,
           tip = paused and 'Backed off: click to resume fighting (/backoff off)'
               or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)' },
-        -- /kapause on|off (#353): highlighted while paused.
-        { kaPaused and 'Unpause##kapause' or 'Pause##kapause', kaPaused and '/kapause off' or '/kapause on',
+        -- Soft pause (#353): highlighted while paused.
+        { kaPaused and 'Unpause##kapause' or 'Pause##kapause',
+          function() require('modules.pause').set(not kaPaused) end,
           color = kaPaused and { 0.7, 0.15, 0.5, 1.0 } or nil,
-          tip = kaPaused and 'Paused: click to resume all automation (/kapause off)'
-              or 'Pause all automation; commands and this window keep working (/kapause on)' },
+          tip = kaPaused and 'Paused: click to resume all automation (/kactl pause off)'
+              or 'Pause all automation; commands and this window keep working (/kactl pause on)' },
     }
 
     local spacing = styleX('ItemSpacing', 8)
