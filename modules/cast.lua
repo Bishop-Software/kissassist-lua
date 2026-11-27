@@ -1144,10 +1144,16 @@ function Cast.castWhat(castWhat, whatID, sentFrom, condNumber)
         return 'CAST_SUCCESS'
     end
 
-    -- Stop moving before spells with a cast time (non-bard) (mac:2538 StopMoving)
+    -- Stop moving before spells with a cast time (non-bard) (mac:2538 StopMoving).
+    -- Holding (/kactl hold, #364): the movement may be a script's nav, so don't
+    -- stop it; the spell isn't cast now and is tried again on a later pass.
     if (mq.TLO.Spell(castWhat).CastTime() or 0) > 0
             and mq.TLO.Me.Moving()
             and not isBard then
+        if state.session.hold then
+            utils.debug('cast', 'CastWhat: %s not cast: moving while holding', castWhat)
+            return 'CAST_NO_RESULT'
+        end
         Cast.stopMoving()
     end
 

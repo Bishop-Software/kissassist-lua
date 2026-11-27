@@ -459,6 +459,19 @@ local unitTests = {
         clearModules = { 'modules.control', 'modules.binds', 'modules.tlo' },
     },
     {
+        name         = 'test_forced_target',
+        path         = 'tests.unit.test_forced_target',
+        useMock      = true,
+        clearModules = { 'modules.movement', 'modules.config', 'modules.combat.settings', 'modules.combat.util', 'modules.combat.abilities',
+                         'modules.combat.radar', 'modules.combat.targeting', 'modules.combat.fight' },
+    },
+    {
+        name         = 'test_hold',
+        path         = 'tests.unit.test_hold',
+        useMock      = true,
+        clearModules = { 'modules.movement', 'modules.config', 'modules.cast' },
+    },
+    {
         name         = 'test_ui_api',
         path         = 'tests.unit.test_ui_api',
         useMock      = false,

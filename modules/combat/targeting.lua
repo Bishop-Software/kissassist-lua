@@ -14,6 +14,7 @@ local isDeadOrGone  = Util.isDeadOrGone
 local targetAndWait = Util.targetAndWait
 local distFromCamp  = Util.distFromCamp
 local getMASpawn    = Util.getMASpawn
+local forcedTarget  = Util.forcedTarget
 local validateTarget = Radar.validateTarget
 local campNpcCount   = Radar.campNpcCount
 
@@ -21,6 +22,23 @@ function Targeting.init(state, utils, combat)
     _state = state
     _utils = utils
     Combat = combat
+end
+
+-- Lock onto the forced target (/kactl target, #364): target it and make it
+-- myTargetID. No camp/MeleeDistance check: a forced target is fought wherever it
+-- is. A pet already fighting something else is sent at it (PetTargetSwitch).
+local function lockOnForced(id)
+    local c       = _state.combat
+    local changed = c.myTargetID ~= id
+    if (mq.TLO.Target.ID() or 0) ~= id then targetAndWait(id) end
+    c.myTargetID   = id
+    c.myTargetName = mq.TLO.Spawn('id ' .. id).CleanName() or ''
+    c.lastTargetID = id
+    if changed and c.petTargetSwitch and (mq.TLO.Me.Pet.ID() or 0) ~= 0 and mq.TLO.Pet.Combat() then
+        mq.cmd('/pet attack')
+        mq.delay(500)
+        mq.cmd('/pet swarm')
+    end
 end
 
 -- Mirrors Sub Assist (kissassist.mac:748).
@@ -32,6 +50,11 @@ local function assist(_fromWhere)
     if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
+    local forced = forcedTarget()
+    if forced ~= 0 then
+        lockOnForced(forced)
+        return
+    end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
     if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
         if not isDeadOrGone(_state.combat.myTargetID) then return end
@@ -134,6 +157,11 @@ local function getCombatTarget()
     if not _state.combat.meleeOn and not _state.combat.dpsOn and _state.mez.on == 0 then return end
     if _state.dps.paused then return end
     if mq.TLO.Me.Hovering() then return end
+    local forced = forcedTarget()
+    if forced ~= 0 then
+        lockOnForced(forced)
+        return
+    end
     if _state.pull.pulled and _state.combat.myTargetID ~= 0 and _state.session.iAmMA then return end
     if _state.combat.manualTargetMode and _state.combat.myTargetID ~= 0 then
         if not isDeadOrGone(_state.combat.myTargetID) then return end
@@ -333,6 +361,15 @@ end
 -- setTarget: 0=no forced re-target, 1=re-target when changed, 2=bypass DPSPaused guard
 local function combatTargetCheck(setTarget)
     setTarget = setTarget or 0
+
+    -- Forced target (/kactl target, #364): stay on it until it's dead or cleared,
+    -- whatever the MA, TargetSwitchingOn or a called target say.
+    local forced = forcedTarget()
+    if forced ~= 0 then
+        if _state.dps.paused and setTarget ~= 2 then return end
+        lockOnForced(forced)
+        return
+    end
 
     if _state.session.iAmMA then
         if _state.combat.targetSwitchingOn

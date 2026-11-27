@@ -266,6 +266,7 @@ local function onImDead()
     printf('\awI have died and the Angels wept.')
     state.combat.eventFlag = true
     state.session.iAmDead  = true
+    state.combat.forcedTargetID = 0  -- /kactl target ends when I die (#364)
     -- Bard twist stop in M8 (bard.lua); CombatReset in M4 (combat.lua)
 end
 
@@ -275,6 +276,7 @@ local function onZoned(_, message)
         return
     end
     state.combat.eventFlag  = true
+    state.combat.forcedTargetID = 0  -- /kactl target ends on zoning (#364)
     state.timers.justZoned  = os.clock() + 10  -- 200 ticks * 50ms
     state.timers.campOnDeath = os.clock() + 600  -- CampOnDeathTimer 10m (mac:11125)
     local zoneID            = mq.TLO.Zone.ID()

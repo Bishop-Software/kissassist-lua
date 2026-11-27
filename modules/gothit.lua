@@ -73,7 +73,7 @@ function GotHit.snapshot(mob)
         petTaunt       = mq.TLO.Pet.Taunt() and true or false,
         petAttackRange = s.pet.attackRange or 115,
         tauntOverride  = s.pet.tauntOverride and true or false,
-        moveWhenHit    = s.pet.moveWhenHit and true or false,
+        moveWhenHit    = (s.pet.moveWhenHit and not s.session.hold) and true or false,  -- not while holding (#364)
         faceMobOn      = s.movement.faceMobOn or 0,
     }
 end

@@ -128,6 +128,7 @@ function CantSee.respond()
     if not s.movement.cantSeePending then return end
     s.movement.cantSeePending = false
     if s.session.iAmDead or mq.TLO.Me.Hovering() then return end
+    if s.session.hold then return end  -- holding (#364): no moving back into sight
 
     local snap = CantSee.snapshot()
     for _, step in ipairs(CantSee.decide(snap)) do

@@ -5,6 +5,7 @@
 --
 --   Control.set(name, value, opts)   a variable (phase 1, #361)
 --   Control.setMode(mode, opts)      manual / camp / chase (phase 2, #362)
+--   Control.setHold(on)              hold position, keep fighting (phase 4, #364)
 --   /kactl mode ...                  Control.command
 --
 -- Neither prints its own result: they return ok, msg, info and the caller
@@ -696,6 +697,34 @@ Control.verb('pause', 'pause on|off|toggle', function(words)
     if on == nil then return false, err end
     Pause.set(on)
     return true, on and 'paused' or 'running'
+end)
+
+-- ── hold ─────────────────────────────────────────────────────────────────────
+--   /kactl hold on|off|toggle   stay put but keep fighting (#364): none of
+--   kissassist's own movement (camp return, chase, stick, repositioning, pulls).
+--   Turning it on drops our stick; nav and moveto are left alone, since they may
+--   be the script's. Runtime only, never saved.
+
+-- Set hold. Returns true when it changed.
+function Control.setHold(on)
+    on = on == true
+    if _state.session.hold == on then return false end
+    _state.session.hold = on
+    if on then
+        if mq.TLO.Stick.Active() then mq.cmd('/squelch /stick off') end
+        printf('\ayKissAssist holding position.\aw Use \at/kactl hold off\aw to move again.')
+    else
+        printf('\agKissAssist hold off.')
+    end
+    return true
+end
+
+Control.verb('hold', 'hold on|off|toggle', function(words)
+    if #words ~= 1 then return false, 'expects on, off or toggle' end
+    local on, err = Control.onOff(words[1], _state.session.hold == true)
+    if on == nil then return false, err end
+    Control.setHold(on)
+    return true, on and 'holding' or 'hold off'
 end)
 
 Control.verb('stop', 'stop', function(words)

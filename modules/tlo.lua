@@ -6,6 +6,8 @@
 --   ${KissAssist.MainAssist}  current main assist
 --   ${KissAssist.Mode}        movement mode: manual, camp or chase (#362)
 --   ${KissAssist.LastResult}  outcome of the last /kactl: 'ok' or 'error: <why>' (#363)
+--   ${KissAssist.Target}      forced target's spawn ID (/kactl target), 0 when none (#364)
+--   ${KissAssist.Hold}        TRUE while holding position (/kactl hold) (#364)
 -- The macro registers no TLO, so the name can't clash with kissassist.mac.
 local mq      = require('mq')
 local Control = require('modules.control')
@@ -25,6 +27,8 @@ Tlo.members = {
     MainAssist = function() return 'string', _state.session.mainAssist or '' end,
     Mode       = function() return 'string', Control.modeOf(_state) end,
     LastResult = function() return 'string', Control.lastResult or '' end,
+    Target     = function() return 'int', (_state.combat and _state.combat.forcedTargetID) or 0 end,
+    Hold       = function() return 'bool', _state.session.hold == true end,
 }
 
 function Tlo.init(state)

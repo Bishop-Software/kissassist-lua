@@ -125,6 +125,19 @@ function Status.drawStatus()
         ImGui.SameLine()
         ImGui.TextColored(1.0, 0.6, 0.2, 1.0, charmName)
     end
+
+    -- Row 6 (only when set): /kactl hold and /kactl target (#364)
+    local forced = s.combat.forcedTargetID or 0
+    if s.session.hold then
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, 'HOLD')
+        if forced > 0 then ImGui.SameLine(C2) end
+    end
+    if forced > 0 then
+        local forcedName = (mq.TLO.Spawn(forced).CleanName() or '?'):sub(1, 20)
+        ImGui.Text('Forced target:')
+        ImGui.SameLine()
+        ImGui.TextColored(1.0, 0.4, 0.4, 1.0, string.format('%s (%d)', forcedName, forced))
+    end
 end
 
 -- Pure. How many buttons go on a row and how wide each is, so that every
