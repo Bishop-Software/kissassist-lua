@@ -18,8 +18,9 @@ function Settings.drawControls()
 
     local campSet = s.movement.campX ~= 0 or s.movement.campY ~= 0
     if not campSet then ImGui.BeginDisabled() end
+    -- On: back to the kept camp (/kactl mode camp resume); off: manual, camp kept.
     checkbox('Return to Camp', s.movement.returnToCamp, function(v)
-        s.movement.returnToCamp = v
+        Helpers.setMode(v and 'camp' or 'manual', v and { resume = true } or nil)
     end)
     if not campSet then ImGui.EndDisabled() end
 

@@ -1,5 +1,6 @@
-local mq     = require('mq')
-local actors = require('actors')
+local mq      = require('mq')
+local actors  = require('actors')
+local Control = require('modules.control')
 
 local Comms = {}
 
@@ -51,7 +52,7 @@ end
 
 -- Messages that change our camp, chase target or main assist. Only a member of
 -- our own group/raid may send these; the mac sends them group-only (/dgge).
-local GROUP_ONLY = { CAMP = true, CAMPOFF = true, STAY = true, CHASE = true, SWITCHMA = true }
+local GROUP_ONLY = { CAMP = true, CAMPON = true, CAMPOFF = true, STAY = true, CHASE = true, SWITCHMA = true }
 
 local function inMyGroupOrRaid(name)
     if name == '' then return false end
@@ -78,34 +79,34 @@ local function onMessage(message)
         return
     end
 
+    -- Movement modes: the sender's Control.setMode; we run the same one here.
     if msgType == 'CAMP' then
-        _state.movement.campX        = data.x    or _state.movement.campX
-        _state.movement.campY        = data.y    or _state.movement.campY
-        _state.movement.campZ        = data.z    or _state.movement.campZ
-        _state.movement.campZone     = data.zone     or _state.movement.campZone
-        _state.movement.campZoneName = data.zoneName or _state.movement.campZoneName
-        _state.movement.lookForward  = mq.TLO.Me.Heading.DegreesCCW() or 0
-        _state.movement.returnToCamp = true
-        _state.session.chaseAssist   = false
+        -- camp at the sender's spot (/makecamphere, /kactl mode camp here group)
+        Control.setMode('camp', { at = { x = data.x, y = data.y, z = data.z,
+            zone = data.zone, zoneName = data.zoneName } })
         _utils.debug('comms', 'CAMP from %s: %.1f %.1f', data.from, data.y or 0, data.x or 0)
 
+    elseif msgType == 'CAMPON' then
+        -- back to our own kept camp (/kactl mode camp resume group)
+        Control.setMode('camp', { resume = true })
+        _utils.debug('comms', 'CAMPON from %s', data.from)
+
     elseif msgType == 'CAMPOFF' then
-        -- /campoff group: the group breaks camp (the spot is cleared)
-        _state.movement.returnToCamp = false
-        _state.movement.campX, _state.movement.campY, _state.movement.campZ = 0, 0, 0
-        _state.movement.campZoneName = ''
+        -- the group breaks camp, the spot is cleared (/kactl mode manual clear group)
+        Control.setMode('manual', { clear = true })
         printf('\ay>> Camp broken by %s.', tostring(data.from))
 
     elseif msgType == 'STAY' then
-        _state.movement.returnToCamp = true
-        _state.session.chaseAssist   = false
+        -- stop where we are: no chasing, no camp return (/stayhere, the mac's
+        -- /dgge /waithere, mac:11361)
+        Control.setMode('manual')
         _utils.debug('comms', 'STAY from %s', data.from)
 
     elseif msgType == 'CHASE' then
+        -- chase who the sender says (/chaseme, the mac's /chase on <name>, mac:11349)
         local who = data.who or ''
         if who ~= '' then
-            _state.movement.whoToChase = who
-            _state.session.chaseAssist = true
+            Control.setMode('chase', { who = who })
             _utils.debug('comms', 'CHASE from %s: chasing %s', data.from, who)
         end
 
@@ -205,12 +206,14 @@ function Comms.broadcast(msgType, data)
     local msg = payload(msgType, data)
     if _actor then _actor:send(msg) end
 
-    -- DanNet shim: relay movement commands to .mac chars via /dgge
+    -- DanNet shim: relay movement commands to .mac chars via /dgge, sending what
+    -- the mac's own /stayhere and /chaseme send (mac:11349-11369). Not /stayhere
+    -- or /chaseme themselves: a box that gets those broadcasts them again.
     if _state.session.danNetOn then
         if msgType == 'STAY' then
-            mq.cmd('/dgge /stayhere')
+            mq.cmd('/dgge /waithere')
         elseif msgType == 'CHASE' then
-            mq.cmdf('/dgge /chaseme %s', msg.from)
+            mq.cmdf('/dgge /chase on %s', data.who or msg.from)
         end
     end
 

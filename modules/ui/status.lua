@@ -1,7 +1,8 @@
 -- ui/status.lua — top status readout and the camp/chase/burn button row.
 -- Shown in both full and mini UI modes.
 
-local mq = require('mq')
+local mq      = require('mq')
+local Control = require('modules.control')
 
 local AF_LABELS = { [0]='OFF', [1]='RANGED', [2]='PAUSED' }
 local AF_COLORS = {
@@ -161,21 +162,28 @@ function Status.drawCampButtons()
     local mv       = s.movement
     local camping  = mv.returnToCamp
     local hasCamp  = (mv.campX or 0) ~= 0 or (mv.campY or 0) ~= 0
+    -- [2] is a slash command or a function. The movement buttons call
+    -- Control.setMode directly (the GUI uses the control API, #360).
     local buttons = {
-        -- Group camp toggle: /makecamphere, or /campoff group to break camp for everyone.
+        -- Group camp toggle: camp here for everyone, or break camp for everyone.
         { camping and 'Break Camp##grpcamp' or 'Camp Here##grpcamp',
-          camping and '/campoff group' or '/makecamphere',
-          tip = camping and 'Group: break camp for every kissassist-lua box in the group (/campoff group)'
-              or 'Group: every kissassist-lua box in the group camps at this spot (/makecamphere)' },
-        -- This toon's camp toggle: /campoff keeps the spot, /campon goes back to it.
+          camping and function() Control.setMode('manual', { clear = true, group = true }) end
+              or function() Control.setMode('camp', { here = true, group = true }) end,
+          tip = camping and 'Group: break camp for every kissassist-lua box in the group (/kactl mode manual clear group)'
+              or 'Group: every kissassist-lua box in the group camps at this spot (/kactl mode camp here group)' },
+        -- This toon's camp toggle: off keeps the spot, on goes back to it.
         { camping and 'Camp Off##mycamp' or 'Camp On##mycamp',
-          camping and '/campoff' or '/campon',
+          camping and function() Control.setMode('manual') end
+              or function() Control.setMode('camp', { resume = true }) end,
           disabled = not camping and not hasCamp,
-          tip = camping and 'This toon only: stop returning to camp; the camp is kept (/campoff)'
-              or string.format('This toon only: go back to the camp at %.0f, %.0f (/campon)',
+          tip = camping and 'This toon only: stop returning to camp; the camp is kept (/kactl mode manual)'
+              or string.format('This toon only: go back to the camp at %.0f, %.0f (/kactl mode camp resume)',
                   mv.campY or 0, mv.campX or 0) },
-        { 'Chase Me',  '/chaseme' },
-        { 'Stay Here', '/stayhere' },
+        { 'Chase Me', function()
+              Control.setMode('chase', { who = mq.TLO.Me.CleanName() or '', others = true })
+          end, tip = 'The group\'s kissassist-lua boxes chase this toon (/kactl mode chase me others)' },
+        { 'Stay Here', function() Control.setMode('manual', { others = true }) end,
+          tip = 'The group\'s kissassist-lua boxes stop chasing and returning to camp (/kactl mode manual others)' },
         { 'Burn Now',  '/burn', disabled = not inFight },
         -- /buffgroup: a buff pass now (skipped in combat, so disabled then).
         { 'Buff Now',  '/buffgroup', disabled = inFight,
@@ -204,7 +212,10 @@ function Status.drawCampButtons()
         if (i - 1) % perRow ~= 0 then ImGui.SameLine() end
         if b.disabled then ImGui.BeginDisabled() end
         if b.color then ImGui.PushStyleColor(ImGuiCol.Button, b.color[1], b.color[2], b.color[3], b.color[4]) end
-        if ImGui.Button(b[1], bw, 0) then mq.cmd(b[2]) end
+        if ImGui.Button(b[1], bw, 0) then
+            local action = b[2]
+            if type(action) == 'function' then action() else mq.cmd(tostring(action)) end
+        end
         if b.color then ImGui.PopStyleColor() end
         if b.disabled then ImGui.EndDisabled() end
         if b.tip and ImGui.IsItemHovered() then ImGui.SetTooltip(b.tip) end

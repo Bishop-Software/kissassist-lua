@@ -39,6 +39,11 @@ function Helpers.setRuntime(key, value)
     return Control.set(key, value)
 end
 
+-- Movement mode (manual / camp / chase): Control.setMode, not saved.
+function Helpers.setMode(mode, opts)
+    return Control.setMode(mode, opts)
+end
+
 -- Number input for one INI setting. onChange(v), if given, runs after the set
 -- for GUI-only follow-up work.
 function Helpers.intInput(label, value, min, max, configSection, configKey, onChange)
