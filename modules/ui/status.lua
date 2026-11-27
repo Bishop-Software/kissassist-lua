@@ -184,15 +184,17 @@ function Status.drawCampButtons()
           end, tip = 'The group\'s kissassist-lua boxes chase this toon (/kactl mode chase me others)' },
         { 'Stay Here', function() Control.setMode('manual', { others = true }) end,
           tip = 'The group\'s kissassist-lua boxes stop chasing and returning to camp (/kactl mode manual others)' },
-        { 'Burn Now',  '/burn', disabled = not inFight },
-        -- /buffgroup: a buff pass now (skipped in combat, so disabled then).
-        { 'Buff Now',  '/buffgroup', disabled = inFight,
-          tip = 'Run a buff pass now (/buffgroup); not during a fight' },
-        -- /backoff on|off (Bind_BackOff): highlighted while backed off.
-        { paused and 'Resume##backoff' or 'Back Off##backoff', paused and '/backoff off' or '/backoff on',
+        { 'Burn Now', function() Control.run('burn', {}) end, disabled = not inFight,
+          tip = 'Burn the fight target now; turns Burn on for this session (/kactl burn)' },
+        -- A buff pass now (skipped in combat, so disabled then).
+        { 'Buff Now', function() Control.run('buff', { 'now' }) end, disabled = inFight,
+          tip = 'Run a buff pass now (/kactl buff now); not during a fight' },
+        -- Back off (Bind_BackOff): highlighted while backed off.
+        { paused and 'Resume##backoff' or 'Back Off##backoff',
+          function() Control.run('backoff', { paused and 'off' or 'on' }) end,
           color = paused and { 0.8, 0.45, 0.1, 1.0 } or nil,
-          tip = paused and 'Backed off: click to resume fighting (/backoff off)'
-              or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/backoff on)' },
+          tip = paused and 'Backed off: click to resume fighting (/kactl backoff off)'
+              or 'Stop fighting: attack, MQ2Melee and stick off, combat reset (/kactl backoff on)' },
         -- Soft pause (#353): highlighted while paused.
         { kaPaused and 'Unpause##kapause' or 'Pause##kapause',
           function() require('modules.pause').set(not kaPaused) end,

@@ -46,6 +46,18 @@ function Settings.drawControls()
         'Keep returning to camp and chasing while paused')
     pauseToggle('Warn on Aggro While Paused', 'warnAggroWhilePaused', 'WarnAggroWhilePaused',
         'Warn and beep (every 10s) when something has aggro while paused')
+
+    -- The mac's commands still work but are deprecated (#363)
+    ImGui.Spacing()
+    ImGui.Separator()
+    checkbox('Deprecated Command Notices', s.session.legacyCmdNotice, function(v)
+        set('General', 'LegacyCmdNotice', v)
+    end)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Once per session, name the /kactl form when a kissassist.mac command\n'
+            .. '(/burn, /backoff, /camphere, ...) is used. Turn off for boxes driven by\n'
+            .. 'MQ2Boxr or other macros that send them. (LegacyCmdNotice)')
+    end
 end
 
 function Settings.drawConditions()

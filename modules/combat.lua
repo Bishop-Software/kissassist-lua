@@ -445,12 +445,12 @@ function Combat.checkForCombat(skipCombat, fromWhere, waitTime)
                     -- Assist returns 'switch' for an offtank whose MA is more than
                     -- 200 away: take over as tank (mac:502-507, 780).
                     if Combat.assist(fromWhere) == 'switch' then
-                        mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
+                        mq.cmd('/kactl ma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank group')
                         break
                     end
                 else
                     -- Offtank with dead MA: promote self to MA (mac:508-511)
-                    mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
+                    mq.cmd('/kactl ma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank group')
                     break
                 end
 

@@ -601,6 +601,7 @@ function Config.defaultCfg()
             OOCMedley = 'ooc', MeleeMedley = 'melee', BurnMedley = 'burn', GoMMedley = 'gomSong',
             MountOn          = '0',
             HealWhilePaused  = '0', MoveWhilePaused = '0', WarnAggroWhilePaused = '0',  -- Lua port only (#353)
+            LegacyCmdNotice  = '1',  -- Lua port only (#363): notice when a deprecated mac command is used
         },
         Spells = {
             CastingInterruptOn = '62', CheckStuckGem = '1',

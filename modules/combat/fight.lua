@@ -274,7 +274,7 @@ local function tickPreamble(myID, fromWhere)
     -- Offtank auto-promote: MA is gone, assume MA role (mac:1143)
     if _state.session.role == 'offtank'
        and (getMASpawn().ID() or 0) == 0 then
-        mq.cmd('/switchma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank')
+        mq.cmd('/kactl ma ' .. (mq.TLO.Me.CleanName() or '') .. ' tank group')
     end
     -- Re-stick if mob moved beyond MaxRangeTo and stick dropped (mac:1150); MQ2Melee repositions itself
     if not _state.combat.useMQ2Melee and _movement and _state.combat.meleeOn then
