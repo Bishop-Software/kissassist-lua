@@ -441,6 +441,12 @@ local unitTests = {
         clearModules = { 'modules.ui.status' },
     },
     {
+        name         = 'test_heals_mode_ui',
+        path         = 'tests.unit.test_heals_mode_ui',
+        useMock      = true,
+        clearModules = { 'modules.ui.healing' },
+    },
+    {
         name         = 'test_pull_retry',
         path         = 'tests.unit.test_pull_retry',
         useMock      = true,

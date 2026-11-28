@@ -158,6 +158,9 @@ local function sideEffects(tbl, field, on, who, save, raw)
     elseif field == 'dpsOn' then
         -- DPSOn 2 = any HP + wait out the spell cooldown (combat.dpsOnOoc)
         _state.combat.dpsOnOoc = on and tonumber(raw) == 2
+    elseif field == 'healsOn' then
+        -- the castMem guard reads this mirror (set once in Heal.init)
+        _state.session.heals = (tonumber(_state.heal.healsOn) or 0) > 0
     elseif field == 'buffsOn' then
         -- BuffsOn 2 = also buff group members' pets (mac:4579)
         if on then _state.buffs.buffGroupPets = tonumber(raw) == 2 end
