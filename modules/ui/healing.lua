@@ -12,6 +12,17 @@ local _state
 local _xtarBuf  -- XTarget Slots text being edited
 -- ImGui.Combo is 1-based; XTarHeal is 0-2.
 local XTAR_HEAL_LABELS = { 'Off', 'Group + XTarget', 'XTarget only' }
+-- HealsOn is a mode 0-4, not on/off (mac CheckHealth 6385-6532, #358).
+HealingUI.HEALS_MODE_LABELS = {
+    'Off', 'Self, MA and group', 'Self and group (MA left to MA heals)', 'Self and MA', 'Self only',
+}
+
+-- Combo index (1-5) for a HealsOn value; anything outside 0-4 shows as its
+-- nearest mode.
+function HealingUI.healsModeIndex(v)
+    v = math.floor(tonumber(v) or 0)
+    return math.max(0, math.min(4, v)) + 1
+end
 
 -- ---------------------------------------------------------------------------
 -- Heal Thresholds panel
@@ -40,8 +51,20 @@ end
 function HealingUI.drawHealThresholds()
     local s = _state
 
-    checkbox('Heals On', s.heal.healsOn ~= 0, function(v) set('Heals', 'HealsOn', v) end)
-    ImGui.SameLine(160)
+    ImGui.PushItemWidth(250)
+    local healsMode, healsChanged = ImGui.Combo('Heals##healson', HealingUI.healsModeIndex(s.heal.healsOn),
+        HealingUI.HEALS_MODE_LABELS)
+    ImGui.PopItemWidth()
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Who this character heals (HealsOn 0-4).\n'
+            .. 'Self, MA and group: also scans the group / XTarget for the most hurt (1).\n'
+            .. 'Self and group: as 1, but leaves the MA and its pet to the MA heals (2).\n'
+            .. 'Self and MA: no group scan (3).\n'
+            .. 'Modes 1-3 only differ for classes that can heal others.')
+    end
+    if healsChanged then set('Heals', 'HealsOn', healsMode - 1) end
+
+    checkbox('Rez Guild/Fellowship', s.heal.rezGuildFellowship ~= false, function(v) set('Heals', 'RezGuildFellowship', v) end)
     checkbox('Rez Guild/Fellowship', s.heal.rezGuildFellowship ~= false, function(v) set('Heals', 'RezGuildFellowship', v) end)
     if ImGui.IsItemHovered() then
         ImGui.SetTooltip('Out of combat, rez nearby corpses of guild and fellowship members.\nNeeds AutoRezOn and a rez in the heal list.')
@@ -74,7 +97,7 @@ function HealingUI.drawHealThresholds()
             ImGui.TextColored(1, 0.8, 0.2, 1, 'No XTarget slots to heal. Set XTarget Slots.')
         end
         if s.heal.healsOn == 0 then
-            ImGui.TextColored(1, 0.8, 0.2, 1, 'Heals On is off, so nobody is healed.')
+            ImGui.TextColored(1, 0.8, 0.2, 1, 'Heals is Off, so nobody is healed.')
         end
     end
 

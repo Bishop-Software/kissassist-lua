@@ -158,6 +158,20 @@ function M.run(TH, MockMQ)
     Control.set('BuffsOn', 0)
     TH.assert_true(not state.buffs.buffsOn and state.buffs.buffGroupPets, 'BuffsOn 0: group pets kept')
 
+    -- HealsOn is a mode 0-4 (#358): the number is kept, saved as given, and
+    -- session.heals (castMem guard) follows it.
+    cfg.reset()
+    Control.set('HealsOn', 4, { section = 'Heals', save = true })
+    TH.assert_eq(state.heal.healsOn, 4, 'HealsOn 4 kept (not 1)')
+    TH.assert_eq(cfg.last(), 'Heals/HealsOn=4', 'HealsOn 4 saved as 4')
+    TH.assert_true(state.session.heals, 'HealsOn 4: session.heals on')
+    Control.set('HealsOn', 0, { section = 'Heals', save = true })
+    TH.assert_eq(state.heal.healsOn, 0, 'HealsOn 0: off')
+    TH.assert_false(state.session.heals, 'HealsOn 0: session.heals off')
+    Control.set('HealsOn', 2, { section = 'Heals', save = true })
+    TH.assert_eq(state.heal.healsOn, 2, 'HealsOn off then 2: 2, not 1')
+    TH.assert_eq(cfg.last(), 'Heals/HealsOn=2', 'HealsOn 2 saved as 2')
+
     Control.set('DPSOn', '2')
     TH.assert_true(state.combat.dpsOn and state.combat.dpsOnOoc, 'DPSOn 2: dpsOnOoc')
     Control.set('DPSOn', '1')
